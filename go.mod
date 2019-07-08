@@ -35,8 +35,8 @@ require (
 	k8s.io/gengo v0.0.0-20190128074634-0689ccc1d7d6
 	k8s.io/heapster v1.5.4 // indirect
 	k8s.io/kube-openapi v0.0.0-20180711000925-0cf8f7e6ed1d
-	k8s.io/kubernetes v1.13.1 // indirect
-	k8s.io/metrics v0.0.0-20181213153603-64084e52e000 // indirect
+	k8s.io/kubernetes v1.13.1
+	k8s.io/metrics v0.0.0-20181213153603-64084e52e000
 	sigs.k8s.io/controller-runtime v0.1.10
 	sigs.k8s.io/controller-tools v0.1.10
 	sigs.k8s.io/testing_frameworks v0.1.0 // indirect
