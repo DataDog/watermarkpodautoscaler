@@ -1,0 +1,7 @@
+apiVersion: datadoghq.com/v1alpha1
+kind: WatermarkPodAutoscaler
+metadata:
+  name: example-watermarkpodautoscaler
+spec:
+  # Add fields here
+  size: 3
