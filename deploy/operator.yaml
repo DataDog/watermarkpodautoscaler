@@ -16,7 +16,7 @@ spec:
       containers:
         - name: watermarkpodautoscaler
           # Replace this with the built image name
-          image: REPLACE_IMAGE
+          image: charlyyfon/watermarkedpodautoscaler:v0.0.1
           command:
           - watermarkpodautoscaler
           imagePullPolicy: Always
