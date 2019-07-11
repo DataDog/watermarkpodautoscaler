@@ -35,7 +35,6 @@ import (
 var log = logf.Log.WithName("wpa_controller")
 
 var scalingAlgorithmHysteresis =  "hysteresis"
-var scalingAlgorithmReversedHysteresis = "reversed-hysteresis"
 
 var (
 	scaleUpLimitFactor  = 2.0
@@ -402,30 +401,11 @@ func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(wpa *datadog
 
 			switch metricSpec.Type {
 			case datadoghqv1alpha1.ExternalMetricSourceType:
-				// for now simplify to the max.
-				//if metricSpec.External.TargetAverageValue != nil {
-				//	replicaCountProposal, utilizationProposal, timestampProposal, err = r.replicaCalc.GetExternalPerPodMetricReplicas(currentReplicas, metricSpec.External.TargetAverageValue.MilliValue(), metricSpec.External.MetricName, chpa.Namespace, metricSpec.External.MetricSelector)
-				//	if err != nil {
-				//		r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedGetExternalMetric", err.Error())
-				//		setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, "FailedGetExternalMetric", "the HPA was unable to compute the replica count: %v", err)
-				//		return 0, "", nil, time.Time{}, fmt.Errorf("failed to get %s external metric: %v", metricSpec.External.MetricName, err)
-				//	}
-				//	metricNameProposal = fmt.Sprintf("external metric %s(%+v)", metricSpec.External.MetricName, metricSpec.External.MetricSelector)
-				//	statuses[i] = autoscalingv2.MetricStatus{
-				//		Type: autoscalingv2.ExternalMetricSourceType,
-				//		External: &autoscalingv2.ExternalMetricStatus{
-				//			MetricSelector:      metricSpec.External.MetricSelector,
-				//			MetricName:          metricSpec.External.MetricName,
-				//			CurrentAverageValue: resource.NewMilliQuantity(utilizationProposal, resource.DecimalSI),
-				//		},
-				//	}
-				//} else
 			    if metricSpec.External.HighWatermark != nil && metricSpec.External.LowWatermark != nil {
 					replicaCountProposal, utilizationProposal, timestampProposal, err = r.replicaCalc.GetExternalMetricReplicas(currentReplicas, metricSpec.External.LowWatermark.Value(), metricSpec.External.HighWatermark.Value(), metricSpec.External.MetricName, wpa.Namespace, metricSpec.External.MetricSelector)
-					log.Info(fmt.Sprintf("countProp is %v, utilProp %v, timestampoPro %v, err %v", replicaCountProposal, utilizationProposal, timestampProposal, err ))
+					log.Info(fmt.Sprintf("Proposing %d replicas, Value retrieved: %d at %v", replicaCountProposal, utilizationProposal, timestampProposal))
 					if err != nil {
 						r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedGetExternalMetric", err.Error())
-						log.Info("Was able to record event")
 						setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, "FailedGetExternalMetric", "the HPA was unable to compute the replica count: %v", err)
 						return 0, "", nil, time.Time{}, fmt.Errorf("failed to get external metric %s: %v", metricSpec.External.MetricName, err)
 					}

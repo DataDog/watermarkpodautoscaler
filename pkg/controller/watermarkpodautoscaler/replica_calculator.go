@@ -11,14 +11,6 @@ import (
 	metricsclient "k8s.io/kubernetes/pkg/controller/podautoscaler/metrics"
 )
 
-
-
-const (
-	// defaultTestingTolerance is default value for calculating when to
-	// scale up/scale down.
-	defaultTestingTolerance = 0.1
-)
-
 // ReplicaCalculator is responsible for calculation of the number of replicas
 // It contains all the needed information
 type ReplicaCalculator struct {
@@ -43,7 +35,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, low
 	if err != nil {
 		return 0, 0, time.Time{}, err
 	}
-	log.Info(fmt.Sprintf("Using %v", labelSelector))
+	log.Info(fmt.Sprintf("Using label selector: %v", labelSelector))
 	// should do
 	metrics, timestamp, err := c.metricsClient.GetExternalMetric(metricName, namespace, labelSelector)
 	if err != nil {
@@ -53,26 +45,21 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, low
 	for _, val := range metrics {
 		utilization = utilization + val
 	}
+
 	var usageRatio float64
 
 	log.Info(fmt.Sprintf("About to compare utilization %v vs LWM %v and HWM %v", utilization, lowMark, highMark))
-	if float64(utilization) < float64(lowMark) {
-		log.Info("Value is below lowMark so can consider downscaling.")
+
+	adjustedLM := float64(lowMark) - c.tolerance * float64(lowMark)
+	adjustedHM := float64(highMark) + c.tolerance * float64(highMark)
+
+	if float64(utilization) < adjustedLM  {
 		usageRatio = float64(utilization) / float64(lowMark)
+		log.Info("Value is below lowMark. Usage ratio: %d", usageRatio)
 
-		if math.Abs(1.0-usageRatio) <= c.tolerance {
-			// return the current replicas if the change would be too small
-			return currentReplicas, utilization, timestamp, nil
-		}
-
-	} else if float64(utilization) > float64(highMark) {
-		log.Info("Value is above highMark so can consider upscaling.")
+	} else if float64(utilization) > adjustedHM {
 		usageRatio = float64(utilization) / float64(highMark)
-
-		if math.Abs(1.0-usageRatio) <= c.tolerance {
-			// return the current replicas if the change would be too small
-			return currentReplicas, utilization, timestamp, nil
-		}
+		log.Info("Value is above highMark. Usage ratio: %d", usageRatio)
 
 	} else {
 		return currentReplicas, utilization, timestamp, nil

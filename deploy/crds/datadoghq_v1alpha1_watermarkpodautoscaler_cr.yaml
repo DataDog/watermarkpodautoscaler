@@ -4,4 +4,19 @@ metadata:
   name: example-watermarkpodautoscaler
 spec:
   # Add fields here
-  size: 3
+  maxReplicas: 3
+  minReplicas: 1
+  tolerance: 0.2
+  scaleTargetRef:
+    kind: Deployment
+    name: datadog-agent-cluster-worker
+  metrics:
+  - type: External
+    external:
+      highWatermark: "42000000"
+      lowWatermark: "39000000"
+      metricName: docker.mem.rss
+      metricSelector:
+        matchLabels:
+          env: datad0g.eu
+          image_name: mongo
