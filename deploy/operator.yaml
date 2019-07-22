@@ -9,6 +9,10 @@ spec:
       name: watermarkpodautoscaler
   template:
     metadata:
+      annotations:
+        ad.datadoghq.com/watermarkpodautoscaler.check_names: '["prometheus"]'
+        ad.datadoghq.com/watermarkpodautoscaler.init_configs: '[{}]'
+        ad.datadoghq.com/watermarkpodautoscaler.instances: '[{"prometheus_url": "http://%%host%%:8383/metrics","namespace":"watermarkpodautoscaler","metrics": ["wpa","wpa_controller*"]}]'
       labels:
         name: watermarkpodautoscaler
     spec:
