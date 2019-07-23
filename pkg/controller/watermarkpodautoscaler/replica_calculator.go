@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -27,10 +28,11 @@ func NewReplicaCalculator(metricsClient metricsclient.MetricsClient, podsGetter 
 		tolerance:     tolerance,
 	}
 }
+
 // GetExternalMetricReplicas calculates the desired replica count based on a
 // target metric value (as a milli-value) for the external metric in the given
 // namespace, and the current replica count.
-func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, lowMark int64, highMark int64,  metricName, namespace string, name string, selector *metav1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
+func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, lowMark int64, highMark int64, metricName, namespace string, name string, selector *metav1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
 	labelSelector, err := metav1.LabelSelectorAsSelector(selector)
 	if err != nil {
 		return 0, 0, time.Time{}, err
@@ -51,20 +53,20 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, low
 
 	log.Info(fmt.Sprintf("About to compare utilization %v vs LWM %v and HWM %v", utilization, lowMark, highMark))
 
-	adjustedLM := float64(lowMark) - c.tolerance * float64(lowMark)
-	adjustedHM := float64(highMark) + c.tolerance * float64(highMark)
+	adjustedLM := float64(lowMark) - c.tolerance*float64(lowMark)
+	adjustedHM := float64(highMark) + c.tolerance*float64(highMark)
 
 	if float64(utilization) > adjustedHM {
 		usageRatio = float64(utilization) / (float64(highMark) * float64(currentReplicas))
 
 		usageRatioMetric.With(prometheus.Labels{"wpa_name": name, "metric": metricName}).Set(usageRatio)
 
-		log.Info(fmt.Sprintf("Value is above highMark. Usage ratio: %d", usageRatio))
+		log.Info(fmt.Sprintf("Value is above highMark. Usage ratio: %f", usageRatio))
 
-	} else if float64(utilization) < adjustedLM  {
+	} else if float64(utilization) < adjustedLM {
 		usageRatio = float64(utilization) / float64(lowMark)
 		usageRatioMetric.With(prometheus.Labels{"wpa_name": name, "metric": metricName}).Set(usageRatio)
-		log.Info(fmt.Sprintf("Value is below lowMark. Usage ratio: %d", usageRatio))
+		log.Info(fmt.Sprintf("Value is below lowMark. Usage ratio: %f", usageRatio))
 
 	} else {
 		restrictedScaling.With(prometheus.Labels{"wpa_name": name, "metric": metricName}).Set(1)

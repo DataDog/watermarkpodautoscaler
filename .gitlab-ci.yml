@@ -1,0 +1,46 @@
+image: golang:1.12
+variables:
+  GO111MODULE: "on"
+  GOPATH: "$CI_PROJECT_DIR/.cache"
+  KINDPUSH: "true"
+  PROJECTNAME: "watermarkpodautoscaler"
+cache:
+  paths:
+  - .cache
+
+stages:
+  - build
+  - test
+  - image
+
+before_script:
+  - make install-tools
+
+build:
+  stage: build
+  tags: [ "runner:main", "size:large" ]
+  script:
+    - make build
+
+# unit_tests:
+#   stage: test
+#   tags: [ "runner:main", "size:large" ]
+#   script:
+#   - make test
+
+lint_code:
+  stage: test
+  tags: [ "runner:main", "size:large" ]
+  script:
+  - make validate
+
+build_image:
+  stage: image
+  tags: [ "runner:docker", "size:large" ]
+  image: 486234852809.dkr.ecr.us-east-1.amazonaws.com/docker-notary:0.6.1
+  script:
+    - DOCKER_REGISTRY="486234852809.dkr.ecr.us-east-1.amazonaws.com/ci"
+    - TARGET_TAG=v$CI_PIPELINE_ID-${CI_COMMIT_SHA:0:7}
+    - IMAGE_NAME=$DOCKER_REGISTRY/$PROJECTNAME:$TARGET_TAG
+    - docker build --build-arg VERSION=$TARGET_TAG -t $IMAGE_NAME -f Dockerfile .
+    - docker push $IMAGE_NAME
