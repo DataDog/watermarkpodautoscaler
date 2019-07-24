@@ -5,21 +5,25 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"runtime"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"github.com/DataDog/watermarkpodautoscaler/pkg/apis"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/controller"
+	"github.com/DataDog/watermarkpodautoscaler/version"
 
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	"github.com/operator-framework/operator-sdk/pkg/leader"
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"
 	"github.com/operator-framework/operator-sdk/pkg/metrics"
 	"github.com/operator-framework/operator-sdk/pkg/restmapper"
-	sdkVersion "github.com/operator-framework/operator-sdk/version"
+
 	"github.com/spf13/pflag"
+
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
+
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
@@ -32,12 +36,7 @@ var (
 	metricsPort int32 = 8383
 )
 var log = logf.Log.WithName("cmd")
-
-func printVersion() {
-	log.Info(fmt.Sprintf("Go Version: %s", runtime.Version()))
-	log.Info(fmt.Sprintf("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH))
-	log.Info(fmt.Sprintf("Version of operator-sdk: %v", sdkVersion.Version))
-}
+var printVersionArg bool
 
 func main() {
 	// Add the zap logger flag set to the CLI. The flag set must
@@ -47,6 +46,7 @@ func main() {
 	// Add flags registered by imported packages (e.g. glog and
 	// controller-runtime)
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	pflag.BoolVarP(&printVersionArg, "version", "v", printVersionArg, "print version")
 
 	pflag.Parse()
 
@@ -60,7 +60,12 @@ func main() {
 	// uniform and structured logs.
 	logf.SetLogger(zap.Logger())
 
-	printVersion()
+	if printVersionArg {
+		version.PrintVersionWriter(os.Stdout)
+		os.Exit(0)
+	}
+
+	version.PrintVersionLogs(log)
 
 	namespace, err := k8sutil.GetWatchNamespace()
 	if err != nil {
@@ -110,7 +115,10 @@ func main() {
 	}
 
 	// Create Service object to expose the metrics port.
-	_, err = metrics.ExposeMetricsPort(ctx, metricsPort)
+	servicePorts := []v1.ServicePort{
+		{Port: metricsPort, Name: metrics.OperatorPortName, Protocol: v1.ProtocolTCP, TargetPort: intstr.IntOrString{Type: intstr.Int, IntVal: metricsPort}},
+	}
+	_, err = metrics.CreateMetricsService(ctx, cfg, servicePorts)
 	if err != nil {
 		log.Info(err.Error())
 	}
