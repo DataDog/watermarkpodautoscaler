@@ -7,9 +7,6 @@ import (
 
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
 // CrossVersionObjectReference contains enough information to let you identify the referred resource.
 type CrossVersionObjectReference struct {
 	// Kind of the referent; More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds"
@@ -99,10 +96,6 @@ type WatermarkPodAutoscalerStatus struct {
 	DesiredReplicas    int32                                            `json:"desiredReplicas"`
 	CurrentMetrics     []autoscalingv2.MetricStatus                     `json:"currentMetrics"`
 	Conditions         []autoscalingv2.HorizontalPodAutoscalerCondition `json:"conditions"`
-
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
-	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -110,7 +103,9 @@ type WatermarkPodAutoscalerStatus struct {
 // WatermarkPodAutoscaler is the Schema for the watermarkpodautoscalers API
 // +k8s:openapi-gen=true
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:name="status",type="string",JSONPath=".status.LastScaleTime"
+// +kubebuilder:printcolumn:name="value",type="integer",JSONPath=".status.currentMetrics[*].external.currentValue"
+// +kubebuilder:printcolumn:name="high watermark",type="integer",JSONPath=".spec.metrics[*].external.highWatermark"
+// +kubebuilder:printcolumn:name="low watermark",type="integer",JSONPath=".spec.metrics[*].external.lowWatermark"
 // +kubebuilder:printcolumn:name="age",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:printcolumn:name="min replicas",type="integer",JSONPath=".spec.minReplicas"
 // +kubebuilder:printcolumn:name="max replicas",type="integer",JSONPath=".spec.maxReplicas"

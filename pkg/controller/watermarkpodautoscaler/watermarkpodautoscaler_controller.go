@@ -478,25 +478,15 @@ func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(wpa *datadog
 				replicaProposal.With(prometheus.Labels{"wpa_name": wpa.Name, "deploy": deploy.Name}).Set(float64(replicaCountProposal))
 
 				metricNameProposal = fmt.Sprintf("external metric %s(%+v)", metricSpec.External.MetricName, metricSpec.External.MetricSelector)
-				if wpa.Spec.Algorithm == "absolute" {
-					statuses[i] = autoscalingv2.MetricStatus{
-						Type: autoscalingv2.ExternalMetricSourceType,
-						External: &autoscalingv2.ExternalMetricStatus{
-							MetricSelector: metricSpec.External.MetricSelector,
-							MetricName:     metricSpec.External.MetricName,
-							CurrentValue:   *resource.NewMilliQuantity(utilizationProposal, resource.DecimalSI),
-						},
-					}
-				} else if wpa.Spec.Algorithm == "average" {
-					statuses[i] = autoscalingv2.MetricStatus{
-						Type: autoscalingv2.ExternalMetricSourceType,
-						External: &autoscalingv2.ExternalMetricStatus{
-							MetricSelector: metricSpec.External.MetricSelector,
-							MetricName:     metricSpec.External.MetricName,
-							CurrentAverageValue:   resource.NewMilliQuantity(utilizationProposal, resource.DecimalSI),
-						},
-					}
+				statuses[i] = autoscalingv2.MetricStatus{
+					Type: autoscalingv2.ExternalMetricSourceType,
+					External: &autoscalingv2.ExternalMetricStatus{
+						MetricSelector: metricSpec.External.MetricSelector,
+						MetricName:     metricSpec.External.MetricName,
+						CurrentValue:   *resource.NewMilliQuantity(utilizationProposal, resource.DecimalSI),
+					},
 				}
+
 			} else {
 				errMsg := "invalid external metric source: the high watermark and the low watermark are required"
 				r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedGetExternalMetric", errMsg)

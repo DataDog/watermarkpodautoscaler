@@ -4,9 +4,15 @@ metadata:
   name: watermarkpodautoscaler.datadoghq.com
 spec:
   additionalPrinterColumns:
-  - JSONPath: .status.LastScaleTime
-    name: status
-    type: string
+  - JSONPath: .status.currentMetrics[*].external.currentValue
+    name: value
+    type: integer
+  - JSONPath: .spec.metrics[*].external.highWatermark
+    name: high watermark
+    type: integer
+  - JSONPath: .spec.metrics[*].external.lowWatermark
+    name: low watermark
+    type: integer
   - JSONPath: .metadata.creationTimestamp
     name: age
     type: date
@@ -45,6 +51,7 @@ spec:
         spec:
           properties:
             algorithm:
+              description: 'computed values take the # of replicas into account'
               type: string
             maxReplicas:
               format: int32
