@@ -29,6 +29,7 @@ type WatermarkPodAutoscalerSpec struct {
 	// +kubebuilder:validation:Maximum=0.99
 	Tolerance float64 `json:"tolerance,omitempty"`
 
+	// computed values take the # of replicas into account
 	Algorithm string `json:"algorithm,omitempty"`
 
 	// part of HorizontalPodAutoscalerSpec, see comments in the k8s-1.10.8 repo: staging/src/k8s.io/api/autoscaling/v1/types.go

@@ -43,7 +43,8 @@ const (
 var (
 	log = logf.Log.WithName(subsystem)
 
-	scalingAlgorithmHysteresis = "hysteresis"
+
+    defaultAlgorithm =  "absolute"
 
 	scaleUpLimitFactor  = 2.0
 	scaleUpLimitMinimum = 4.0
@@ -104,7 +105,7 @@ var (
 		},
 		[]string{
 			"wpa_name",
-			"metric",
+			"metric_name",
 		})
 	usageRatioMetric = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -114,7 +115,7 @@ var (
 		},
 		[]string{
 			"wpa_name",
-			"metric",
+			"metric_name",
 		})
 )
 
@@ -146,7 +147,7 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		log.Error(err, "Error")
 	}
 
-	replicaCalc := NewReplicaCalculator(metricsClient, clientSet.CoreV1(), defaultTolerance)
+	replicaCalc := NewReplicaCalculator(metricsClient, clientSet.CoreV1())
 	return &ReconcileWatermarkPodAutoscaler{
 		client:        mgr.GetClient(),
 		scheme:        mgr.GetScheme(),
@@ -463,7 +464,7 @@ func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(wpa *datadog
 		switch metricSpec.Type {
 		case datadoghqv1alpha1.ExternalMetricSourceType:
 			if metricSpec.External.HighWatermark != nil && metricSpec.External.LowWatermark != nil {
-				replicaCountProposal, utilizationProposal, timestampProposal, err = r.replicaCalc.GetExternalMetricReplicas(currentReplicas, metricSpec.External.LowWatermark.Value(), metricSpec.External.HighWatermark.Value(), metricSpec.External.MetricName, wpa.Namespace, wpa.Name, metricSpec.External.MetricSelector)
+				replicaCountProposal, utilizationProposal, timestampProposal, err = r.replicaCalc.GetExternalMetricReplicas(currentReplicas, metricSpec.External.LowWatermark.MilliValue(), metricSpec.External.HighWatermark.MilliValue(), metricSpec.External.MetricName, wpa, metricSpec.External.MetricSelector)
 				log.Info(fmt.Sprintf("Proposing %d replicas, Value retrieved: %d at %v", replicaCountProposal, utilizationProposal, timestampProposal))
 				if err != nil {
 					replicaProposal.Delete(prometheus.Labels{"wpa_name": wpa.Name, "deploy": deploy.Name})
@@ -477,16 +478,27 @@ func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(wpa *datadog
 				replicaProposal.With(prometheus.Labels{"wpa_name": wpa.Name, "deploy": deploy.Name}).Set(float64(replicaCountProposal))
 
 				metricNameProposal = fmt.Sprintf("external metric %s(%+v)", metricSpec.External.MetricName, metricSpec.External.MetricSelector)
-				statuses[i] = autoscalingv2.MetricStatus{
-					Type: autoscalingv2.ExternalMetricSourceType,
-					External: &autoscalingv2.ExternalMetricStatus{
-						MetricSelector: metricSpec.External.MetricSelector,
-						MetricName:     metricSpec.External.MetricName,
-						CurrentValue:   *resource.NewMilliQuantity(utilizationProposal, resource.DecimalSI),
-					},
+				if wpa.Spec.Algorithm == "absolute" {
+					statuses[i] = autoscalingv2.MetricStatus{
+						Type: autoscalingv2.ExternalMetricSourceType,
+						External: &autoscalingv2.ExternalMetricStatus{
+							MetricSelector: metricSpec.External.MetricSelector,
+							MetricName:     metricSpec.External.MetricName,
+							CurrentValue:   *resource.NewMilliQuantity(utilizationProposal, resource.DecimalSI),
+						},
+					}
+				} else if wpa.Spec.Algorithm == "average" {
+					statuses[i] = autoscalingv2.MetricStatus{
+						Type: autoscalingv2.ExternalMetricSourceType,
+						External: &autoscalingv2.ExternalMetricStatus{
+							MetricSelector: metricSpec.External.MetricSelector,
+							MetricName:     metricSpec.External.MetricName,
+							CurrentAverageValue:   resource.NewMilliQuantity(utilizationProposal, resource.DecimalSI),
+						},
+					}
 				}
 			} else {
-				errMsg := "invalid external metric source: neither a value target nor an average value target was set"
+				errMsg := "invalid external metric source: the high watermark and the low watermark are required"
 				r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedGetExternalMetric", errMsg)
 				setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, "FailedGetExternalMetric", "the HPA was unable to compute the replica count: %v", err)
 				return 0, "", nil, time.Time{}, fmt.Errorf(errMsg)
@@ -544,7 +556,7 @@ func setConditionInList(inputList []autoscalingv2.HorizontalPodAutoscalerConditi
 
 func setWPADefault(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
 	if wpa.Spec.Algorithm == "" {
-		wpa.Spec.Algorithm = scalingAlgorithmHysteresis
+		wpa.Spec.Algorithm = defaultAlgorithm
 	}
 	// TODO set defaults for high and low watermark
 	if wpa.Spec.Tolerance == 0 {

@@ -2,6 +2,7 @@ package watermarkpodautoscaler
 
 import (
 	"fmt"
+	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
 	"math"
 	"time"
 
@@ -17,65 +18,72 @@ import (
 type ReplicaCalculator struct {
 	metricsClient metricsclient.MetricsClient
 	podsGetter    v1coreclient.PodsGetter
-	tolerance     float64
 }
 
 // NewReplicaCalculator returns a ReplicaCalculator object reference
-func NewReplicaCalculator(metricsClient metricsclient.MetricsClient, podsGetter v1coreclient.PodsGetter, tolerance float64) *ReplicaCalculator {
+func NewReplicaCalculator(metricsClient metricsclient.MetricsClient, podsGetter v1coreclient.PodsGetter) *ReplicaCalculator {
 	return &ReplicaCalculator{
 		metricsClient: metricsClient,
 		podsGetter:    podsGetter,
-		tolerance:     tolerance,
 	}
 }
 
 // GetExternalMetricReplicas calculates the desired replica count based on a
 // target metric value (as a milli-value) for the external metric in the given
 // namespace, and the current replica count.
-func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, lowMark int64, highMark int64, metricName, namespace string, name string, selector *metav1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
+
+func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, lowMark int64, highMark int64,  metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *metav1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
+
 	labelSelector, err := metav1.LabelSelectorAsSelector(selector)
 	if err != nil {
 		return 0, 0, time.Time{}, err
 	}
 	log.Info(fmt.Sprintf("Using label selector: %v", labelSelector))
-	// should do
-	metrics, timestamp, err := c.metricsClient.GetExternalMetric(metricName, namespace, labelSelector)
-	if err != nil {
-		value.Delete(prometheus.Labels{"wpa_name": name, "metric": metricName})
-		return 0, 0, time.Time{}, fmt.Errorf("unable to get external metric %s/%s/%+v: %s", namespace, metricName, selector, err)
-	}
-	utilization = 0
-	for _, val := range metrics {
-		utilization = utilization + val
-	}
 
-	var usageRatio float64
+	metrics, timestamp, err := c.metricsClient.GetExternalMetric(metricName, wpa.Namespace, labelSelector)
+	if err != nil {
+		restrictedScaling.Delete(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName})
+		value.Delete(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName})
+		return 0, 0, time.Time{}, fmt.Errorf("unable to get external metric %s/%s/%+v: %s", wpa.Namespace, metricName, selector, err)
+	}
+	log.Info(fmt.Sprintf("Metrics is %v", metrics))
+	averaged := 1.0
+
+	if wpa.Spec.Algorithm == "average" {
+		averaged = float64(currentReplicas)
+	}
+	log.Info(fmt.Sprintf("Algorithm is %v", wpa.Spec.Algorithm))
+
+	var sum int64
+	for _, val := range metrics {
+		sum = sum + val
+	}
+	adjustedUsage := float64(sum) / averaged
+	utilization = int64(adjustedUsage)
 
 	log.Info(fmt.Sprintf("About to compare utilization %v vs LWM %v and HWM %v", utilization, lowMark, highMark))
 
-	adjustedLM := float64(lowMark) - c.tolerance*float64(lowMark)
-	adjustedHM := float64(highMark) + c.tolerance*float64(highMark)
+	adjustedHM := float64(highMark) + wpa.Spec.Tolerance*float64(highMark)
+	adjustedLM := float64(lowMark) - wpa.Spec.Tolerance*float64(lowMark)
 
-	if float64(utilization) > adjustedHM {
-		usageRatio = float64(utilization) / (float64(highMark) * float64(currentReplicas))
+ 	// We do not use the abs as we want to know if we are higher than the high mark or lower than the low mark
+	if adjustedUsage > adjustedHM {
+		replicaCount = int32(math.Ceil(adjustedUsage / (float64(highMark))))
+		log.Info(fmt.Sprintf("Value is above highMark. Usage: %d", adjustedUsage))
 
-		usageRatioMetric.With(prometheus.Labels{"wpa_name": name, "metric": metricName}).Set(usageRatio)
-
-		log.Info(fmt.Sprintf("Value is above highMark. Usage ratio: %f", usageRatio))
-
-	} else if float64(utilization) < adjustedLM {
-		usageRatio = float64(utilization) / float64(lowMark)
-		usageRatioMetric.With(prometheus.Labels{"wpa_name": name, "metric": metricName}).Set(usageRatio)
-		log.Info(fmt.Sprintf("Value is below lowMark. Usage ratio: %f", usageRatio))
+	} else if adjustedUsage < adjustedLM  {
+		replicaCount = int32(math.Ceil(adjustedUsage / (float64(lowMark))))
+		log.Info(fmt.Sprintf("Value is below lowMark. Usage: %d", adjustedUsage))
 
 	} else {
-		restrictedScaling.With(prometheus.Labels{"wpa_name": name, "metric": metricName}).Set(1)
-		value.With(prometheus.Labels{"wpa_name": name, "metric": metricName}).Set(float64(utilization))
+		restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(1)
+		value.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(float64(adjustedUsage))
+		log.Info(fmt.Sprintf("Withing bounds of the watermarks. Value: %v is [%v; %v]", adjustedUsage, lowMark, highMark))
 		return currentReplicas, utilization, timestamp, nil
 	}
 
-	restrictedScaling.With(prometheus.Labels{"wpa_name": name, "metric": metricName}).Set(0)
-	value.With(prometheus.Labels{"wpa_name": name, "metric": metricName}).Set(float64(utilization))
+	restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(0)
+	value.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(float64(adjustedUsage))
 
-	return int32(math.Ceil(usageRatio * float64(currentReplicas))), utilization, timestamp, nil
+	return replicaCount, utilization, timestamp, nil
 }
