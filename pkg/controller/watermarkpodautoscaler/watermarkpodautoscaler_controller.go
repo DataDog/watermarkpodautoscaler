@@ -68,6 +68,16 @@ var (
 		[]string{
 			"wpa_name",
 		})
+	transitionCountdown = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "transition_countdown",
+			Help:      "Gauge indicating the time in seconds before scaling is authorized",
+		},
+		[]string{
+			"wpa_name",
+			"transition",
+		})
 	lowwm = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
@@ -127,11 +137,16 @@ func init() {
 	sigmetrics.Registry.MustRegister(replicaEffective)
 	sigmetrics.Registry.MustRegister(restrictedScaling)
 	sigmetrics.Registry.MustRegister(usageRatioMetric)
+	sigmetrics.Registry.MustRegister(transitionCountdown)
 }
 
 const (
 	defaultTolerance  = 0.1
 	defaultSyncPeriod = time.Second * 15
+	defaultDownscaleForbiddenWindowSeconds       = 300
+	defaultUpscaleForbiddenWindowSeconds         = 60
+	defaultScaleUpLimitMinimum                   = 4.0
+	defaultScaleUpLimitFactor                    = 2.0
 )
 
 // newReconciler returns a new reconcile.Reconciler
@@ -292,7 +307,7 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.Wa
 
 	desiredReplicas := int32(0)
 	rescaleReason := ""
-	timestamp := time.Now()
+	now := time.Now()
 
 	rescale := true
 
@@ -327,12 +342,12 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.Wa
 			log.Info("failed to compute desired number of replicas based on listed metrics for %s: %v", reference, err)
 			return nil
 		}
-		log.Info(fmt.Sprintf("proposing %v desired replicas (based on %s from %s) for %s", proposedReplicas, metricName, timestamp, reference))
+		log.Info(fmt.Sprintf("proposing %v desired replicas (based on %s from %s) for %s", proposedReplicas, metricName, now, reference))
 
 		rescaleMetric := ""
 		if proposedReplicas > desiredReplicas {
 			desiredReplicas = proposedReplicas
-			timestamp = metricTimestamp
+			now = metricTimestamp
 			rescaleMetric = metricName
 		}
 		if desiredReplicas > currentReplicas {
@@ -345,32 +360,41 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.Wa
 		desiredReplicas = r.normalizeDesiredReplicas(wpa, currentReplicas, desiredReplicas)
 		log.Info(fmt.Sprintf(" -> after normalization: %d", desiredReplicas))
 
-		rescale = r.shouldScale(wpa, currentReplicas, desiredReplicas, timestamp) // HERE make more magic ?
-		//backoffDown := false
-		//backoffUp := false
-		//if wpa.Status.LastScaleTime != nil {
-		//	//downscaleForbiddenWindow := time.Duration(wpa.Spec.DownscaleForbiddenWindowSeconds) * time.Second
-		//	//if !wpa.Status.LastScaleTime.Add(downscaleForbiddenWindow).Before(timestamp) {
-		//	//	setCondition(wpa, autoscalingv2.AbleToScale, v1.ConditionFalse, "BackoffDownscale", "the time since the previous scale is still within the downscale forbidden window")
-		//	//	backoffDown = true
-		//	//}
-		//	//
-		//	//upscaleForbiddenWindow := time.Duration(wpa.Spec.UpscaleForbiddenWindowSeconds) * time.Second
-		//	//if !wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow).Before(timestamp) {
-		//	//	backoffUp = true
-		//	//	if backoffDown {
-		//	//		setCondition(wpa, autoscalingv2.AbleToScale, v1.ConditionFalse, "BackoffBoth", "the time since the previous scale is still within both the downscale and upscale forbidden windows")
-		//	//	} else {
-		//	//		setCondition(wpa, autoscalingv2.AbleToScale, v1.ConditionFalse, "BackoffUpscale", "the time since the previous scale is still within the upscale forbidden window")
-		//	//	}
-		//	//}
-		//}
-		//
-		//if !backoffDown && !backoffUp {
-		//	// mark that we're not backing off
-		//	setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, "ReadyForNewScale", "the last scale time was sufficiently old as to warrant a new scale")
-		//}
+		rescale = r.shouldScale(wpa, currentReplicas, desiredReplicas, now)
+		backoffDown := false
+		backoffUp := false
+		if wpa.Status.LastScaleTime != nil {
+			downscaleForbiddenWindow := time.Duration(wpa.Spec.DownscaleForbiddenWindowSeconds) * time.Second
+			downscaleCountdown := now.Sub(wpa.Status.LastScaleTime.Add(downscaleForbiddenWindow)).Seconds()
+			transitionCountdown.With(prometheus.Labels{"wpa_name": wpa.Name, "transition":"downscale"}).Set(downscaleCountdown)
+			if downscaleCountdown <= 0 {
+				setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, "BackoffDownscale", "the time since the previous scale is still within the downscale forbidden window")
+				backoffDown = true
+			}
+
+			upscaleForbiddenWindow := time.Duration(wpa.Spec.UpscaleForbiddenWindowSeconds) * time.Second
+			upscaleCountdown := now.Sub(wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow)).Seconds()
+			transitionCountdown.With(prometheus.Labels{"wpa_name": wpa.Name, "transition":"upscale"}).Set(upscaleCountdown)
+
+			log.Info(fmt.Sprintf("Now is %d, LastDownScale is %d",now.Unix(), wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow).Unix()))
+			log.Info(fmt.Sprintf("lastScale was at %v. Countdowns [Upscale in %f; Downscalse in %f]", wpa.Status.LastScaleTime.Format("15:04:05"), upscaleCountdown, downscaleCountdown))
+
+			if upscaleCountdown <= 0 {
+				backoffUp = true
+				if backoffDown {
+					setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, "BackoffBoth", "the time since the previous scale is still within both the downscale and upscale forbidden windows")
+				} else {
+					setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, "BackoffUpscale", "the time since the previous scale is still within the upscale forbidden window")
+				}
+			}
+		}
+
+		if !backoffDown && !backoffUp {
+			// mark that we're not backing off
+			setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, "ReadyForNewScale", "the last scale time was sufficiently old as to warrant a new scale")
+		}
 	}
+
 	if rescale {
 		deploy.Spec.Replicas = &desiredReplicas
 		// TODO use Look into Scale method.
@@ -399,7 +423,36 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.Wa
 }
 
 func (r *ReconcileWatermarkPodAutoscaler) shouldScale(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, desiredReplicas int32, timestamp time.Time) bool {
-	return desiredReplicas != currentReplicas
+	if desiredReplicas == currentReplicas {
+		log.Info("Will not scale: number of replicas has not changed")
+		return false
+	}
+
+	if wpa.Status.LastScaleTime == nil {
+		return true
+	}
+
+	// Scale down only if the usageRatio dropped significantly below the target
+	// and there was no rescaling in the last downscaleForbiddenWindow.
+	downscaleForbiddenWindow := time.Duration(wpa.Spec.DownscaleForbiddenWindowSeconds) * time.Second
+	if desiredReplicas < currentReplicas {
+		if wpa.Status.LastScaleTime.Add(downscaleForbiddenWindow).Before(timestamp) {
+			return true
+		}
+		log.Info(fmt.Sprintf("Too early to scale. Last scale was at %s, next scale will be at %s, last metrics timestamp: %s", wpa.Status.LastScaleTime, wpa.Status.LastScaleTime.Add(downscaleForbiddenWindow), timestamp))
+	}
+
+	// Scale up only if the usage ratio increased significantly above the target
+	// and there was no rescaling in the last upscaleForbiddenWindow.
+	upscaleForbiddenWindow := time.Duration(wpa.Spec.UpscaleForbiddenWindowSeconds) * time.Second
+	if desiredReplicas > currentReplicas {
+		if wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow).Before(timestamp) {
+			return true
+		}
+		log.Info(fmt.Sprintf("Too early to scale. Last scale was at %s, next scale will be at %s, last metrics timestamp: %s", wpa.Status.LastScaleTime, wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow), timestamp))
+	}
+
+	return false
 }
 
 // setCurrentReplicasInStatus sets the current replica count in the status of the HPA.
@@ -552,6 +605,18 @@ func setWPADefault(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
 	if wpa.Spec.Tolerance == 0 {
 		wpa.Spec.Tolerance = defaultTolerance
 	}
+	if wpa.Spec.ScaleUpLimitFactor == 0.0 {
+		wpa.Spec.ScaleUpLimitFactor = defaultScaleUpLimitFactor
+	}
+	if wpa.Spec.ScaleUpLimitMinimum == 0 {
+		wpa.Spec.ScaleUpLimitMinimum = defaultScaleUpLimitMinimum
+	}
+	if wpa.Spec.DownscaleForbiddenWindowSeconds == 0 {
+		wpa.Spec.DownscaleForbiddenWindowSeconds = defaultDownscaleForbiddenWindowSeconds
+	}
+	if wpa.Spec.UpscaleForbiddenWindowSeconds == 0 {
+		wpa.Spec.UpscaleForbiddenWindowSeconds = defaultUpscaleForbiddenWindowSeconds
+	}
 }
 
 func checkWPAValidity(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) error {
@@ -624,7 +689,7 @@ func convertDesiredReplicasWithRules(wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 
 	// Do not upscale too much to prevent incorrect rapid increase of the number of master replicas caused by
 	// bogus CPU usage report from heapster/kubelet (like in issue #32304).
-	scaleUpLimit := calculateScaleUpLimit(currentReplicas)
+	scaleUpLimit := calculateScaleUpLimit(wpa, currentReplicas)
 
 	if hpaMaxReplicas > scaleUpLimit {
 		maximumAllowedReplicas = scaleUpLimit
@@ -649,6 +714,6 @@ func convertDesiredReplicasWithRules(wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 	return desiredReplicas, "DesiredWithinRange", "the desired count is within the acceptable range"
 }
 
-func calculateScaleUpLimit(currentReplicas int32) int32 {
-	return int32(math.Max(scaleUpLimitFactor*float64(currentReplicas), scaleUpLimitMinimum))
+func calculateScaleUpLimit(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas int32) int32 {
+	return int32(math.Max(wpa.Spec.ScaleUpLimitFactor*float64(currentReplicas), float64(wpa.Spec.ScaleUpLimitMinimum)))
 }

@@ -22,6 +22,24 @@ type CrossVersionObjectReference struct {
 // +k8s:openapi-gen=true
 type WatermarkPodAutoscalerSpec struct {
 
+	// part of HorizontalController, see comments in the k8s repo: pkg/controller/podautoscaler/horizontal.go
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=600
+	DownscaleForbiddenWindowSeconds int32 `json:"downscaleForbiddenWindowSeconds,omitempty"`
+
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=600
+	UpscaleForbiddenWindowSeconds int32 `json:"upscaleForbiddenWindowSeconds,omitempty"`
+
+	// See the comment about this parameter above
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=10
+	ScaleUpLimitFactor float64 `json:"scaleUpLimitFactor,omitempty"`
+	// See the comment about this parameter above
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=20
+	ScaleUpLimitMinimum int32 `json:"scaleUpLimitMinimum,omitempty"`
+
 	// +kubebuilder:validation:Minimum=0.01
 	// +kubebuilder:validation:Maximum=0.99
 	Tolerance float64 `json:"tolerance,omitempty"`
@@ -103,9 +121,9 @@ type WatermarkPodAutoscalerStatus struct {
 // WatermarkPodAutoscaler is the Schema for the watermarkpodautoscalers API
 // +k8s:openapi-gen=true
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:name="value",type="integer",JSONPath=".status.currentMetrics[*].external.currentValue"
-// +kubebuilder:printcolumn:name="high watermark",type="integer",JSONPath=".spec.metrics[*].external.highWatermark"
-// +kubebuilder:printcolumn:name="low watermark",type="integer",JSONPath=".spec.metrics[*].external.lowWatermark"
+// +kubebuilder:printcolumn:name="value",type="string",JSONPath=".status.currentMetrics[*].external.currentValue.."
+// +kubebuilder:printcolumn:name="high watermark",type="string",JSONPath=".spec.metrics[*].external.highWatermark.."
+// +kubebuilder:printcolumn:name="low watermark",type="string",JSONPath=".spec.metrics[*].external.lowWatermark.."
 // +kubebuilder:printcolumn:name="age",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:printcolumn:name="min replicas",type="integer",JSONPath=".spec.minReplicas"
 // +kubebuilder:printcolumn:name="max replicas",type="integer",JSONPath=".spec.maxReplicas"

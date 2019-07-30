@@ -62,24 +62,24 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, low
 	milliAdjustedUsage :=  adjustedUsage / 1000
 	utilization = int64(adjustedUsage)
 
-	log.Info(fmt.Sprintf("About to compare utilization %f vs LWM %d and HWM %d", adjustedUsage, lowMark, highMark))
+	log.Info(fmt.Sprintf("About to compare utilization %v vs LWM %d and HWM %d", adjustedUsage, lowMark, highMark))
 
 	adjustedHM := float64(highMark) + wpa.Spec.Tolerance*float64(highMark)
 	adjustedLM := float64(lowMark) - wpa.Spec.Tolerance*float64(lowMark)
 
  	// We do not use the abs as we want to know if we are higher than the high mark or lower than the low mark
 	if adjustedUsage > adjustedHM {
-		replicaCount = int32(math.Ceil(float64(currentReplicas) * adjustedUsage / (float64(highMark))))
+		replicaCount = int32(math.Floor(float64(currentReplicas) * adjustedUsage / (float64(highMark))))
 		log.Info(fmt.Sprintf("Value is above highMark. Usage: %f. ReplicaCount %d", milliAdjustedUsage, replicaCount))
 
 	} else if adjustedUsage < adjustedLM  {
-		replicaCount = int32(math.Ceil(float64(currentReplicas) * adjustedUsage / (float64(lowMark))))
+		replicaCount = int32(math.Floor(float64(currentReplicas) * adjustedUsage / (float64(lowMark))))
 		log.Info(fmt.Sprintf("Value is below lowMark. Usage: %f ReplicaCount %d", milliAdjustedUsage, replicaCount))
 
 	} else {
 		restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(1)
 		value.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(float64(milliAdjustedUsage))
-		log.Info(fmt.Sprintf("Withing bounds of the watermarks. Value: %f is [%d; %d]", milliAdjustedUsage , lowMark, highMark))
+		log.Info(fmt.Sprintf("Withing bounds of the watermarks. Value: %d is [%d; %d]", milliAdjustedUsage , lowMark, highMark))
 		return currentReplicas, utilization, timestamp, nil
 	}
 

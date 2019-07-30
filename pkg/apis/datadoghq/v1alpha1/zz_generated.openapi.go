@@ -66,6 +66,33 @@ func schema_pkg_apis_datadoghq_v1alpha1_WatermarkPodAutoscalerSpec(ref common.Re
 			SchemaProps: spec.SchemaProps{
 				Description: "WatermarkPodAutoscalerSpec defines the desired state of WatermarkPodAutoscaler",
 				Properties: map[string]spec.Schema{
+					"downscaleForbiddenWindowSeconds": {
+						SchemaProps: spec.SchemaProps{
+							Description: "part of HorizontalController, see comments in the k8s repo: pkg/controller/podautoscaler/horizontal.go",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+					"upscaleForbiddenWindowSeconds": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"integer"},
+							Format: "int32",
+						},
+					},
+					"scaleUpLimitFactor": {
+						SchemaProps: spec.SchemaProps{
+							Description: "See the comment about this parameter above",
+							Type:        []string{"number"},
+							Format:      "double",
+						},
+					},
+					"scaleUpLimitMinimum": {
+						SchemaProps: spec.SchemaProps{
+							Description: "See the comment about this parameter above",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
 					"tolerance": {
 						SchemaProps: spec.SchemaProps{
 							Type:   []string{"number"},

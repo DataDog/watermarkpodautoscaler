@@ -4,15 +4,15 @@ metadata:
   name: watermarkpodautoscaler.datadoghq.com
 spec:
   additionalPrinterColumns:
-  - JSONPath: .status.currentMetrics[*].external.currentValue
+  - JSONPath: .status.currentMetrics[*].external.currentValue..
     name: value
-    type: integer
-  - JSONPath: .spec.metrics[*].external.highWatermark
+    type: string
+  - JSONPath: .spec.metrics[*].external.highWatermark..
     name: high watermark
-    type: integer
-  - JSONPath: .spec.metrics[*].external.lowWatermark
+    type: string
+  - JSONPath: .spec.metrics[*].external.lowWatermark..
     name: low watermark
-    type: integer
+    type: string
   - JSONPath: .metadata.creationTimestamp
     name: age
     type: date
@@ -53,6 +53,13 @@ spec:
             algorithm:
               description: 'computed values take the # of replicas into account'
               type: string
+            downscaleForbiddenWindowSeconds:
+              description: 'part of HorizontalController, see comments in the k8s
+                repo: pkg/controller/podautoscaler/horizontal.go'
+              format: int32
+              maximum: 600
+              minimum: 1
+              type: integer
             maxReplicas:
               format: int32
               maximum: 1000
@@ -118,11 +125,28 @@ spec:
               - kind
               - name
               type: object
+            scaleUpLimitFactor:
+              description: See the comment about this parameter above
+              format: double
+              maximum: 10
+              minimum: 1
+              type: number
+            scaleUpLimitMinimum:
+              description: See the comment about this parameter above
+              format: int32
+              maximum: 20
+              minimum: 1
+              type: integer
             tolerance:
               format: double
               maximum: 0.99
               minimum: 0.01
               type: number
+            upscaleForbiddenWindowSeconds:
+              format: int32
+              maximum: 600
+              minimum: 1
+              type: integer
           required:
           - scaleTargetRef
           type: object
