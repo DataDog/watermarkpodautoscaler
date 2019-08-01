@@ -342,7 +342,7 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.Wa
 			log.Info("failed to compute desired number of replicas based on listed metrics for %s: %v", reference, err)
 			return nil
 		}
-		log.Info(fmt.Sprintf("proposing %v desired replicas (based on %s from %s) for %s", proposedReplicas, metricName, now, reference))
+		log.Info(fmt.Sprintf("Proposing %d replicas: Based on %s at %s targeting: %s", proposedReplicas, metricName, now.Format("15:04:05"), reference))
 
 		rescaleMetric := ""
 		if proposedReplicas > desiredReplicas {
@@ -361,41 +361,10 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.Wa
 		log.Info(fmt.Sprintf(" -> after normalization: %d", desiredReplicas))
 
 		rescale = r.shouldScale(wpa, currentReplicas, desiredReplicas, now)
-		backoffDown := false
-		backoffUp := false
-		if wpa.Status.LastScaleTime != nil {
-			downscaleForbiddenWindow := time.Duration(wpa.Spec.DownscaleForbiddenWindowSeconds) * time.Second
-			downscaleCountdown := now.Sub(wpa.Status.LastScaleTime.Add(downscaleForbiddenWindow)).Seconds()
-			transitionCountdown.With(prometheus.Labels{"wpa_name": wpa.Name, "transition":"downscale"}).Set(downscaleCountdown)
-			if downscaleCountdown <= 0 {
-				setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, "BackoffDownscale", "the time since the previous scale is still within the downscale forbidden window")
-				backoffDown = true
-			}
-
-			upscaleForbiddenWindow := time.Duration(wpa.Spec.UpscaleForbiddenWindowSeconds) * time.Second
-			upscaleCountdown := now.Sub(wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow)).Seconds()
-			transitionCountdown.With(prometheus.Labels{"wpa_name": wpa.Name, "transition":"upscale"}).Set(upscaleCountdown)
-
-			log.Info(fmt.Sprintf("Now is %d, LastDownScale is %d",now.Unix(), wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow).Unix()))
-			log.Info(fmt.Sprintf("lastScale was at %v. Countdowns [Upscale in %f; Downscalse in %f]", wpa.Status.LastScaleTime.Format("15:04:05"), upscaleCountdown, downscaleCountdown))
-
-			if upscaleCountdown <= 0 {
-				backoffUp = true
-				if backoffDown {
-					setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, "BackoffBoth", "the time since the previous scale is still within both the downscale and upscale forbidden windows")
-				} else {
-					setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, "BackoffUpscale", "the time since the previous scale is still within the upscale forbidden window")
-				}
-			}
-		}
-
-		if !backoffDown && !backoffUp {
-			// mark that we're not backing off
-			setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, "ReadyForNewScale", "the last scale time was sufficiently old as to warrant a new scale")
-		}
 	}
 
 	if rescale {
+		setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, "ReadyForScale", "the last scaling time was sufficiently old as to warrant a new scale")
 		deploy.Spec.Replicas = &desiredReplicas
 		// TODO use Look into Scale method.
 		if err := r.client.Update(context.TODO(), deploy); err != nil {
@@ -423,36 +392,55 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.Wa
 }
 
 func (r *ReconcileWatermarkPodAutoscaler) shouldScale(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, desiredReplicas int32, timestamp time.Time) bool {
+	if wpa.Status.LastScaleTime == nil {
+		log.Info("No timestamp for the lastScale event")
+		return true
+	}
+
+	backoffDown := false
+	backoffUp := false
+	downscaleForbiddenWindow := time.Duration(wpa.Spec.DownscaleForbiddenWindowSeconds) * time.Second
+	downscaleCountdown := wpa.Status.LastScaleTime.Add(downscaleForbiddenWindow).Sub(timestamp).Seconds()
+
+	if downscaleCountdown > 0 {
+		transitionCountdown.With(prometheus.Labels{"wpa_name": wpa.Name, "transition":"downscale"}).Set(downscaleCountdown)
+		setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, "BackoffDownscale", "the time since the previous scale is still within the downscale forbidden window")
+		backoffDown = true
+		log.Info(fmt.Sprintf("Too early to downscale. Last scale was at %s, next downscale will be at %s, last metrics timestamp: %s", wpa.Status.LastScaleTime, wpa.Status.LastScaleTime.Add(downscaleForbiddenWindow), timestamp))
+	} else {
+		setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, "ReadyForDownScale", "the last downscale time was sufficiently old as to warrant a new downscale")
+		transitionCountdown.With(prometheus.Labels{"wpa_name": wpa.Name, "transition":"downscale"}).Set(0)
+	}
+	upscaleForbiddenWindow := time.Duration(wpa.Spec.UpscaleForbiddenWindowSeconds) * time.Second
+	upscaleCountdown := wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow).Sub(timestamp).Seconds()
+
+	// Only upscale if there was no rescaling in the last upscaleForbiddenWindow
+	if upscaleCountdown > 0 {
+		transitionCountdown.With(prometheus.Labels{"wpa_name": wpa.Name, "transition": "upscale"}).Set(upscaleCountdown)
+		backoffUp = true
+		log.Info(fmt.Sprintf("Too early to upscale. Last scale was at %s, next upscale will be at %s, last metrics timestamp: %s", wpa.Status.LastScaleTime, wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow), timestamp))
+
+		if backoffDown {
+			setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, "BackoffBoth", "the time since the previous scale is still within both the downscale and upscale forbidden windows")
+		} else {
+			setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, "BackoffUpscale", "the time since the previous scale is still within the upscale forbidden window")
+		}
+	} else {
+		setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, "ReadyForUpScale", "the last upscale time was sufficiently old as to warrant a new upscale")
+		transitionCountdown.With(prometheus.Labels{"wpa_name": wpa.Name, "transition": "upscale"}).Set(0)
+	}
+
+	return canScale(backoffUp, backoffDown, currentReplicas, desiredReplicas)
+}
+
+// canScale ensures that we only scale under the right conditions.
+func canScale(backoffUp, backoffDown bool, currentReplicas, desiredReplicas int32) bool {
 	if desiredReplicas == currentReplicas {
 		log.Info("Will not scale: number of replicas has not changed")
 		return false
 	}
-
-	if wpa.Status.LastScaleTime == nil {
-		return true
-	}
-
-	// Scale down only if the usageRatio dropped significantly below the target
-	// and there was no rescaling in the last downscaleForbiddenWindow.
-	downscaleForbiddenWindow := time.Duration(wpa.Spec.DownscaleForbiddenWindowSeconds) * time.Second
-	if desiredReplicas < currentReplicas {
-		if wpa.Status.LastScaleTime.Add(downscaleForbiddenWindow).Before(timestamp) {
-			return true
-		}
-		log.Info(fmt.Sprintf("Too early to scale. Last scale was at %s, next scale will be at %s, last metrics timestamp: %s", wpa.Status.LastScaleTime, wpa.Status.LastScaleTime.Add(downscaleForbiddenWindow), timestamp))
-	}
-
-	// Scale up only if the usage ratio increased significantly above the target
-	// and there was no rescaling in the last upscaleForbiddenWindow.
-	upscaleForbiddenWindow := time.Duration(wpa.Spec.UpscaleForbiddenWindowSeconds) * time.Second
-	if desiredReplicas > currentReplicas {
-		if wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow).Before(timestamp) {
-			return true
-		}
-		log.Info(fmt.Sprintf("Too early to scale. Last scale was at %s, next scale will be at %s, last metrics timestamp: %s", wpa.Status.LastScaleTime, wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow), timestamp))
-	}
-
-	return false
+	log.Info(fmt.Sprintf("backoffUp: %v, backoffDown: %v, desiredReplicas %d, currentReplicas: %d", backoffUp, backoffDown, desiredReplicas, currentReplicas))
+	return !backoffUp && desiredReplicas > currentReplicas || !backoffDown && desiredReplicas < currentReplicas
 }
 
 // setCurrentReplicasInStatus sets the current replica count in the status of the HPA.
@@ -518,7 +506,6 @@ func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(wpa *datadog
 		case datadoghqv1alpha1.ExternalMetricSourceType:
 			if metricSpec.External.HighWatermark != nil && metricSpec.External.LowWatermark != nil {
 				replicaCountProposal, utilizationProposal, timestampProposal, err = r.replicaCalc.GetExternalMetricReplicas(currentReplicas, metricSpec.External.LowWatermark.MilliValue(), metricSpec.External.HighWatermark.MilliValue(), metricSpec.External.MetricName, wpa, metricSpec.External.MetricSelector)
-				log.Info(fmt.Sprintf("Proposing %d replicas, Value retrieved: %d at %v", replicaCountProposal, utilizationProposal, timestampProposal))
 				if err != nil {
 					replicaProposal.Delete(prometheus.Labels{"wpa_name": wpa.Name, "deploy": deploy.Name})
 					r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedGetExternalMetric", err.Error())
@@ -530,7 +517,7 @@ func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(wpa *datadog
 				highwm.With(prometheus.Labels{"wpa_name": wpa.Name}).Set(float64(metricSpec.External.HighWatermark.Value()))
 				replicaProposal.With(prometheus.Labels{"wpa_name": wpa.Name, "deploy": deploy.Name}).Set(float64(replicaCountProposal))
 
-				metricNameProposal = fmt.Sprintf("external metric %s(%+v)", metricSpec.External.MetricName, metricSpec.External.MetricSelector)
+				metricNameProposal = fmt.Sprintf("%s{%v}", metricSpec.External.MetricName, metricSpec.External.MetricSelector.MatchLabels)
 				statuses[i] = autoscalingv2.MetricStatus{
 					Type: autoscalingv2.ExternalMetricSourceType,
 					External: &autoscalingv2.ExternalMetricStatus{
@@ -558,14 +545,14 @@ func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(wpa *datadog
 	return replicas, metric, statuses, timestamp, nil
 }
 
-// setCondition sets the specific condition type on the given HPA to the specified value with the given reason
+// setCondition sets the specific condition type on the given WPA to the specified value with the given reason
 // and message.  The message and args are treated like a format string.  The condition will be added if it is
 // not present.
 func setCondition(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, conditionType autoscalingv2.HorizontalPodAutoscalerConditionType, status corev1.ConditionStatus, reason, message string, args ...interface{}) {
 	wpa.Status.Conditions = setConditionInList(wpa.Status.Conditions, conditionType, status, reason, message, args...)
 }
 
-// setConditionInList sets the specific condition type on the given HPA to the specified value with the given
+// setConditionInList sets the specific condition type on the given WPA to the specified value with the given
 // reason and message.  The message and args are treated like a format string.  The condition will be added if
 // it is not present.  The new list will be returned.
 func setConditionInList(inputList []autoscalingv2.HorizontalPodAutoscalerCondition, conditionType autoscalingv2.HorizontalPodAutoscalerConditionType, status corev1.ConditionStatus, reason, message string, args ...interface{}) []autoscalingv2.HorizontalPodAutoscalerCondition {
