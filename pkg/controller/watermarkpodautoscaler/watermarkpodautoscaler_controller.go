@@ -408,7 +408,6 @@ func (r *ReconcileWatermarkPodAutoscaler) shouldScale(wpa *datadoghqv1alpha1.Wat
 		backoffDown = true
 		log.Info(fmt.Sprintf("Too early to downscale. Last scale was at %s, next downscale will be at %s, last metrics timestamp: %s", wpa.Status.LastScaleTime, wpa.Status.LastScaleTime.Add(downscaleForbiddenWindow), timestamp))
 	} else {
-		setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, "ReadyForDownScale", "the last downscale time was sufficiently old as to warrant a new downscale")
 		transitionCountdown.With(prometheus.Labels{"wpa_name": wpa.Name, "transition":"downscale"}).Set(0)
 	}
 	upscaleForbiddenWindow := time.Duration(wpa.Spec.UpscaleForbiddenWindowSeconds) * time.Second
@@ -426,7 +425,6 @@ func (r *ReconcileWatermarkPodAutoscaler) shouldScale(wpa *datadoghqv1alpha1.Wat
 			setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, "BackoffUpscale", "the time since the previous scale is still within the upscale forbidden window")
 		}
 	} else {
-		setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, "ReadyForUpScale", "the last upscale time was sufficiently old as to warrant a new upscale")
 		transitionCountdown.With(prometheus.Labels{"wpa_name": wpa.Name, "transition": "upscale"}).Set(0)
 	}
 
@@ -675,7 +673,7 @@ func convertDesiredReplicasWithRules(wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 	}
 
 	// Do not upscale too much to prevent incorrect rapid increase of the number of master replicas caused by
-	// bogus CPU usage report from heapster/kubelet (like in issue #32304).
+	// bogus CPU usage report from heapster/kubelet (like in issue #k/k32304).
 	scaleUpLimit := calculateScaleUpLimit(wpa, currentReplicas)
 
 	if hpaMaxReplicas > scaleUpLimit {
@@ -687,7 +685,7 @@ func convertDesiredReplicasWithRules(wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 		maximumAllowedReplicas = hpaMaxReplicas
 
 		possibleLimitingCondition = "TooManyReplicas"
-		possibleLimitingReason = "the desired replica count is more than the maximum replica count"
+		possibleLimitingReason = "the desired replica count is above the maximum replica count"
 	}
 
 	if desiredReplicas < minimumAllowedReplicas {
@@ -701,6 +699,7 @@ func convertDesiredReplicasWithRules(wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 	return desiredReplicas, "DesiredWithinRange", "the desired count is within the acceptable range"
 }
 
+// Scaleup limit is used to maximize the upscaling rate.
 func calculateScaleUpLimit(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas int32) int32 {
 	return int32(math.Max(wpa.Spec.ScaleUpLimitFactor*float64(currentReplicas), float64(wpa.Spec.ScaleUpLimitMinimum)))
 }
