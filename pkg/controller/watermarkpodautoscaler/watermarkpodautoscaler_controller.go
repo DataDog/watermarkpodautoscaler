@@ -43,12 +43,6 @@ const (
 var (
 	log = logf.Log.WithName(subsystem)
 
-
-    defaultAlgorithm =  "absolute"
-
-	scaleUpLimitFactor  = 2.0
-	scaleUpLimitMinimum = 4.0
-
 	value = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
@@ -117,16 +111,6 @@ var (
 			"wpa_name",
 			"metric_name",
 		})
-	usageRatioMetric = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Subsystem: subsystem,
-			Name:      "usage_ratio",
-			Help:      "Gauge the usage ratio, compared to the HWM or LWM depending on value",
-		},
-		[]string{
-			"wpa_name",
-			"metric_name",
-		})
 )
 
 func init() {
@@ -136,17 +120,11 @@ func init() {
 	sigmetrics.Registry.MustRegister(replicaProposal)
 	sigmetrics.Registry.MustRegister(replicaEffective)
 	sigmetrics.Registry.MustRegister(restrictedScaling)
-	sigmetrics.Registry.MustRegister(usageRatioMetric)
 	sigmetrics.Registry.MustRegister(transitionCountdown)
 }
 
 const (
-	defaultTolerance  = 0.1
 	defaultSyncPeriod = time.Second * 15
-	defaultDownscaleForbiddenWindowSeconds       = 300
-	defaultUpscaleForbiddenWindowSeconds         = 60
-	defaultScaleUpLimitMinimum                   = 4.0
-	defaultScaleUpLimitFactor                    = 2.0
 )
 
 // newReconciler returns a new reconcile.Reconciler
@@ -246,16 +224,33 @@ func (r *ReconcileWatermarkPodAutoscaler) Reconcile(request reconcile.Request) (
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
+	if !datadoghqv1alpha1.IsDefaultWatermarkPodAutoscaler(instance) {
+		log.Info("Some configuration options are missing, falling back to the default ones")
+		defaultWPA := datadoghqv1alpha1.DefaultWatermarkPodAutoscaler(instance)
+		if err := r.client.Update(context.TODO(), defaultWPA); err != nil {
+			log.Error(err, "Failed to set the default values during reconciliation")
+			return reconcile.Result{}, err
+		}
+		// default values of the WatermarkPodAutoscaler are set. Return and requeue to show them in the spec.
+		return reconcile.Result{Requeue: true}, nil
+	}
 
-	setWPADefault(instance)
-	if err := checkWPAValidity(instance); err != nil {
-		log.Info(fmt.Sprintf("Got an invalid WPA spec '%v': %v", request.NamespacedName, err))
-		// The wpa spec is incorrect (most likely, in "metrics" section) stop processing it
+	if err := datadoghqv1alpha1.CheckWPAValidity(instance); err != nil {
+		//log.Error(err, fmt.Sprintf("Got an invalid WPA spec in %v", request.NamespacedName))
+		// If the WPA spec is incorrect (most likely, in "metrics" section) stop processing it
 		// When the spec is updated, the wpa will be re-added to the reconcile queue
 		r.eventRecorder.Event(instance, corev1.EventTypeWarning, "FailedSpecCheck", err.Error())
+		wpaStatusOriginal := instance.Status.DeepCopy()
 		setCondition(instance, autoscalingv2.AbleToScale, corev1.ConditionFalse, "FailedSpecCheck", "Invalid WPA specification: %s", err)
+		if err := r.updateStatusIfNeeded(wpaStatusOriginal, instance); err != nil {
+			r.eventRecorder.Event(instance, corev1.EventTypeWarning, "FailedUpdateReplicas", err.Error())
+			setCondition(instance, autoscalingv2.AbleToScale, corev1.ConditionFalse, "FailedUpdateReplicas", "the WPA controller was unable to update the number of replicas: %v", err)
+			log.Info(fmt.Sprintf("the WPA controller was unable to update the number of replicas: %v", err))
+			return reconcile.Result{}, err
+		}
 		return reconcile.Result{}, nil
 	}
+
 	namespace := instance.Namespace
 	name := instance.Spec.ScaleTargetRef.Name
 	namespacedName := types.NamespacedName{Namespace: namespace, Name: name}
@@ -580,58 +575,6 @@ func setConditionInList(inputList []autoscalingv2.HorizontalPodAutoscalerConditi
 	existingCond.Message = fmt.Sprintf(message, args...)
 
 	return resList
-}
-
-func setWPADefault(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
-	if wpa.Spec.Algorithm == "" {
-		wpa.Spec.Algorithm = defaultAlgorithm
-	}
-	// TODO set defaults for high and low watermark
-	if wpa.Spec.Tolerance == 0 {
-		wpa.Spec.Tolerance = defaultTolerance
-	}
-	if wpa.Spec.ScaleUpLimitFactor == 0.0 {
-		wpa.Spec.ScaleUpLimitFactor = defaultScaleUpLimitFactor
-	}
-	if wpa.Spec.ScaleUpLimitMinimum == 0 {
-		wpa.Spec.ScaleUpLimitMinimum = defaultScaleUpLimitMinimum
-	}
-	if wpa.Spec.DownscaleForbiddenWindowSeconds == 0 {
-		wpa.Spec.DownscaleForbiddenWindowSeconds = defaultDownscaleForbiddenWindowSeconds
-	}
-	if wpa.Spec.UpscaleForbiddenWindowSeconds == 0 {
-		wpa.Spec.UpscaleForbiddenWindowSeconds = defaultUpscaleForbiddenWindowSeconds
-	}
-}
-
-func checkWPAValidity(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) error {
-	if wpa.Spec.ScaleTargetRef.Kind != "Deployment" {
-		msg := fmt.Sprintf("configurable wpa doesn't support %s kind, use Deployment instead", wpa.Spec.ScaleTargetRef.Kind)
-		log.Info(msg)
-		return fmt.Errorf(msg)
-	}
-	return checkWPAMetricsValidity(wpa.Spec.Metrics)
-}
-
-func checkWPAMetricsValidity(metrics []datadoghqv1alpha1.MetricSpec) (err error) {
-	// This function will not be needed for the vanilla k8s.
-	// For now we check only nil pointers here as they crash the default controller algorithm
-	for _, metric := range metrics {
-		if metric.External.HighWatermark.Value() <= metric.External.LowWatermark.Value() {
-			msg := fmt.Sprintf("Low WaterMark of External metric %s{%s} has to be strictly inferior to the High Watermark", metric.External.MetricName, metric.External.MetricSelector.String())
-			log.Info(msg)
-			return fmt.Errorf(msg)
-		}
-		switch metric.Type {
-		case "External":
-			if metric.External == nil {
-				return fmt.Errorf("metric.External is nil while metric.Type is '%s'", metric.Type)
-			}
-		default:
-			return fmt.Errorf("incorrect metric.Type: '%s'", metric.Type)
-		}
-	}
-	return nil
 }
 
 // Stolen from upstream
