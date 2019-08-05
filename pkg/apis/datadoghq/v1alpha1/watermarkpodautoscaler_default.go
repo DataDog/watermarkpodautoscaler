@@ -86,8 +86,12 @@ func checkWPAMetricsValidity(wpa *WatermarkPodAutoscaler) (err error) {
 			msg := fmt.Sprintf("Watermarks are not set correctly, removing the WPA %s from the Reconciler", wpa.Name)
 			return fmt.Errorf(msg)
 		}
+		if metric.External.MetricSelector == nil {
+			msg := fmt.Sprintf("Missing Labels for the External metric %s", metric.External.MetricName)
+			return fmt.Errorf(msg)
+		}
 		if metric.External.HighWatermark.Value() < metric.External.LowWatermark.Value() {
-			msg := fmt.Sprintf("Low WaterMark of External metric %s{%s} has to be strictly inferior to the High Watermark", metric.External.MetricName, metric.External.MetricSelector.String())
+			msg := fmt.Sprintf("Low WaterMark of External metric %s{%s} has to be strictly inferior to the High Watermark", metric.External.MetricName, metric.External.MetricSelector.MatchLabels)
 			return fmt.Errorf(msg)
 		}
 	}

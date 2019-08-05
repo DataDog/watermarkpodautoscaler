@@ -124,7 +124,7 @@ func init() {
 }
 
 const (
-	defaultSyncPeriod = time.Second * 15
+	defaultSyncPeriod = 5 * time.Minute
 )
 
 // newReconciler returns a new reconcile.Reconciler
@@ -236,16 +236,14 @@ func (r *ReconcileWatermarkPodAutoscaler) Reconcile(request reconcile.Request) (
 	}
 
 	if err := datadoghqv1alpha1.CheckWPAValidity(instance); err != nil {
-		//log.Error(err, fmt.Sprintf("Got an invalid WPA spec in %v", request.NamespacedName))
+		log.Error(err, fmt.Sprintf("Got an invalid WPA spec in %s", request.NamespacedName.String()))
 		// If the WPA spec is incorrect (most likely, in "metrics" section) stop processing it
 		// When the spec is updated, the wpa will be re-added to the reconcile queue
 		r.eventRecorder.Event(instance, corev1.EventTypeWarning, "FailedSpecCheck", err.Error())
 		wpaStatusOriginal := instance.Status.DeepCopy()
 		setCondition(instance, autoscalingv2.AbleToScale, corev1.ConditionFalse, "FailedSpecCheck", "Invalid WPA specification: %s", err)
 		if err := r.updateStatusIfNeeded(wpaStatusOriginal, instance); err != nil {
-			r.eventRecorder.Event(instance, corev1.EventTypeWarning, "FailedUpdateReplicas", err.Error())
-			setCondition(instance, autoscalingv2.AbleToScale, corev1.ConditionFalse, "FailedUpdateReplicas", "the WPA controller was unable to update the number of replicas: %v", err)
-			log.Info(fmt.Sprintf("the WPA controller was unable to update the number of replicas: %v", err))
+			r.eventRecorder.Event(instance, corev1.EventTypeWarning, "FailedUpdateStatus", err.Error())
 			return reconcile.Result{}, err
 		}
 		return reconcile.Result{}, nil

@@ -7,6 +7,7 @@ import (
 	"k8s.io/api/autoscaling/v2beta1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"reflect"
 
@@ -110,9 +111,8 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 									Type: v1alpha1.ExternalMetricSourceType,
 									External: &v1alpha1.ExternalMetricSource{
 										MetricName: "foo",
-										MetricSelector: nil,
+										MetricSelector: &v1.LabelSelector{map[string]string{"label":"value"}, nil},
 										HighWatermark: resource.NewQuantity(3,resource.DecimalSI),
-										//LowWatermark: resource.NewQuantity(2,resource.DecimalSI),
 									},
 								},
 							},
@@ -136,11 +136,63 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 					Reason: "FailedSpecCheck",
 					Type: v2beta1.AbleToScale,
 				}
-				log.Info(fmt.Sprintf("Condition is %+v", wpa))
 				if wpa.Status.Conditions[0].Reason != cond.Reason || wpa.Status.Conditions[0].Type != cond.Type {
 					return fmt.Errorf("Unexpected Condition for incorrectly configured WPA")
 				}
 					return nil
+			},
+		},
+		{
+			name: "WatermarkPodAutoscaler found and defaulted but invalid watermarks",
+			fields: fields{
+				client:   fake.NewFakeClient(),
+				scheme:   s,
+				eventRecorder: eventRecorder,
+			},
+			args: args{
+				request: newRequest("bar", "foo"),
+				loadFunc: func(c client.Client) {
+					wpa := test.NewWatermarkPodAutoscaler("bar", "foo", &test.NewWatermarkPodAutoscalerOptions{
+						Labels: map[string]string{"foo-key": "bar-value"},
+						Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+							ScaleTargetRef: v1alpha1.CrossVersionObjectReference{
+								Kind: "Deployment",
+								Name: "baz",
+							},
+							Metrics: []v1alpha1.MetricSpec{
+								{
+									Type: v1alpha1.ExternalMetricSourceType,
+									External: &v1alpha1.ExternalMetricSource{
+										MetricName: "foo",
+										MetricSelector: &v1.LabelSelector{map[string]string{"label":"value"}, nil},
+										HighWatermark: resource.NewQuantity(3,resource.DecimalSI),
+										LowWatermark: resource.NewQuantity(4,resource.DecimalSI),
+									},
+								},
+							},
+						},
+					})
+					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
+					_ = c.Create(context.TODO(), wpa)
+				},
+			},
+			want:    reconcile.Result{},
+			wantErr: false,
+			wantFunc: func(c client.Client) error {
+				rq := newRequest("bar", "foo")
+				wpa := &v1alpha1.WatermarkPodAutoscaler{}
+				err := c.Get(context.TODO(),rq.NamespacedName, wpa)
+				if err != nil {
+					return err
+				}
+
+				cond := &v2beta1.HorizontalPodAutoscalerCondition{
+					Message: "Invalid WPA specification: Low WaterMark of External metric foo{map[label:value]} has to be strictly inferior to the High Watermark",
+				}
+				if wpa.Status.Conditions[0].Message != cond.Message {
+					return fmt.Errorf("Unexpected Condition for incorrectly configured WPA")
+				}
+				return nil
 			},
 		},
 	}
