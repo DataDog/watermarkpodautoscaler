@@ -31,7 +31,6 @@ func NewReplicaCalculator(metricsClient metricsclient.MetricsClient, podsGetter 
 // GetExternalMetricReplicas calculates the desired replica count based on a
 // target metric value (as a milli-value) for the external metric in the given
 // namespace, and the current replica count.
-
 func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, lowMark int64, highMark int64,  metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *metav1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
 
 	labelSelector, err := metav1.LabelSelectorAsSelector(selector)

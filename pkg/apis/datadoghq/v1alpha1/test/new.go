@@ -2,14 +2,12 @@ package test
 
 import (
 	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
-	"time"
-	"fmt"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
+	"time"
 )
 
 var (
-	apiVersion = fmt.Sprintf("%s", v1alpha1.SchemeGroupVersion)
+	apiVersion = v1alpha1.SchemeGroupVersion.String()
 )
 type NewWatermarkPodAutoscalerOptions struct {
 	Status	*v1alpha1.WatermarkPodAutoscalerStatus

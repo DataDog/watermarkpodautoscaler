@@ -23,14 +23,6 @@ import (
 	"testing"
 )
 
-const (
-	testSubsystem = "wpa_controller_test"
-)
-
-var (
-	logTest = logf.Log.WithName(testSubsystem)
-)
-
 func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventRecorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "TestReconcileWatermarkPodAutoscaler"})
@@ -111,7 +103,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 									Type: v1alpha1.ExternalMetricSourceType,
 									External: &v1alpha1.ExternalMetricSource{
 										MetricName: "foo",
-										MetricSelector: &v1.LabelSelector{map[string]string{"label":"value"}, nil},
+										MetricSelector: &v1.LabelSelector{MatchLabels: map[string]string{"label":"value"}, MatchExpressions: nil},
 										HighWatermark: resource.NewQuantity(3,resource.DecimalSI),
 									},
 								},
@@ -164,7 +156,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 									Type: v1alpha1.ExternalMetricSourceType,
 									External: &v1alpha1.ExternalMetricSource{
 										MetricName: "foo",
-										MetricSelector: &v1.LabelSelector{map[string]string{"label":"value"}, nil},
+										MetricSelector: &v1.LabelSelector{MatchLabels: map[string]string{"label":"value"}, MatchExpressions: nil},
 										HighWatermark: resource.NewQuantity(3,resource.DecimalSI),
 										LowWatermark: resource.NewQuantity(4,resource.DecimalSI),
 									},
