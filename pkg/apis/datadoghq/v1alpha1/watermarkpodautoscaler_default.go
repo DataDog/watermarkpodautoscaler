@@ -90,7 +90,7 @@ func checkWPAMetricsValidity(wpa *WatermarkPodAutoscaler) (err error) {
 			msg := fmt.Sprintf("Missing Labels for the External metric %s", metric.External.MetricName)
 			return fmt.Errorf(msg)
 		}
-		if metric.External.HighWatermark.Value() < metric.External.LowWatermark.Value() {
+		if metric.External.HighWatermark.MilliValue() < metric.External.LowWatermark.MilliValue() {
 			msg := fmt.Sprintf("Low WaterMark of External metric %s{%s} has to be strictly inferior to the High Watermark", metric.External.MetricName, metric.External.MetricSelector.MatchLabels)
 			return fmt.Errorf(msg)
 		}

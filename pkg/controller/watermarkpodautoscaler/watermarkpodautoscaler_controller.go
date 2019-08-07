@@ -504,8 +504,8 @@ func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(wpa *datadog
 					return 0, "", nil, time.Time{}, fmt.Errorf("failed to get external metric %s: %v", metricSpec.External.MetricName, err)
 				}
 
-				lowwm.With(prometheus.Labels{"wpa_name": wpa.Name}).Set(float64(metricSpec.External.LowWatermark.Value()))
-				highwm.With(prometheus.Labels{"wpa_name": wpa.Name}).Set(float64(metricSpec.External.HighWatermark.Value()))
+				lowwm.With(prometheus.Labels{"wpa_name": wpa.Name}).Set(float64(metricSpec.External.LowWatermark.MilliValue()))
+				highwm.With(prometheus.Labels{"wpa_name": wpa.Name}).Set(float64(metricSpec.External.HighWatermark.MilliValue()))
 				replicaProposal.With(prometheus.Labels{"wpa_name": wpa.Name, "deploy": deploy.Name}).Set(float64(replicaCountProposal))
 
 				metricNameProposal = fmt.Sprintf("%s{%v}", metricSpec.External.MetricName, metricSpec.External.MetricSelector.MatchLabels)
