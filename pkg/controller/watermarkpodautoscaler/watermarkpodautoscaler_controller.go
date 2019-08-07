@@ -124,7 +124,7 @@ func init() {
 }
 
 const (
-	defaultSyncPeriod = 5 * time.Minute
+	defaultSyncPeriod = 15 * time.Second
 )
 
 // newReconciler returns a new reconcile.Reconciler
