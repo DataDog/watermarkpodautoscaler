@@ -3,10 +3,9 @@ package watermarkpodautoscaler
 import (
 	"context"
 	"fmt"
+	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
 	"math"
 	"time"
-
-	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -396,12 +395,12 @@ func (r *ReconcileWatermarkPodAutoscaler) shouldScale(wpa *datadoghqv1alpha1.Wat
 	downscaleCountdown := wpa.Status.LastScaleTime.Add(downscaleForbiddenWindow).Sub(timestamp).Seconds()
 
 	if downscaleCountdown > 0 {
-		transitionCountdown.With(prometheus.Labels{"wpa_name": wpa.Name, "transition":"downscale"}).Set(downscaleCountdown)
+		transitionCountdown.With(prometheus.Labels{"wpa_name": wpa.Name, "transition": "downscale"}).Set(downscaleCountdown)
 		setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, "BackoffDownscale", "the time since the previous scale is still within the downscale forbidden window")
 		backoffDown = true
 		log.Info(fmt.Sprintf("Too early to downscale. Last scale was at %s, next downscale will be at %s, last metrics timestamp: %s", wpa.Status.LastScaleTime, wpa.Status.LastScaleTime.Add(downscaleForbiddenWindow), timestamp))
 	} else {
-		transitionCountdown.With(prometheus.Labels{"wpa_name": wpa.Name, "transition":"downscale"}).Set(0)
+		transitionCountdown.With(prometheus.Labels{"wpa_name": wpa.Name, "transition": "downscale"}).Set(0)
 	}
 	upscaleForbiddenWindow := time.Duration(wpa.Spec.UpscaleForbiddenWindowSeconds) * time.Second
 	upscaleCountdown := wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow).Sub(timestamp).Seconds()

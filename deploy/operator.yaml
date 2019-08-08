@@ -19,16 +19,13 @@ spec:
       serviceAccountName: watermarkpodautoscaler
       containers:
         - name: watermarkpodautoscaler
-          # Replace this with the built image name
           image: charlyyfon/watermarkedpodautoscaler:v0.0.1
           command:
           - watermarkpodautoscaler
           imagePullPolicy: Always
           env:
+            # Watch every ns
             - name: WATCH_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
             - name: POD_NAME
               valueFrom:
                 fieldRef:
