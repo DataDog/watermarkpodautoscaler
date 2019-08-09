@@ -4,12 +4,19 @@ import (
 	"context"
 	"fmt"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/api/autoscaling/v2beta1"
+	"k8s.io/api/autoscaling/v2beta2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/kubernetes/pkg/controller/podautoscaler/metrics"
 	"reflect"
+	"time"
 
 	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1/test"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -23,6 +30,12 @@ import (
 	"testing"
 )
 
+var (
+	testingNamespace  = "bar"
+	testingDeployName = "foo"
+	testingWPAName    = "baz"
+)
+
 func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventRecorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "TestReconcileWatermarkPodAutoscaler"})
@@ -33,8 +46,8 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 
 	s.AddKnownTypes(v1alpha1.SchemeGroupVersion, &v1alpha1.WatermarkPodAutoscaler{})
 	type fields struct {
-		client   client.Client
-		scheme   *runtime.Scheme
+		client        client.Client
+		scheme        *runtime.Scheme
 		eventRecorder record.EventRecorder
 	}
 	type args struct {
@@ -53,12 +66,12 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 		{
 			name: "WatermarkPodAutoscaler not found",
 			fields: fields{
-				client:   fake.NewFakeClient(),
-				scheme:   s,
+				client:        fake.NewFakeClient(),
+				scheme:        s,
 				eventRecorder: eventRecorder,
 			},
 			args: args{
-				request: newRequest("default", "delancie"),
+				request: newRequest(testingNamespace, testingWPAName),
 			},
 			want:    reconcile.Result{},
 			wantErr: false,
@@ -66,17 +79,15 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 		{
 			name: "WatermarkPodAutoscaler found, but not defaulted",
 			fields: fields{
-				client:   fake.NewFakeClient(),
-				scheme:   s,
+				client:        fake.NewFakeClient(),
+				scheme:        s,
 				eventRecorder: eventRecorder,
 			},
 			args: args{
-				request: newRequest("bar", "foo"),
+				request: newRequest(testingNamespace, testingWPAName),
 				loadFunc: func(c client.Client) {
-					_ = c.Create(context.TODO(), test.NewWatermarkPodAutoscaler("bar", "foo", &test.NewWatermarkPodAutoscalerOptions{Labels: map[string]string{"foo-key": "bar-value"}}))
-					//err := c.Create(context.TODO(), &appsv1.Deployment{metav1.TypeMeta{Kind: "Deploymet"}, metav1.ObjectMeta{Name: "baz", Namespace: "bar"}, appsv1.DeploymentSpec{}, appsv1.DeploymentStatus{}})
-					//log.Info(fmt.Sprintf("err is %v", err))
-					},
+					_ = c.Create(context.TODO(), test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{Labels: map[string]string{"foo-key": "bar-value"}}))
+				},
 			},
 			want:    reconcile.Result{Requeue: true},
 			wantErr: false,
@@ -84,27 +95,27 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 		{
 			name: "WatermarkPodAutoscaler found and defaulted but invalid metric spec",
 			fields: fields{
-				client:   fake.NewFakeClient(),
-				scheme:   s,
+				client:        fake.NewFakeClient(),
+				scheme:        s,
 				eventRecorder: eventRecorder,
 			},
 			args: args{
-				request: newRequest("bar", "foo"),
+				request: newRequest(testingNamespace, testingWPAName),
 				loadFunc: func(c client.Client) {
-					wpa := test.NewWatermarkPodAutoscaler("bar", "foo", &test.NewWatermarkPodAutoscalerOptions{
+					wpa := test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
 						Labels: map[string]string{"foo-key": "bar-value"},
 						Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
 							ScaleTargetRef: v1alpha1.CrossVersionObjectReference{
 								Kind: "Deployment",
-								Name: "baz",
+								Name: testingDeployName,
 							},
 							Metrics: []v1alpha1.MetricSpec{
 								{
 									Type: v1alpha1.ExternalMetricSourceType,
 									External: &v1alpha1.ExternalMetricSource{
-										MetricName: "foo",
-										MetricSelector: &v1.LabelSelector{MatchLabels: map[string]string{"label":"value"}, MatchExpressions: nil},
-										HighWatermark: resource.NewQuantity(3,resource.DecimalSI),
+										MetricName:     "deadbeef",
+										MetricSelector: &v1.LabelSelector{MatchLabels: map[string]string{"label": "value"}, MatchExpressions: nil},
+										HighWatermark:  resource.NewQuantity(3, resource.DecimalSI),
 									},
 								},
 							},
@@ -117,48 +128,48 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 			want:    reconcile.Result{},
 			wantErr: false,
 			wantFunc: func(c client.Client) error {
-				rq := newRequest("bar", "foo")
+				rq := newRequest(testingNamespace, testingWPAName)
 				wpa := &v1alpha1.WatermarkPodAutoscaler{}
-				err := c.Get(context.TODO(),rq.NamespacedName, wpa)
+				err := c.Get(context.TODO(), rq.NamespacedName, wpa)
 				if err != nil {
 					return err
 				}
 
 				cond := &v2beta1.HorizontalPodAutoscalerCondition{
 					Reason: "FailedSpecCheck",
-					Type: v2beta1.AbleToScale,
+					Type:   v2beta1.AbleToScale,
 				}
 				if wpa.Status.Conditions[0].Reason != cond.Reason || wpa.Status.Conditions[0].Type != cond.Type {
 					return fmt.Errorf("Unexpected Condition for incorrectly configured WPA")
 				}
-					return nil
+				return nil
 			},
 		},
 		{
 			name: "WatermarkPodAutoscaler found and defaulted but invalid watermarks",
 			fields: fields{
-				client:   fake.NewFakeClient(),
-				scheme:   s,
+				client:        fake.NewFakeClient(),
+				scheme:        s,
 				eventRecorder: eventRecorder,
 			},
 			args: args{
-				request: newRequest("bar", "foo"),
+				request: newRequest(testingNamespace, testingWPAName),
 				loadFunc: func(c client.Client) {
-					wpa := test.NewWatermarkPodAutoscaler("bar", "foo", &test.NewWatermarkPodAutoscalerOptions{
+					wpa := test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
 						Labels: map[string]string{"foo-key": "bar-value"},
 						Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
 							ScaleTargetRef: v1alpha1.CrossVersionObjectReference{
 								Kind: "Deployment",
-								Name: "baz",
+								Name: testingDeployName,
 							},
 							Metrics: []v1alpha1.MetricSpec{
 								{
 									Type: v1alpha1.ExternalMetricSourceType,
 									External: &v1alpha1.ExternalMetricSource{
-										MetricName: "foo",
-										MetricSelector: &v1.LabelSelector{MatchLabels: map[string]string{"label":"value"}, MatchExpressions: nil},
-										HighWatermark: resource.NewQuantity(3,resource.DecimalSI),
-										LowWatermark: resource.NewQuantity(4,resource.DecimalSI),
+										MetricName:     "deadbeef",
+										MetricSelector: &v1.LabelSelector{MatchLabels: map[string]string{"label": "value"}, MatchExpressions: nil},
+										HighWatermark:  resource.NewQuantity(3, resource.DecimalSI),
+										LowWatermark:   resource.NewQuantity(4, resource.DecimalSI),
 									},
 								},
 							},
@@ -171,9 +182,9 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 			want:    reconcile.Result{},
 			wantErr: false,
 			wantFunc: func(c client.Client) error {
-				rq := newRequest("bar", "foo")
+				rq := newRequest(testingNamespace, testingWPAName)
 				wpa := &v1alpha1.WatermarkPodAutoscaler{}
-				err := c.Get(context.TODO(),rq.NamespacedName, wpa)
+				err := c.Get(context.TODO(), rq.NamespacedName, wpa)
 				if err != nil {
 					return err
 				}
@@ -223,4 +234,200 @@ func newRequest(ns, name string) reconcile.Request {
 			Name:      name,
 		},
 	}
+}
+
+type fakeMetricsClient struct {
+	getExternalMetrics func(metricName string, namespace string, selector labels.Selector) ([]int64, time.Time, error)
+}
+
+//// GetResourceMetric gets the given resource metric (and an associated oldest timestamp)
+//// for all pods matching the specified selector in the given namespace
+func (f fakeMetricsClient) GetResourceMetric(resource corev1.ResourceName, namespace string, selector labels.Selector) (metrics.PodMetricsInfo, time.Time, error) {
+	return nil, time.Time{}, nil
+}
+
+//
+//// GetRawMetric gets the given metric (and an associated oldest timestamp)
+//// for all pods matching the specified selector in the given namespace
+func (f fakeMetricsClient) GetRawMetric(metricName string, namespace string, selector labels.Selector, metricSelector labels.Selector) (metrics.PodMetricsInfo, time.Time, error) {
+	return nil, time.Time{}, nil
+}
+
+//
+//// GetObjectMetric gets the given metric (and an associated timestamp) for the given
+//// object in the given namespace
+func (f fakeMetricsClient) GetObjectMetric(metricName string, namespace string, objectRef *v2beta2.CrossVersionObjectReference, metricSelector labels.Selector) (int64, time.Time, error) {
+	return 0, time.Time{}, nil
+}
+
+// GetExternalMetric gets all the values of a given external metric
+// that match the specified selector.
+func (f fakeMetricsClient) GetExternalMetric(metricName string, namespace string, selector labels.Selector) ([]int64, time.Time, error) {
+	if f.getExternalMetrics != nil {
+		return f.getExternalMetrics(metricName, namespace, selector)
+	}
+	return nil, time.Time{}, nil
+}
+
+func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
+	eventBroadcaster := record.NewBroadcaster()
+	eventRecorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "TestReconcileWatermarkPodAutoscaler"})
+
+	logf.SetLogger(logf.ZapLogger(true))
+	s := scheme.Scheme
+
+	s.AddKnownTypes(v1alpha1.SchemeGroupVersion, &v1alpha1.WatermarkPodAutoscaler{})
+	type fields struct {
+		client        client.Client
+		scheme        *runtime.Scheme
+		eventRecorder record.EventRecorder
+		rc            *ReplicaCalculator
+	}
+	type args struct {
+		wpa           *v1alpha1.WatermarkPodAutoscaler
+		deploy        *appsv1.Deployment
+		externalValue int64
+		loadFunc      func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler, deploy *appsv1.Deployment)
+	}
+
+	tests := []struct {
+		name     string
+		fields   fields
+		args     args
+		wantErr  bool
+		wantFunc func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler, deploy *appsv1.Deployment) error
+	}{
+		{
+			name: "WatermarkPodAutoscaler found and defaulted with valid watermarks",
+			fields: fields{
+				client:        fake.NewFakeClient(),
+				scheme:        s,
+				eventRecorder: eventRecorder,
+			},
+			args: args{
+				externalValue: 2,
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Labels: map[string]string{"foo-key": "bar-value"},
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						MaxReplicas: 5,
+						MinReplicas: getReplicas(1),
+						Metrics: []v1alpha1.MetricSpec{
+							{
+								Type: v1alpha1.ExternalMetricSourceType,
+								External: &v1alpha1.ExternalMetricSource{
+									MetricName:     "deadbeef",
+									MetricSelector: &v1.LabelSelector{map[string]string{"label": "value"}, nil},
+									HighWatermark:  resource.NewQuantity(80, resource.DecimalSI),
+									LowWatermark:   resource.NewQuantity(70, resource.DecimalSI),
+								},
+							},
+						},
+					},
+				}),
+				deploy: &appsv1.Deployment{
+					metav1.TypeMeta{Kind: "Deployment"},
+					metav1.ObjectMeta{
+						Name:      testingDeployName,
+						Namespace: testingNamespace,
+					},
+					appsv1.DeploymentSpec{
+						Replicas: getReplicas(3),
+					},
+					appsv1.DeploymentStatus{
+						Replicas: 3,
+					},
+				},
+				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler, deploy *appsv1.Deployment) {
+					_ = c.Create(context.TODO(), &appsv1.Deployment{metav1.TypeMeta{Kind: "Deploymet"}, metav1.ObjectMeta{Name: testingDeployName, Namespace: testingNamespace}, appsv1.DeploymentSpec{}, appsv1.DeploymentStatus{}})
+					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
+
+					wpa.Spec.ScaleTargetRef = v1alpha1.CrossVersionObjectReference{
+						Kind: deploy.Kind,
+						Name: deploy.Name,
+					}
+					_ = c.Create(context.TODO(), wpa)
+				},
+			},
+			wantErr: false,
+			wantFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler, deploy *appsv1.Deployment) error {
+				if deploy.Status.Replicas == wpa.Status.DesiredReplicas {
+					return nil
+				}
+
+				return nil
+			},
+		},
+		{
+			name: "Target deployment has 0 replicas",
+			fields: fields{
+				client:        fake.NewFakeClient(),
+				scheme:        s,
+				eventRecorder: eventRecorder,
+			},
+			args: args{
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, nil),
+				deploy: &appsv1.Deployment{
+					metav1.TypeMeta{Kind: "Deployment"},
+					metav1.ObjectMeta{
+						Name:      testingDeployName,
+						Namespace: testingNamespace,
+					},
+					appsv1.DeploymentSpec{
+						Replicas: getReplicas(0),
+					},
+					appsv1.DeploymentStatus{},
+				},
+				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler, deploy *appsv1.Deployment) {
+					_ = c.Create(context.TODO(), &appsv1.Deployment{metav1.TypeMeta{Kind: "Deploymet"}, metav1.ObjectMeta{Name: "baz", Namespace: "bar"}, appsv1.DeploymentSpec{}, appsv1.DeploymentStatus{}})
+					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
+
+					wpa.Spec.ScaleTargetRef = v1alpha1.CrossVersionObjectReference{
+						Kind: deploy.Kind,
+						Name: deploy.Name,
+					}
+					_ = c.Create(context.TODO(), wpa)
+				},
+			},
+			wantErr: false,
+			wantFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler, deploy *appsv1.Deployment) error {
+				if deploy.Status.Replicas != wpa.Status.DesiredReplicas {
+					return fmt.Errorf("scaling is disabled but still triggers")
+				}
+				return nil
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &ReconcileWatermarkPodAutoscaler{
+				client:        tt.fields.client,
+				scheme:        tt.fields.scheme,
+				eventRecorder: tt.fields.eventRecorder,
+			}
+			mClient := fakeMetricsClient{
+				getExternalMetrics: func(metricName string, namespace string, selector labels.Selector) ([]int64, time.Time, error) {
+					return []int64{tt.args.externalValue}, time.Now(), nil
+				},
+			}
+
+			r.replicaCalc = NewReplicaCalculator(mClient, nil)
+			if tt.args.loadFunc != nil {
+				tt.args.loadFunc(r.client, tt.args.wpa, tt.args.deploy)
+			}
+			err := r.reconcileWPA(tt.args.wpa, tt.args.deploy)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ReconcileWatermarkPodAutoscaler.Reconcile() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantFunc != nil {
+				if err := tt.wantFunc(r.client, tt.args.wpa, tt.args.deploy); err != nil {
+					t.Errorf("ReconcileWatermarkPodAutoscaler.Reconcile() wantFunc validation error: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func getReplicas(v int32) *int32 {
+	return &v
 }

@@ -321,7 +321,7 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.Wa
 		var err error
 		var metricTimestamp time.Time
 
-		proposedReplicas, metricName, metricStatuses, metricTimestamp, err = r.computeReplicasForMetrics(wpa, deploy, wpa.Spec.Metrics)
+		proposedReplicas, metricName, metricStatuses, metricTimestamp, err = r.computeReplicasForMetrics(wpa, deploy)
 		if err != nil {
 			r.setCurrentReplicasInStatus(wpa, currentReplicas)
 			if err := r.updateStatusIfNeeded(wpaStatusOriginal, wpa); err != nil {
@@ -349,10 +349,10 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.Wa
 			rescaleReason = "All metrics below target"
 		}
 
-		desiredReplicas = r.normalizeDesiredReplicas(wpa, currentReplicas, desiredReplicas)
+		desiredReplicas = normalizeDesiredReplicas(wpa, currentReplicas, desiredReplicas)
 		log.Info(fmt.Sprintf(" -> after normalization: %d", desiredReplicas))
 
-		rescale = r.shouldScale(wpa, currentReplicas, desiredReplicas, now)
+		rescale = shouldScale(wpa, currentReplicas, desiredReplicas, now)
 	}
 
 	if rescale {
@@ -379,11 +379,11 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.Wa
 		desiredReplicas = currentReplicas
 	}
 	replicaEffective.With(prometheus.Labels{"wpa_name": wpa.Name, "deploy": deploy.Name}).Set(float64(desiredReplicas))
-	r.setStatus(wpa, currentReplicas, desiredReplicas, metricStatuses, rescale)
+	setStatus(wpa, currentReplicas, desiredReplicas, metricStatuses, rescale)
 	return r.updateStatusIfNeeded(wpaStatusOriginal, wpa)
 }
 
-func (r *ReconcileWatermarkPodAutoscaler) shouldScale(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, desiredReplicas int32, timestamp time.Time) bool {
+func shouldScale(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, desiredReplicas int32, timestamp time.Time) bool {
 	if wpa.Status.LastScaleTime == nil {
 		log.Info("No timestamp for the lastScale event")
 		return true
@@ -435,7 +435,7 @@ func canScale(backoffUp, backoffDown bool, currentReplicas, desiredReplicas int3
 
 // setCurrentReplicasInStatus sets the current replica count in the status of the HPA.
 func (r *ReconcileWatermarkPodAutoscaler) setCurrentReplicasInStatus(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas int32) {
-	r.setStatus(wpa, currentReplicas, wpa.Status.DesiredReplicas, wpa.Status.CurrentMetrics, false)
+	setStatus(wpa, currentReplicas, wpa.Status.DesiredReplicas, wpa.Status.CurrentMetrics, false)
 }
 
 // updateStatusIfNeeded calls updateStatus only if the status of the new HPA is not the same as the old status
@@ -453,7 +453,7 @@ func (r *ReconcileWatermarkPodAutoscaler) updateWPA(wpa *datadoghqv1alpha1.Water
 
 // setStatus recreates the status of the given WPA, updating the current and
 // desired replicas, as well as the metric statuses
-func (r *ReconcileWatermarkPodAutoscaler) setStatus(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, desiredReplicas int32, metricStatuses []autoscalingv2.MetricStatus, rescale bool) {
+func setStatus(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, desiredReplicas int32, metricStatuses []autoscalingv2.MetricStatus, rescale bool) {
 	wpa.Status = datadoghqv1alpha1.WatermarkPodAutoscalerStatus{
 		CurrentReplicas: currentReplicas,
 		DesiredReplicas: desiredReplicas,
@@ -468,25 +468,12 @@ func (r *ReconcileWatermarkPodAutoscaler) setStatus(wpa *datadoghqv1alpha1.Water
 	}
 }
 
-func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, deploy *appsv1.Deployment, metricSpecs []datadoghqv1alpha1.MetricSpec) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, err error) {
+func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, deploy *appsv1.Deployment) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, err error) {
 	currentReplicas := deploy.Status.Replicas
-	statuses = make([]autoscalingv2.MetricStatus, len(metricSpecs))
+	statuses = make([]autoscalingv2.MetricStatus, len(wpa.Spec.Metrics))
 
-	for i, metricSpec := range metricSpecs {
-		if deploy.Spec.Selector == nil {
-			errMsg := "selector is required"
-			r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "SelectorRequired", errMsg)
-			setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, "InvalidSelector", "the WPA target's deploy is missing a selector")
-			return 0, "", nil, time.Time{}, fmt.Errorf(errMsg)
-		}
+	for i, metricSpec := range wpa.Spec.Metrics {
 
-		_, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
-		if err != nil {
-			errMsg := fmt.Sprintf("couldn't convert selector into a corresponding internal selector object: %v", err)
-			r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "InvalidSelector", errMsg)
-			setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, "InvalidSelector", errMsg)
-			return 0, "", nil, time.Time{}, fmt.Errorf(errMsg)
-		}
 		var replicaCountProposal int32
 		var utilizationProposal int64
 		var timestampProposal time.Time
@@ -578,7 +565,7 @@ func setConditionInList(inputList []autoscalingv2.HorizontalPodAutoscalerConditi
 
 // normalizeDesiredReplicas takes the metrics desired replicas value and normalizes it based on the appropriate conditions (i.e. < maxReplicas, >
 // minReplicas, etc...)
-func (r *ReconcileWatermarkPodAutoscaler) normalizeDesiredReplicas(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas int32, prenormalizedDesiredReplicas int32) int32 {
+func normalizeDesiredReplicas(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas int32, prenormalizedDesiredReplicas int32) int32 {
 	var minReplicas int32
 	if wpa.Spec.MinReplicas != nil {
 		minReplicas = *wpa.Spec.MinReplicas
