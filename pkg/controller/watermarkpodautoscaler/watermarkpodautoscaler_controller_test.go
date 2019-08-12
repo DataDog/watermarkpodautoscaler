@@ -538,7 +538,57 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			wantErr: false,
 			wantFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler, deploy *appsv1.Deployment) error {
 				if *deploy.Spec.Replicas != wpa.Status.DesiredReplicas {
-					return fmt.Errorf("Spec of the target deployment is not updated")
+					return fmt.Errorf("Spec of the target deployment was not updated")
+				}
+				if wpa.Status.Conditions[0].Reason == "SucceededRescale" && wpa.Status.Conditions[0].Message != fmt.Sprintf("the HPA controller was able to update the target scale to %d", wpa.Status.DesiredReplicas) {
+					return fmt.Errorf("scaling should occur as we are above the MaxReplicas")
+				}
+				return nil
+			},
+		},
+		{
+			name: "Target deployment has fewer replicas deployed than spec'ed",
+			fields: fields{
+				client:        fake.NewFakeClient(),
+				scheme:        s,
+				eventRecorder: eventRecorder,
+			},
+			args: args{
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Labels: map[string]string{"foo-key": "bar-value"},
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						MinReplicas: getReplicas(4),
+						MaxReplicas: 12, // We do not process WPA with MinReplicas > MaxReplicas.
+					},
+				}),
+				deploy: &appsv1.Deployment{
+					metav1.TypeMeta{Kind: "Deployment"},
+					metav1.ObjectMeta{
+						Name:      testingDeployName,
+						Namespace: testingNamespace,
+					},
+					appsv1.DeploymentSpec{
+						Replicas: getReplicas(8),
+					},
+					appsv1.DeploymentStatus{
+						Replicas: 0,
+					},
+				},
+				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler, deploy *appsv1.Deployment) {
+					_ = c.Create(context.TODO(), deploy)
+					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
+
+					wpa.Spec.ScaleTargetRef = v1alpha1.CrossVersionObjectReference{
+						Kind: deploy.Kind,
+						Name: deploy.Name,
+					}
+					_ = c.Create(context.TODO(), wpa)
+				},
+			},
+			wantErr: false,
+			wantFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler, deploy *appsv1.Deployment) error {
+				if *deploy.Spec.Replicas != wpa.Status.DesiredReplicas {
+					return fmt.Errorf("Spec of the target deployment was not updated")
 				}
 				if wpa.Status.Conditions[0].Reason == "SucceededRescale" && wpa.Status.Conditions[0].Message != fmt.Sprintf("the HPA controller was able to update the target scale to %d", wpa.Status.DesiredReplicas) {
 					return fmt.Errorf("scaling should occur as we are above the MaxReplicas")
