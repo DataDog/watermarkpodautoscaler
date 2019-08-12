@@ -3,12 +3,12 @@ package v1alpha1
 import "fmt"
 
 const (
-	defaultTolerance  = 0.1
-	defaultDownscaleForbiddenWindowSeconds       = 300
-	defaultUpscaleForbiddenWindowSeconds         = 60
-	defaultScaleUpLimitMinimum                   = 4.0
-	defaultScaleUpLimitFactor                    = 2.0
-	defaultAlgorithm =  "absolute"
+	defaultTolerance                       = 0.1
+	defaultDownscaleForbiddenWindowSeconds = 300
+	defaultUpscaleForbiddenWindowSeconds   = 60
+	defaultScaleUpLimitMinimum             = 4.0
+	defaultScaleUpLimitFactor              = 2.0
+	defaultAlgorithm                       = "absolute"
 )
 
 // DefaultWatermarkPodAutoscaler sets the default in the WPA
@@ -63,7 +63,11 @@ func IsDefaultWatermarkPodAutoscaler(wpa *WatermarkPodAutoscaler) bool {
 
 func CheckWPAValidity(wpa *WatermarkPodAutoscaler) error {
 	if wpa.Spec.ScaleTargetRef.Kind != "Deployment" {
-		msg := fmt.Sprintf("configurable wpa doesn't support %s kind, use Deployment instead", wpa.Spec.ScaleTargetRef.Kind)
+		msg := fmt.Sprintf("watermark pod autoscaler doesn't support %s kind, use Deployment instead", wpa.Spec.ScaleTargetRef.Kind)
+		return fmt.Errorf(msg)
+	}
+	if wpa.Spec.MinReplicas == nil || wpa.Spec.MaxReplicas < *wpa.Spec.MinReplicas {
+		msg := fmt.Sprintf("watermark pod autoscaler requires the minimum number of replicas to be configured and inferior to the maximum")
 		return fmt.Errorf(msg)
 	}
 	return checkWPAMetricsValidity(wpa)
