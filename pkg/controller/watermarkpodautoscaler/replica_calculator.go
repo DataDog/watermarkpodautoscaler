@@ -86,7 +86,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, met
 	default:
 		restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(1)
 		value.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(milliAdjustedUsage)
-		log.Info(fmt.Sprintf("Within bounds of the watermarks. Value: %v is [%d; %d]", adjustedUsage, lowMark, highMark))
+		log.Info(fmt.Sprintf("Within bounds of the watermarks. Value: %v is [%d; %d] Tol: +/- %v%%", adjustedUsage, lowMark, highMark, wpa.Spec.Tolerance))
 		return currentReplicas, utilization, timestamp, nil
 	}
 
