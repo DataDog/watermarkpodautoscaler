@@ -486,7 +486,7 @@ func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(wpa *datadog
 			if metricSpec.External.HighWatermark != nil && metricSpec.External.LowWatermark != nil {
 				metricNameProposal = fmt.Sprintf("%s{%v}", metricSpec.External.MetricName, metricSpec.External.MetricSelector.MatchLabels)
 
-				replicaCountProposal, utilizationProposal, timestampProposal, err = r.replicaCalc.GetExternalMetricReplicas(currentReplicas, metricSpec.External.LowWatermark.MilliValue(), metricSpec.External.HighWatermark.MilliValue(), metricSpec.External.MetricName, wpa, metricSpec.External.MetricSelector)
+				replicaCountProposal, utilizationProposal, timestampProposal, err = r.replicaCalc.GetExternalMetricReplicas(currentReplicas, metricSpec, wpa)
 				if err != nil {
 					replicaProposal.Delete(prometheus.Labels{"wpa_name": wpa.Name, "deploy": deploy.Name})
 					r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedGetExternalMetric", err.Error())

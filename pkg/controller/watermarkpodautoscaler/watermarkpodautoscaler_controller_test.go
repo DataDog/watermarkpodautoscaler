@@ -43,7 +43,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 	eventRecorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "TestReconcileWatermarkPodAutoscaler"})
 
 	logf.SetLogger(logf.ZapLogger(true))
-	log := logf.Log.WithName("TestReconcileWatermarkPodAutoscaler_Reconcile")
+	log = logf.Log.WithName("TestReconcileWatermarkPodAutoscaler_Reconcile")
 	s := scheme.Scheme
 
 	s.AddKnownTypes(v1alpha1.SchemeGroupVersion, &v1alpha1.WatermarkPodAutoscaler{})
@@ -656,7 +656,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 		fields   fields
 		args     args
 		err      error
-		wantFunc func(currentReplicas int32, lowMark int64, highMark int64, metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *metav1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error)
+		wantFunc func(currentReplicas int32, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCount int32, utilization int64, timestamp time.Time, err error)
 	}{
 		{
 			name: "Nominal Case",
@@ -700,7 +700,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 					},
 				},
 			},
-			wantFunc: func(currentReplicas int32, lowMark int64, highMark int64, metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *metav1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
+			wantFunc: func(currentReplicas int32, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
 				// With 8 replicas, the avg algo and an external value returned of 100 we have 10 replicas and the utilization of 10
 				return 10, 10, time.Time{}, nil
 			},
@@ -743,7 +743,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 					},
 				},
 			},
-			wantFunc: func(currentReplicas int32, lowMark int64, highMark int64, metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *metav1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
+			wantFunc: func(currentReplicas int32, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
 				// With 8 replicas, the avg algo and an external value returned of 100 we have 10 replicas and the utilization of 10
 				return 0, 0, time.Time{}, fmt.Errorf("unable to fetch metrics from external metrics API")
 			},
@@ -800,9 +800,9 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 					},
 				},
 			},
-			wantFunc: func(currentReplicas int32, lowMark int64, highMark int64, metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *metav1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
+			wantFunc: func(currentReplicas int32, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
 				// With 8 replicas, the avg algo and an external value returned of 100 we have 10 replicas and the utilization of 10
-				if metricName == "deadbeef" {
+				if metric.External.MetricName == "deadbeef" {
 					return 10, 10, time.Time{}, nil
 				}
 				return 8, 5, time.Time{}, nil
@@ -841,12 +841,12 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 }
 
 type fakeReplicaCalculator struct {
-	replicasFunc func(currentReplicas int32, lowMark int64, highMark int64, metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *metav1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error)
+	replicasFunc func(currentReplicas int32, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCount int32, utilization int64, timestamp time.Time, err error)
 }
 
-func (f *fakeReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, lowMark int64, highMark int64, metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *metav1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
+func (f *fakeReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
 	if f.replicasFunc != nil {
-		return f.replicasFunc(currentReplicas, lowMark, highMark, metricName, wpa, selector)
+		return f.replicasFunc(currentReplicas, metric, wpa)
 	}
 	return 0, 0, time.Time{}, nil
 }
