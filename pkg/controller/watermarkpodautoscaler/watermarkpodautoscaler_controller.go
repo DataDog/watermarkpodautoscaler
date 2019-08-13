@@ -3,9 +3,10 @@ package watermarkpodautoscaler
 import (
 	"context"
 	"fmt"
-	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
 	"math"
 	"time"
+
+	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -303,31 +304,32 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.Wa
 
 	rescale := true
 
-	if *deploy.Spec.Replicas == 0 {
+	switch {
+	case *deploy.Spec.Replicas == 0:
 		// Autoscaling is disabled for this resource
 		desiredReplicas = 0
 		rescale = false
 		setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, "ScalingDisabled", "scaling is disabled since the replica count of the target is zero")
-	} else if currentReplicas > wpa.Spec.MaxReplicas {
+	case currentReplicas > wpa.Spec.MaxReplicas:
 		rescaleReason = "Current number of replicas above Spec.MaxReplicas"
 		desiredReplicas = wpa.Spec.MaxReplicas
-	} else if wpa.Spec.MinReplicas != nil && currentReplicas < *wpa.Spec.MinReplicas {
+	case wpa.Spec.MinReplicas != nil && currentReplicas < *wpa.Spec.MinReplicas:
 		rescaleReason = "Current number of replicas below Spec.MinReplicas"
 		desiredReplicas = *wpa.Spec.MinReplicas
-	} else if currentReplicas == 0 {
+	case currentReplicas == 0:
 		rescaleReason = "Current number of replicas must be greater than 0"
 		desiredReplicas = 1
-	} else {
+	default:
 		var err error
 		var metricTimestamp time.Time
 
 		proposedReplicas, metricName, metricStatuses, metricTimestamp, err = r.computeReplicasForMetrics(wpa, deploy)
 		if err != nil {
 			r.setCurrentReplicasInStatus(wpa, currentReplicas)
-			if err := r.updateStatusIfNeeded(wpaStatusOriginal, wpa); err != nil {
-				r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedUpdateReplicas", err.Error())
+			if err2 := r.updateStatusIfNeeded(wpaStatusOriginal, wpa); err2 != nil {
+				r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedUpdateReplicas", err2.Error())
 				setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, "FailedUpdateReplicas", "the WPA controller was unable to update the number of replicas: %v", err)
-				log.Info(fmt.Sprintf("the WPA controller was unable to update the number of replicas: %v", err))
+				log.Info(fmt.Sprintf("the WPA controller was unable to update the number of replicas: %v", err2))
 				return nil
 			}
 			r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedComputeMetricsReplicas", err.Error())
@@ -370,7 +372,7 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.Wa
 			}
 			return nil
 		}
-		setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, "SucceededRescale", "the HPA controller was able to update the target scale to %d", desiredReplicas)
+		setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, datadoghqv1alpha1.ConditionReasonSucceededRescale, "the HPA controller was able to update the target scale to %d", desiredReplicas)
 		r.eventRecorder.Eventf(wpa, corev1.EventTypeNormal, "SuccessfulRescale", fmt.Sprintf("New size: %d; reason: %s", desiredReplicas, rescaleReason))
 
 		log.Info(fmt.Sprintf("Successful rescale of %s, old size: %d, new size: %d, reason: %s", wpa.Name, currentReplicas, desiredReplicas, rescaleReason))
@@ -511,6 +513,8 @@ func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(wpa *datadog
 				setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, "FailedGetExternalMetric", "the HPA was unable to compute the replica count: %v", err)
 				return 0, "", nil, time.Time{}, fmt.Errorf(errMsg)
 			}
+		default:
+			return 0, "", nil, time.Time{}, fmt.Errorf("metricSpec.Type:%s not supported", metricSpec.Type)
 		}
 		// replicas will end up being the max of the replicaCountProposal if there are several metrics
 		if replicas == 0 || replicaCountProposal > replicas {
