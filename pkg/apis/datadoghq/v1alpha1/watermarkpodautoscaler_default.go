@@ -61,6 +61,8 @@ func IsDefaultWatermarkPodAutoscaler(wpa *WatermarkPodAutoscaler) bool {
 	return true
 }
 
+// CheckWPAValidity use to check the validty of a WatermarkPodAutoscaler
+// return nil if valid, else an error
 func CheckWPAValidity(wpa *WatermarkPodAutoscaler) error {
 	if wpa.Spec.ScaleTargetRef.Kind != "Deployment" {
 		msg := fmt.Sprintf("watermark pod autoscaler doesn't support %s kind, use Deployment instead", wpa.Spec.ScaleTargetRef.Kind)

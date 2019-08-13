@@ -2,9 +2,8 @@ package v1alpha1
 
 import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2beta1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // CrossVersionObjectReference contains enough information to let you identify the referred resource.
@@ -59,7 +58,6 @@ type WatermarkPodAutoscalerSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=1000
 	MaxReplicas int32 `json:"maxReplicas,omitempty"`
-
 }
 
 // ExternalMetricSource indicates how to scale on a metric not associated with
@@ -74,9 +72,10 @@ type ExternalMetricSource struct {
 	// +optional
 	MetricSelector *metav1.LabelSelector `json:"metricSelector,omitempty" protobuf:"bytes,2,opt,name=metricSelector"`
 
-	HighWatermark *resource.Quantity  `json:"highWatermark,omitempty"`
-	LowWatermark *resource.Quantity  `json:"lowWatermark,omitempty"`
+	HighWatermark *resource.Quantity `json:"highWatermark,omitempty"`
+	LowWatermark  *resource.Quantity `json:"lowWatermark,omitempty"`
 }
+
 // MetricSourceType indicates the type of metric.
 type MetricSourceType string
 
@@ -103,7 +102,6 @@ type MetricSpec struct {
 	// +optional
 	External *ExternalMetricSource `json:"external,omitempty" protobuf:"bytes,5,opt,name=external"`
 }
-
 
 // WatermarkPodAutoscalerStatus defines the observed state of WatermarkPodAutoscaler
 // +k8s:openapi-gen=true

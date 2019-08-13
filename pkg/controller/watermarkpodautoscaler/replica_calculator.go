@@ -2,9 +2,10 @@ package watermarkpodautoscaler
 
 import (
 	"fmt"
-	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
 	"math"
 	"time"
+
+	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -13,6 +14,7 @@ import (
 	metricsclient "k8s.io/kubernetes/pkg/controller/podautoscaler/metrics"
 )
 
+// ReplicaCalculatorItf interface for ReplicaCalculator
 type ReplicaCalculatorItf interface {
 	GetExternalMetricReplicas(currentReplicas int32, lowMark int64, highMark int64, metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *metav1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error)
 }
@@ -59,7 +61,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, low
 
 	var sum int64
 	for _, val := range metrics {
-		sum = sum + val
+		sum += val
 	}
 	adjustedUsage := float64(sum) / averaged
 	milliAdjustedUsage := adjustedUsage / 1000
@@ -71,23 +73,22 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, low
 	adjustedLM := float64(lowMark) - wpa.Spec.Tolerance*float64(lowMark)
 
 	// We do not use the abs as we want to know if we are higher than the high mark or lower than the low mark
-	if adjustedUsage > adjustedHM {
+	switch {
+	case adjustedUsage > adjustedHM:
 		replicaCount = int32(math.Ceil(float64(currentReplicas) * adjustedUsage / (float64(highMark))))
 		log.Info(fmt.Sprintf("Value is above highMark. Usage: %f. ReplicaCount %d", milliAdjustedUsage, replicaCount))
-
-	} else if adjustedUsage < adjustedLM {
+	case adjustedUsage < adjustedLM:
 		replicaCount = int32(math.Floor(float64(currentReplicas) * adjustedUsage / (float64(lowMark))))
 		log.Info(fmt.Sprintf("Value is below lowMark. Usage: %f ReplicaCount %d", milliAdjustedUsage, replicaCount))
-
-	} else {
+	default:
 		restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(1)
-		value.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(float64(milliAdjustedUsage))
-		log.Info(fmt.Sprintf("Withing bounds of the watermarks. Value: %v is [%d; %d]", adjustedUsage, lowMark, highMark))
+		value.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(milliAdjustedUsage)
+		log.Info(fmt.Sprintf("Within bounds of the watermarks. Value: %v is [%d; %d]", adjustedUsage, lowMark, highMark))
 		return currentReplicas, utilization, timestamp, nil
 	}
 
 	restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(0)
-	value.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(float64(milliAdjustedUsage))
+	value.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(milliAdjustedUsage)
 
 	return replicaCount, utilization, timestamp, nil
 }

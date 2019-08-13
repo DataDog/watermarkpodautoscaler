@@ -1,31 +1,35 @@
 package test
 
 import (
+	"time"
+
 	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"time"
 )
 
 var (
 	apiVersion = v1alpha1.SchemeGroupVersion.String()
 )
+
+// NewWatermarkPodAutoscalerOptions used to provide instiation options for NewWatermarkPodAutoscaler method
 type NewWatermarkPodAutoscalerOptions struct {
-	Status	*v1alpha1.WatermarkPodAutoscalerStatus
-	Spec	*v1alpha1.WatermarkPodAutoscalerSpec
-	CreationTime  *time.Time
-	Labels map[string]string
+	Status       *v1alpha1.WatermarkPodAutoscalerStatus
+	Spec         *v1alpha1.WatermarkPodAutoscalerSpec
+	CreationTime *time.Time
+	Labels       map[string]string
 }
 
+// NewWatermarkPodAutoscaler return new instance of *v1alpha1.WatermarkPodAutoscaler
 func NewWatermarkPodAutoscaler(ns, name string, options *NewWatermarkPodAutoscalerOptions) *v1alpha1.WatermarkPodAutoscaler {
 	wpa := &v1alpha1.WatermarkPodAutoscaler{
 		TypeMeta: metav1.TypeMeta{
-			Kind: "WatermarkPodAutoscaler",
+			Kind:       "WatermarkPodAutoscaler",
 			APIVersion: apiVersion,
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-			Namespace: ns,
-			Labels: map[string]string{},
+			Name:        name,
+			Namespace:   ns,
+			Labels:      map[string]string{},
 			Annotations: map[string]string{},
 		},
 	}
@@ -47,4 +51,3 @@ func NewWatermarkPodAutoscaler(ns, name string, options *NewWatermarkPodAutoscal
 	}
 	return wpa
 }
-

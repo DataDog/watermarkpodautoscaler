@@ -1,12 +1,10 @@
 module github.com/DataDog/watermarkpodautoscaler
 
 require (
-	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/go-logr/logr v0.1.0
 	github.com/operator-framework/operator-sdk v0.8.2-0.20190522220659-031d71ef8154
 	github.com/prometheus/client_golang v0.9.3-0.20190127221311-3c4408c8b829
 	github.com/spf13/pflag v1.0.3
-	gopkg.in/zorkian/go-datadog-api.v2 v2.21.0 // indirect
 	k8s.io/api v0.0.0-20190624085159-95846d7ef82a
 	k8s.io/apimachinery v0.0.0-20190624085041-961b39a1baa0
 	k8s.io/client-go v11.0.0+incompatible

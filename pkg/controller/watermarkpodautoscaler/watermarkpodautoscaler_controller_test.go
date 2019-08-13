@@ -3,20 +3,22 @@ package watermarkpodautoscaler
 import (
 	"context"
 	"fmt"
+
 	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/api/autoscaling/v2beta1"
 	"k8s.io/api/autoscaling/v2beta2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	"reflect"
+	"time"
+
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/kubernetes/pkg/controller/podautoscaler/metrics"
-	"reflect"
-	"time"
 
 	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1/test"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -116,7 +118,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 									Type: v1alpha1.ExternalMetricSourceType,
 									External: &v1alpha1.ExternalMetricSource{
 										MetricName:     "deadbeef",
-										MetricSelector: &v1.LabelSelector{MatchLabels: map[string]string{"label": "value"}, MatchExpressions: nil},
+										MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}, MatchExpressions: nil},
 										HighWatermark:  resource.NewQuantity(3, resource.DecimalSI),
 									},
 								},
@@ -217,7 +219,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 									Type: v1alpha1.ExternalMetricSourceType,
 									External: &v1alpha1.ExternalMetricSource{
 										MetricName:     "deadbeef",
-										MetricSelector: &v1.LabelSelector{MatchLabels: map[string]string{"label": "value"}, MatchExpressions: nil},
+										MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}, MatchExpressions: nil},
 										HighWatermark:  resource.NewQuantity(3, resource.DecimalSI),
 										LowWatermark:   resource.NewQuantity(4, resource.DecimalSI),
 									},
@@ -330,7 +332,6 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 		client        client.Client
 		scheme        *runtime.Scheme
 		eventRecorder record.EventRecorder
-		rc            *ReplicaCalculator
 	}
 	type args struct {
 		wpa           *v1alpha1.WatermarkPodAutoscaler
@@ -365,7 +366,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 								Type: v1alpha1.ExternalMetricSourceType,
 								External: &v1alpha1.ExternalMetricSource{
 									MetricName:     "deadbeef",
-									MetricSelector: &v1.LabelSelector{map[string]string{"label": "value"}, nil},
+									MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}},
 									HighWatermark:  resource.NewQuantity(80, resource.DecimalSI),
 									LowWatermark:   resource.NewQuantity(70, resource.DecimalSI),
 								},
@@ -374,20 +375,20 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 					},
 				}),
 				deploy: &appsv1.Deployment{
-					metav1.TypeMeta{Kind: "Deployment"},
-					metav1.ObjectMeta{
+					TypeMeta: metav1.TypeMeta{Kind: "Deployment"},
+					ObjectMeta: metav1.ObjectMeta{
 						Name:      testingDeployName,
 						Namespace: testingNamespace,
 					},
-					appsv1.DeploymentSpec{
+					Spec: appsv1.DeploymentSpec{
 						Replicas: getReplicas(3),
 					},
-					appsv1.DeploymentStatus{
+					Status: appsv1.DeploymentStatus{
 						Replicas: 3,
 					},
 				},
 				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler, deploy *appsv1.Deployment) {
-					_ = c.Create(context.TODO(), &appsv1.Deployment{metav1.TypeMeta{Kind: "Deploymet"}, metav1.ObjectMeta{Name: testingDeployName, Namespace: testingNamespace}, appsv1.DeploymentSpec{}, appsv1.DeploymentStatus{}})
+					_ = c.Create(context.TODO(), &appsv1.Deployment{TypeMeta: metav1.TypeMeta{Kind: "Deploymet"}, ObjectMeta: metav1.ObjectMeta{Name: testingDeployName, Namespace: testingNamespace}, Spec: appsv1.DeploymentSpec{}, Status: appsv1.DeploymentStatus{}})
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 
 					wpa.Spec.ScaleTargetRef = v1alpha1.CrossVersionObjectReference{
@@ -416,15 +417,15 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			args: args{
 				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, nil),
 				deploy: &appsv1.Deployment{
-					metav1.TypeMeta{Kind: "Deployment"},
-					metav1.ObjectMeta{
+					TypeMeta: metav1.TypeMeta{Kind: "Deployment"},
+					ObjectMeta: metav1.ObjectMeta{
 						Name:      testingDeployName,
 						Namespace: testingNamespace,
 					},
-					appsv1.DeploymentSpec{
+					Spec: appsv1.DeploymentSpec{
 						Replicas: getReplicas(0),
 					},
-					appsv1.DeploymentStatus{
+					Status: appsv1.DeploymentStatus{
 						Replicas: 0,
 					},
 				},
@@ -462,15 +463,15 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 					},
 				}),
 				deploy: &appsv1.Deployment{
-					metav1.TypeMeta{Kind: "Deployment"},
-					metav1.ObjectMeta{
+					TypeMeta: metav1.TypeMeta{Kind: "Deployment"},
+					ObjectMeta: metav1.ObjectMeta{
 						Name:      testingDeployName,
 						Namespace: testingNamespace,
 					},
-					appsv1.DeploymentSpec{
+					Spec: appsv1.DeploymentSpec{
 						Replicas: getReplicas(18),
 					},
-					appsv1.DeploymentStatus{
+					Status: appsv1.DeploymentStatus{
 						Replicas: 18,
 					},
 				},
@@ -490,7 +491,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				if *deploy.Spec.Replicas != wpa.Status.DesiredReplicas {
 					return fmt.Errorf("Spec of the target deployment is not updated")
 				}
-				if wpa.Status.Conditions[0].Reason == "SucceededRescale" && wpa.Status.Conditions[0].Message != fmt.Sprintf("the HPA controller was able to update the target scale to %d", wpa.Status.DesiredReplicas) {
+				if wpa.Status.Conditions[0].Reason == v1alpha1.ConditionReasonSucceededRescale && wpa.Status.Conditions[0].Message != fmt.Sprintf("the HPA controller was able to update the target scale to %d", wpa.Status.DesiredReplicas) {
 					return fmt.Errorf("scaling should occur as we are above the MaxReplicas")
 				}
 				return nil
@@ -512,15 +513,15 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 					},
 				}),
 				deploy: &appsv1.Deployment{
-					metav1.TypeMeta{Kind: "Deployment"},
-					metav1.ObjectMeta{
+					TypeMeta: metav1.TypeMeta{Kind: "Deployment"},
+					ObjectMeta: metav1.ObjectMeta{
 						Name:      testingDeployName,
 						Namespace: testingNamespace,
 					},
-					appsv1.DeploymentSpec{
+					Spec: appsv1.DeploymentSpec{
 						Replicas: getReplicas(6),
 					},
-					appsv1.DeploymentStatus{
+					Status: appsv1.DeploymentStatus{
 						Replicas: 6,
 					},
 				},
@@ -540,7 +541,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				if *deploy.Spec.Replicas != wpa.Status.DesiredReplicas {
 					return fmt.Errorf("Spec of the target deployment was not updated")
 				}
-				if wpa.Status.Conditions[0].Reason == "SucceededRescale" && wpa.Status.Conditions[0].Message != fmt.Sprintf("the HPA controller was able to update the target scale to %d", wpa.Status.DesiredReplicas) {
+				if wpa.Status.Conditions[0].Reason == v1alpha1.ConditionReasonSucceededRescale && wpa.Status.Conditions[0].Message != fmt.Sprintf("the HPA controller was able to update the target scale to %d", wpa.Status.DesiredReplicas) {
 					return fmt.Errorf("scaling should occur as we are above the MaxReplicas")
 				}
 				return nil
@@ -562,15 +563,15 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 					},
 				}),
 				deploy: &appsv1.Deployment{
-					metav1.TypeMeta{Kind: "Deployment"},
-					metav1.ObjectMeta{
+					TypeMeta: metav1.TypeMeta{Kind: "Deployment"},
+					ObjectMeta: metav1.ObjectMeta{
 						Name:      testingDeployName,
 						Namespace: testingNamespace,
 					},
-					appsv1.DeploymentSpec{
+					Spec: appsv1.DeploymentSpec{
 						Replicas: getReplicas(8),
 					},
-					appsv1.DeploymentStatus{
+					Status: appsv1.DeploymentStatus{
 						Replicas: 0,
 					},
 				},
@@ -590,7 +591,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				if *deploy.Spec.Replicas != wpa.Status.DesiredReplicas {
 					return fmt.Errorf("Spec of the target deployment was not updated")
 				}
-				if wpa.Status.Conditions[0].Reason == "SucceededRescale" && wpa.Status.Conditions[0].Message != fmt.Sprintf("the HPA controller was able to update the target scale to %d", wpa.Status.DesiredReplicas) {
+				if wpa.Status.Conditions[0].Reason == v1alpha1.ConditionReasonSucceededRescale && wpa.Status.Conditions[0].Message != fmt.Sprintf("the HPA controller was able to update the target scale to %d", wpa.Status.DesiredReplicas) {
 					return fmt.Errorf("scaling should occur as we are above the MaxReplicas")
 				}
 				return nil
@@ -640,16 +641,14 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 	logf.SetLogger(logf.ZapLogger(true))
 
 	type fields struct {
-		scheme        *runtime.Scheme
 		eventRecorder record.EventRecorder
 	}
 	type args struct {
-		wpa           *v1alpha1.WatermarkPodAutoscaler
-		deploy        *appsv1.Deployment
-		externalValue int64
-		replicas      int32
-		MetricName    string
-		validMetrics  int
+		wpa          *v1alpha1.WatermarkPodAutoscaler
+		deploy       *appsv1.Deployment
+		replicas     int32
+		MetricName   string
+		validMetrics int
 	}
 
 	tests := []struct {
@@ -677,7 +676,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 								Type: v1alpha1.ExternalMetricSourceType,
 								External: &v1alpha1.ExternalMetricSource{
 									MetricName:     "deadbeef",
-									MetricSelector: &v1.LabelSelector{map[string]string{"label": "value"}, nil},
+									MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}},
 									HighWatermark:  resource.NewQuantity(8, resource.DecimalSI),
 									LowWatermark:   resource.NewQuantity(7, resource.DecimalSI),
 								},
@@ -688,20 +687,20 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 					},
 				}),
 				deploy: &appsv1.Deployment{
-					metav1.TypeMeta{Kind: "Deployment"},
-					metav1.ObjectMeta{
+					TypeMeta: metav1.TypeMeta{Kind: "Deployment"},
+					ObjectMeta: metav1.ObjectMeta{
 						Name:      testingDeployName,
 						Namespace: testingNamespace,
 					},
-					appsv1.DeploymentSpec{
+					Spec: appsv1.DeploymentSpec{
 						Replicas: getReplicas(8),
 					},
-					appsv1.DeploymentStatus{
+					Status: appsv1.DeploymentStatus{
 						Replicas: 8,
 					},
 				},
 			},
-			wantFunc: func(currentReplicas int32, lowMark int64, highMark int64, metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *v1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
+			wantFunc: func(currentReplicas int32, lowMark int64, highMark int64, metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *metav1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
 				// With 8 replicas, the avg algo and an external value returned of 100 we have 10 replicas and the utilization of 10
 				return 10, 10, time.Time{}, nil
 			},
@@ -724,7 +723,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 								Type: v1alpha1.ExternalMetricSourceType,
 								External: &v1alpha1.ExternalMetricSource{
 									MetricName:     "deadbeef",
-									MetricSelector: &v1.LabelSelector{map[string]string{"label": "value"}, nil},
+									MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}},
 									HighWatermark:  resource.NewQuantity(8, resource.DecimalSI),
 									LowWatermark:   resource.NewQuantity(7, resource.DecimalSI),
 								},
@@ -733,18 +732,18 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 					},
 				}),
 				deploy: &appsv1.Deployment{
-					metav1.TypeMeta{Kind: "Deployment"},
-					metav1.ObjectMeta{
+					TypeMeta: metav1.TypeMeta{Kind: "Deployment"},
+					ObjectMeta: metav1.ObjectMeta{
 						Name:      testingDeployName,
 						Namespace: testingNamespace,
 					},
-					appsv1.DeploymentSpec{},
-					appsv1.DeploymentStatus{
+					Spec: appsv1.DeploymentSpec{},
+					Status: appsv1.DeploymentStatus{
 						Replicas: 8,
 					},
 				},
 			},
-			wantFunc: func(currentReplicas int32, lowMark int64, highMark int64, metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *v1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
+			wantFunc: func(currentReplicas int32, lowMark int64, highMark int64, metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *metav1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
 				// With 8 replicas, the avg algo and an external value returned of 100 we have 10 replicas and the utilization of 10
 				return 0, 0, time.Time{}, fmt.Errorf("unable to fetch metrics from external metrics API")
 			},
@@ -768,7 +767,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 								Type: v1alpha1.ExternalMetricSourceType,
 								External: &v1alpha1.ExternalMetricSource{
 									MetricName:     "deadbeef",
-									MetricSelector: &v1.LabelSelector{map[string]string{"label": "value"}, nil},
+									MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}},
 									HighWatermark:  resource.NewQuantity(8, resource.DecimalSI),
 									LowWatermark:   resource.NewQuantity(3, resource.DecimalSI),
 								},
@@ -777,7 +776,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 								Type: v1alpha1.ExternalMetricSourceType,
 								External: &v1alpha1.ExternalMetricSource{
 									MetricName:     "deadbeef2",
-									MetricSelector: &v1.LabelSelector{map[string]string{"label": "value"}, nil},
+									MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}},
 									HighWatermark:  resource.NewQuantity(10, resource.DecimalSI),
 									LowWatermark:   resource.NewQuantity(5, resource.DecimalSI),
 								},
@@ -788,20 +787,20 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 					},
 				}),
 				deploy: &appsv1.Deployment{
-					metav1.TypeMeta{Kind: "Deployment"},
-					metav1.ObjectMeta{
+					TypeMeta: metav1.TypeMeta{Kind: "Deployment"},
+					ObjectMeta: metav1.ObjectMeta{
 						Name:      testingDeployName,
 						Namespace: testingNamespace,
 					},
-					appsv1.DeploymentSpec{
+					Spec: appsv1.DeploymentSpec{
 						Replicas: getReplicas(8),
 					},
-					appsv1.DeploymentStatus{
+					Status: appsv1.DeploymentStatus{
 						Replicas: 8,
 					},
 				},
 			},
-			wantFunc: func(currentReplicas int32, lowMark int64, highMark int64, metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *v1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
+			wantFunc: func(currentReplicas int32, lowMark int64, highMark int64, metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *metav1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
 				// With 8 replicas, the avg algo and an external value returned of 100 we have 10 replicas and the utilization of 10
 				if metricName == "deadbeef" {
 					return 10, 10, time.Time{}, nil
@@ -878,7 +877,7 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 						DownscaleForbiddenWindowSeconds: 600,
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
-						LastScaleTime: &metav1.Time{time.Unix(1232000, 0)},
+						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
 					},
 				}),
 			},
@@ -895,7 +894,7 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 						UpscaleForbiddenWindowSeconds: 600,
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
-						LastScaleTime: &metav1.Time{time.Unix(1232000, 0)},
+						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
 					},
 				}),
 			},
@@ -913,7 +912,7 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 						DownscaleForbiddenWindowSeconds: 120,
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
-						LastScaleTime: &metav1.Time{time.Unix(1232000, 0)},
+						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
 					},
 				}),
 			},
@@ -931,7 +930,7 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 						DownscaleForbiddenWindowSeconds: 600,
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
-						LastScaleTime: &metav1.Time{time.Unix(1232000, 0)},
+						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
 					},
 				}),
 			},
@@ -949,7 +948,7 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 						DownscaleForbiddenWindowSeconds: 60,
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
-						LastScaleTime: &metav1.Time{time.Unix(1232000, 0)},
+						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
 					},
 				}),
 			},
