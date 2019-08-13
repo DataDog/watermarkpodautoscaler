@@ -2,7 +2,11 @@ package watermarkpodautoscaler
 
 import (
 	"fmt"
+	"testing"
+	"time"
+
 	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -13,8 +17,6 @@ import (
 	emapi "k8s.io/metrics/pkg/apis/external_metrics/v1beta1"
 	emfake "k8s.io/metrics/pkg/client/external_metrics/fake"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
-	"testing"
-	"time"
 )
 
 type metricInfo struct {
