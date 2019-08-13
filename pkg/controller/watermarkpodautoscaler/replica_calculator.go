@@ -13,6 +13,10 @@ import (
 	metricsclient "k8s.io/kubernetes/pkg/controller/podautoscaler/metrics"
 )
 
+type ReplicaCalculatorItf interface {
+	GetExternalMetricReplicas(currentReplicas int32, lowMark int64, highMark int64, metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *metav1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error)
+}
+
 // ReplicaCalculator is responsible for calculation of the number of replicas
 // It contains all the needed information
 type ReplicaCalculator struct {
@@ -31,7 +35,7 @@ func NewReplicaCalculator(metricsClient metricsclient.MetricsClient, podsGetter 
 // GetExternalMetricReplicas calculates the desired replica count based on a
 // target metric value (as a milli-value) for the external metric in the given
 // namespace, and the current replica count.
-func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, lowMark int64, highMark int64,  metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *metav1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
+func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, lowMark int64, highMark int64, metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *metav1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
 
 	labelSelector, err := metav1.LabelSelectorAsSelector(selector)
 	if err != nil {
@@ -58,7 +62,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, low
 		sum = sum + val
 	}
 	adjustedUsage := float64(sum) / averaged
-	milliAdjustedUsage :=  adjustedUsage / 1000
+	milliAdjustedUsage := adjustedUsage / 1000
 	utilization = int64(adjustedUsage)
 
 	log.Info(fmt.Sprintf("About to compare utilization %v vs LWM %d and HWM %d", adjustedUsage, lowMark, highMark))
@@ -66,19 +70,19 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, low
 	adjustedHM := float64(highMark) + wpa.Spec.Tolerance*float64(highMark)
 	adjustedLM := float64(lowMark) - wpa.Spec.Tolerance*float64(lowMark)
 
- 	// We do not use the abs as we want to know if we are higher than the high mark or lower than the low mark
+	// We do not use the abs as we want to know if we are higher than the high mark or lower than the low mark
 	if adjustedUsage > adjustedHM {
 		replicaCount = int32(math.Ceil(float64(currentReplicas) * adjustedUsage / (float64(highMark))))
 		log.Info(fmt.Sprintf("Value is above highMark. Usage: %f. ReplicaCount %d", milliAdjustedUsage, replicaCount))
 
-	} else if adjustedUsage < adjustedLM  {
+	} else if adjustedUsage < adjustedLM {
 		replicaCount = int32(math.Floor(float64(currentReplicas) * adjustedUsage / (float64(lowMark))))
 		log.Info(fmt.Sprintf("Value is below lowMark. Usage: %f ReplicaCount %d", milliAdjustedUsage, replicaCount))
 
 	} else {
 		restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(1)
 		value.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(float64(milliAdjustedUsage))
-		log.Info(fmt.Sprintf("Withing bounds of the watermarks. Value: %v is [%d; %d]", adjustedUsage , lowMark, highMark))
+		log.Info(fmt.Sprintf("Withing bounds of the watermarks. Value: %v is [%d; %d]", adjustedUsage, lowMark, highMark))
 		return currentReplicas, utilization, timestamp, nil
 	}
 

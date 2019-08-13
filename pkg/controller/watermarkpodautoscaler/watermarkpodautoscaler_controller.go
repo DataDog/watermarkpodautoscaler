@@ -191,7 +191,7 @@ type ReconcileWatermarkPodAutoscaler struct {
 	scheme        *runtime.Scheme
 	syncPeriod    time.Duration
 	eventRecorder record.EventRecorder
-	replicaCalc   *ReplicaCalculator
+	replicaCalc   ReplicaCalculatorItf
 }
 
 // Reconcile reads that state of the cluster for a WatermarkPodAutoscaler object and makes changes based on the state read
@@ -511,6 +511,7 @@ func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(wpa *datadog
 				return 0, "", nil, time.Time{}, fmt.Errorf(errMsg)
 			}
 		}
+		// replicas will end up being the max of the replicaCountProposal if there are several metrics
 		if replicas == 0 || replicaCountProposal > replicas {
 			timestamp = timestampProposal
 			replicas = replicaCountProposal
