@@ -707,6 +707,109 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 			},
 			err: nil,
 		},
+		{
+			name: "Error Case",
+			fields: fields{
+				eventRecorder: eventRecorder,
+			},
+			args: args{
+				validMetrics: 0,
+				replicas:     0,
+				MetricName:   "",
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Labels: map[string]string{"foo-key": "bar-value"},
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						Metrics: []v1alpha1.MetricSpec{
+							{
+								Type: v1alpha1.ExternalMetricSourceType,
+								External: &v1alpha1.ExternalMetricSource{
+									MetricName:     "deadbeef",
+									MetricSelector: &v1.LabelSelector{map[string]string{"label": "value"}, nil},
+									HighWatermark:  resource.NewQuantity(8, resource.DecimalSI),
+									LowWatermark:   resource.NewQuantity(7, resource.DecimalSI),
+								},
+							},
+						},
+					},
+				}),
+				deploy: &appsv1.Deployment{
+					metav1.TypeMeta{Kind: "Deployment"},
+					metav1.ObjectMeta{
+						Name:      testingDeployName,
+						Namespace: testingNamespace,
+					},
+					appsv1.DeploymentSpec{},
+					appsv1.DeploymentStatus{
+						Replicas: 8,
+					},
+				},
+			},
+			wantFunc: func(currentReplicas int32, lowMark int64, highMark int64, metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *v1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
+				// With 8 replicas, the avg algo and an external value returned of 100 we have 10 replicas and the utilization of 10
+				return 0, 0, time.Time{}, fmt.Errorf("unable to fetch metrics from external metrics API")
+			},
+			err: fmt.Errorf("failed to get external metric deadbeef: unable to fetch metrics from external metrics API"),
+		},
+		{
+			name: "Multiple metrics Case",
+			fields: fields{
+				eventRecorder: eventRecorder,
+			},
+			args: args{
+				validMetrics: 2,
+				replicas:     10,
+				MetricName:   "deadbeef{map[label:value]}",
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Labels: map[string]string{"foo-key": "bar-value"},
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						Algorithm: "average",
+						Metrics: []v1alpha1.MetricSpec{
+							{
+								Type: v1alpha1.ExternalMetricSourceType,
+								External: &v1alpha1.ExternalMetricSource{
+									MetricName:     "deadbeef",
+									MetricSelector: &v1.LabelSelector{map[string]string{"label": "value"}, nil},
+									HighWatermark:  resource.NewQuantity(8, resource.DecimalSI),
+									LowWatermark:   resource.NewQuantity(3, resource.DecimalSI),
+								},
+							},
+							{
+								Type: v1alpha1.ExternalMetricSourceType,
+								External: &v1alpha1.ExternalMetricSource{
+									MetricName:     "deadbeef2",
+									MetricSelector: &v1.LabelSelector{map[string]string{"label": "value"}, nil},
+									HighWatermark:  resource.NewQuantity(10, resource.DecimalSI),
+									LowWatermark:   resource.NewQuantity(5, resource.DecimalSI),
+								},
+							},
+						},
+						MinReplicas: getReplicas(4),
+						MaxReplicas: 12,
+					},
+				}),
+				deploy: &appsv1.Deployment{
+					metav1.TypeMeta{Kind: "Deployment"},
+					metav1.ObjectMeta{
+						Name:      testingDeployName,
+						Namespace: testingNamespace,
+					},
+					appsv1.DeploymentSpec{
+						Replicas: getReplicas(8),
+					},
+					appsv1.DeploymentStatus{
+						Replicas: 8,
+					},
+				},
+			},
+			wantFunc: func(currentReplicas int32, lowMark int64, highMark int64, metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *v1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
+				// With 8 replicas, the avg algo and an external value returned of 100 we have 10 replicas and the utilization of 10
+				if metricName == "deadbeef" {
+					return 10, 10, time.Time{}, nil
+				}
+				return 8, 5, time.Time{}, nil
+			},
+			err: nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -720,7 +823,8 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 			// If we have 2 metrics, we can assert on the two statuses
 			// We can also use the returned replica, metric etc that is from the highest scaling event
 			replicas, metric, statuses, _, err := r.computeReplicasForMetrics(tt.args.wpa, tt.args.deploy)
-			if err != tt.err {
+
+			if err != nil && err.Error() != tt.err.Error() {
 				t.Errorf("Unexpected error %v", err)
 			}
 			if tt.args.replicas != replicas {
@@ -732,6 +836,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 			if len(statuses) != tt.args.validMetrics {
 				t.Errorf("Incorrect number of valid metrics")
 			}
+
 		})
 	}
 }

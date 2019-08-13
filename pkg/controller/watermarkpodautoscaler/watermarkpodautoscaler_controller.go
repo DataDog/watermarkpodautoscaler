@@ -482,6 +482,8 @@ func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(wpa *datadog
 		switch metricSpec.Type {
 		case datadoghqv1alpha1.ExternalMetricSourceType:
 			if metricSpec.External.HighWatermark != nil && metricSpec.External.LowWatermark != nil {
+				metricNameProposal = fmt.Sprintf("%s{%v}", metricSpec.External.MetricName, metricSpec.External.MetricSelector.MatchLabels)
+
 				replicaCountProposal, utilizationProposal, timestampProposal, err = r.replicaCalc.GetExternalMetricReplicas(currentReplicas, metricSpec.External.LowWatermark.MilliValue(), metricSpec.External.HighWatermark.MilliValue(), metricSpec.External.MetricName, wpa, metricSpec.External.MetricSelector)
 				if err != nil {
 					replicaProposal.Delete(prometheus.Labels{"wpa_name": wpa.Name, "deploy": deploy.Name})
@@ -494,7 +496,6 @@ func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(wpa *datadog
 				highwm.With(prometheus.Labels{"wpa_name": wpa.Name}).Set(float64(metricSpec.External.HighWatermark.MilliValue()))
 				replicaProposal.With(prometheus.Labels{"wpa_name": wpa.Name, "deploy": deploy.Name}).Set(float64(replicaCountProposal))
 
-				metricNameProposal = fmt.Sprintf("%s{%v}", metricSpec.External.MetricName, metricSpec.External.MetricSelector.MatchLabels)
 				statuses[i] = autoscalingv2.MetricStatus{
 					Type: autoscalingv2.ExternalMetricSourceType,
 					External: &autoscalingv2.ExternalMetricStatus{
