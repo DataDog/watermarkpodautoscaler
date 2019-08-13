@@ -851,3 +851,117 @@ func (f *fakeReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32,
 	}
 	return 0, 0, time.Time{}, nil
 }
+
+func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
+	logf.SetLogger(logf.ZapLogger(true))
+
+	type args struct {
+		wpa             *v1alpha1.WatermarkPodAutoscaler
+		currentReplicas int32
+		desiredReplicas int32
+		timestamp       time.Time
+	}
+
+	tests := []struct {
+		name       string
+		args       args
+		shoudScale bool
+	}{
+		{
+			name: "Downscale Forbidden",
+			args: args{
+				currentReplicas: 20,
+				desiredReplicas: 10,
+				timestamp:       time.Unix(1232599, 0), // TODO FIXME
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						DownscaleForbiddenWindowSeconds: 600,
+					},
+					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
+						LastScaleTime: &metav1.Time{time.Unix(1232000, 0)},
+					},
+				}),
+			},
+			shoudScale: false,
+		},
+		{
+			name: "Upscale Forbidden",
+			args: args{
+				currentReplicas: 8,
+				desiredReplicas: 10,
+				timestamp:       time.Unix(1232599, 0), // TODO FIXME
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						UpscaleForbiddenWindowSeconds: 600,
+					},
+					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
+						LastScaleTime: &metav1.Time{time.Unix(1232000, 0)},
+					},
+				}),
+			},
+			shoudScale: false,
+		},
+		{
+			name: "No change of Replicas",
+			args: args{
+				currentReplicas: 10,
+				desiredReplicas: 10,
+				timestamp:       time.Unix(1232599, 0), // TODO FIXME
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						UpscaleForbiddenWindowSeconds:   60,
+						DownscaleForbiddenWindowSeconds: 120,
+					},
+					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
+						LastScaleTime: &metav1.Time{time.Unix(1232000, 0)},
+					},
+				}),
+			},
+			shoudScale: false,
+		},
+		{
+			name: "Upscale authorized",
+			args: args{
+				currentReplicas: 8,
+				desiredReplicas: 10,
+				timestamp:       time.Unix(1232599, 0), // TODO FIXME
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						UpscaleForbiddenWindowSeconds:   60,
+						DownscaleForbiddenWindowSeconds: 600,
+					},
+					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
+						LastScaleTime: &metav1.Time{time.Unix(1232000, 0)},
+					},
+				}),
+			},
+			shoudScale: true,
+		},
+		{
+			name: "All scale authorized",
+			args: args{
+				currentReplicas: 8,
+				desiredReplicas: 10,
+				timestamp:       time.Unix(1232599, 0), // TODO FIXME
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						UpscaleForbiddenWindowSeconds:   60,
+						DownscaleForbiddenWindowSeconds: 60,
+					},
+					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
+						LastScaleTime: &metav1.Time{time.Unix(1232000, 0)},
+					},
+				}),
+			},
+			shoudScale: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scale := shouldScale(tt.args.wpa, tt.args.currentReplicas, tt.args.desiredReplicas, tt.args.timestamp)
+			if scale != tt.shoudScale {
+				t.Error("Incorrect scale")
+			}
+		})
+	}
+}
