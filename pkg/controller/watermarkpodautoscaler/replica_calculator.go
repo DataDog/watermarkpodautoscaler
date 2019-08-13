@@ -16,7 +16,7 @@ import (
 
 // ReplicaCalculatorItf interface for ReplicaCalculator
 type ReplicaCalculatorItf interface {
-	GetExternalMetricReplicas(currentReplicas int32, lowMark int64, highMark int64, metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *metav1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error)
+	GetExternalMetricReplicas(currentReplicas int32, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCount int32, utilization int64, timestamp time.Time, err error)
 }
 
 // ReplicaCalculator is responsible for calculation of the number of replicas
@@ -37,8 +37,9 @@ func NewReplicaCalculator(metricsClient metricsclient.MetricsClient, podsGetter 
 // GetExternalMetricReplicas calculates the desired replica count based on a
 // target metric value (as a milli-value) for the external metric in the given
 // namespace, and the current replica count.
-func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, lowMark int64, highMark int64, metricName string, wpa *v1alpha1.WatermarkPodAutoscaler, selector *metav1.LabelSelector) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
-
+func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
+	metricName := metric.External.MetricName
+	selector := metric.External.MetricSelector
 	labelSelector, err := metav1.LabelSelectorAsSelector(selector)
 	if err != nil {
 		return 0, 0, time.Time{}, err
@@ -66,6 +67,8 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, low
 	adjustedUsage := float64(sum) / averaged
 	milliAdjustedUsage := adjustedUsage / 1000
 	utilization = int64(adjustedUsage)
+	highMark := metric.External.HighWatermark.MilliValue()
+	lowMark := metric.External.LowWatermark.MilliValue()
 
 	log.Info(fmt.Sprintf("About to compare utilization %v vs LWM %d and HWM %d", adjustedUsage, lowMark, highMark))
 
