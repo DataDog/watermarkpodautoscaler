@@ -5,6 +5,7 @@ require (
 	github.com/magiconair/properties v1.8.0
 	github.com/operator-framework/operator-sdk v0.8.2-0.20190522220659-031d71ef8154
 	github.com/prometheus/client_golang v0.9.3-0.20190127221311-3c4408c8b829
+	github.com/prometheus/common v0.2.0
 	github.com/spf13/pflag v1.0.3
 	github.com/stretchr/testify v1.3.0
 	k8s.io/api v0.0.0-20190624085159-95846d7ef82a
@@ -13,6 +14,7 @@ require (
 	k8s.io/code-generator v0.0.0-20190620073620-d55040311883
 	k8s.io/gengo v0.0.0-20190327210449-e17681d19d3a
 	k8s.io/heapster v1.5.4 // indirect
+	k8s.io/kube-aggregator v0.0.0-20181213152105-1e8cd453c474
 	k8s.io/kube-openapi v0.0.0-20190320154901-5e45bb682580
 	k8s.io/kubernetes v1.13.1
 	k8s.io/metrics v0.0.0-20181213153603-64084e52e000

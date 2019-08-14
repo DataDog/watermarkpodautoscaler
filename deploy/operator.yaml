@@ -19,10 +19,10 @@ spec:
       serviceAccountName: watermarkpodautoscaler
       containers:
         - name: watermarkpodautoscaler
-          image: charlyyfon/watermarkedpodautoscaler:v0.0.1
+          image: datadog/watermarkpodautoscaler:v0.0.1
           command:
           - watermarkpodautoscaler
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           env:
             # Watch every ns
             - name: WATCH_NAMESPACE

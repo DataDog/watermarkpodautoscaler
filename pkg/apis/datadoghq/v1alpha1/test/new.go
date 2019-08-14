@@ -11,7 +11,7 @@ var (
 	apiVersion = v1alpha1.SchemeGroupVersion.String()
 )
 
-// NewWatermarkPodAutoscalerOptions used to provide instiation options for NewWatermarkPodAutoscaler method
+// NewWatermarkPodAutoscalerOptions used to provide initiation options for NewWatermarkPodAutoscaler method
 type NewWatermarkPodAutoscalerOptions struct {
 	Status       *v1alpha1.WatermarkPodAutoscalerStatus
 	Spec         *v1alpha1.WatermarkPodAutoscalerSpec
