@@ -105,6 +105,13 @@ spec:
               maximum: 1000
               minimum: 1
               type: integer
+            scaleDownLimitFactor:
+              description: Percentage of replicas that can be added in an upscale
+                event. Max value will set the limit at the Maximum number of Replicas.
+              format: double
+              maximum: 100
+              minimum: 1
+              type: number
             scaleTargetRef:
               description: 'part of HorizontalPodAutoscalerSpec, see comments in the
                 k8s-1.10.8 repo: staging/src/k8s.io/api/autoscaling/v1/types.go reference
@@ -126,17 +133,12 @@ spec:
               - name
               type: object
             scaleUpLimitFactor:
-              description: See the comment about this parameter above
+              description: Percentage of replicas that can be added in an upscale
+                event. Max value will set the limit at the Maximum number of Replicas.
               format: double
-              maximum: 10
+              maximum: 100
               minimum: 1
               type: number
-            scaleUpLimitMinimum:
-              description: See the comment about this parameter above
-              format: int32
-              maximum: 20
-              minimum: 1
-              type: integer
             tolerance:
               format: double
               maximum: 0.99
