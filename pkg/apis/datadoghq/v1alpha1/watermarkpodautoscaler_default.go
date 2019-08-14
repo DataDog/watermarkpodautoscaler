@@ -6,8 +6,9 @@ const (
 	defaultTolerance                       = 0.1
 	defaultDownscaleForbiddenWindowSeconds = 300
 	defaultUpscaleForbiddenWindowSeconds   = 60
-	defaultScaleUpLimitMinimum             = 4.0
-	defaultScaleUpLimitFactor              = 2.0
+	defaultScaleDownLimitFactor            = 20
+	defaultScaleUpLimitFactor              = 50
+	// Most common use case is to autoscale over avg:kubernetes.cpu.usage, which directly correlates to the # replicas.
 	defaultAlgorithm                       = "absolute"
 )
 
@@ -22,11 +23,11 @@ func DefaultWatermarkPodAutoscaler(wpa *WatermarkPodAutoscaler) *WatermarkPodAut
 	if wpa.Spec.Tolerance == 0 {
 		defaultWPA.Spec.Tolerance = defaultTolerance
 	}
-	if wpa.Spec.ScaleUpLimitFactor == 0.0 {
+	if wpa.Spec.ScaleUpLimitFactor == 0 {
 		defaultWPA.Spec.ScaleUpLimitFactor = defaultScaleUpLimitFactor
 	}
-	if wpa.Spec.ScaleUpLimitMinimum == 0 {
-		defaultWPA.Spec.ScaleUpLimitMinimum = defaultScaleUpLimitMinimum
+	if wpa.Spec.ScaleDownLimitFactor == 0 {
+		defaultWPA.Spec.ScaleDownLimitFactor = defaultScaleDownLimitFactor
 	}
 	if wpa.Spec.DownscaleForbiddenWindowSeconds == 0 {
 		defaultWPA.Spec.DownscaleForbiddenWindowSeconds = defaultDownscaleForbiddenWindowSeconds
@@ -46,10 +47,10 @@ func IsDefaultWatermarkPodAutoscaler(wpa *WatermarkPodAutoscaler) bool {
 	if wpa.Spec.Tolerance == 0 {
 		return false
 	}
-	if wpa.Spec.ScaleUpLimitFactor == 0.0 {
+	if wpa.Spec.ScaleUpLimitFactor == 0 {
 		return false
 	}
-	if wpa.Spec.ScaleUpLimitMinimum == 0 {
+	if wpa.Spec.ScaleDownLimitFactor == 0 {
 		return false
 	}
 	if wpa.Spec.DownscaleForbiddenWindowSeconds == 0 {

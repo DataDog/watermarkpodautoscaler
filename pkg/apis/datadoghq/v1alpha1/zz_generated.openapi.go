@@ -81,16 +81,16 @@ func schema_pkg_apis_datadoghq_v1alpha1_WatermarkPodAutoscalerSpec(ref common.Re
 					},
 					"scaleUpLimitFactor": {
 						SchemaProps: spec.SchemaProps{
-							Description: "See the comment about this parameter above",
+							Description: "Percentage of replicas that can be added in an upscale event. Max value will set the limit at the Maximum number of Replicas.",
 							Type:        []string{"number"},
 							Format:      "double",
 						},
 					},
-					"scaleUpLimitMinimum": {
+					"scaleDownLimitFactor": {
 						SchemaProps: spec.SchemaProps{
-							Description: "See the comment about this parameter above",
-							Type:        []string{"integer"},
-							Format:      "int32",
+							Description: "Percentage of replicas that can be added in an upscale event. Max value will set the limit at the Maximum number of Replicas.",
+							Type:        []string{"number"},
+							Format:      "double",
 						},
 					},
 					"tolerance": {

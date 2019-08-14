@@ -590,8 +590,8 @@ func normalizeDesiredReplicas(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, cur
 	return desiredReplicas
 }
 
-// convertDesiredReplicas performs the actual normalization, without depending on `HorizontalController` or `HorizontalPodAutoscaler`
-func convertDesiredReplicasWithRules(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, desiredReplicas, hpaMinReplicas, hpaMaxReplicas int32) (int32, string, string) {
+// convertDesiredReplicas performs the actual normalization, without depending on the `WatermarkPodAutoscaler`
+func convertDesiredReplicasWithRules(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, desiredReplicas, wpaMinReplicas, wpaMaxReplicas int32) (int32, string, string) {
 
 	var minimumAllowedReplicas int32
 	var maximumAllowedReplicas int32
@@ -599,31 +599,38 @@ func convertDesiredReplicasWithRules(wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 	var possibleLimitingCondition string
 	var possibleLimitingReason string
 
-	if hpaMinReplicas == 0 {
+	scaleDownLimit := calculateScaleDownLimit(wpa, currentReplicas)
+	// Compute the maximum and minimum number of replicas we can have
+	if wpaMinReplicas == 0 {
 		minimumAllowedReplicas = 1
+	} else if wpaMinReplicas < scaleDownLimit {
+		minimumAllowedReplicas = scaleDownLimit
+		log.Info(fmt.Sprintf("Downscaling rate too high. Desired %d from %d. Limit is %d", desiredReplicas, currentReplicas, wpa.Spec.ScaleDownLimitFactor))
+		possibleLimitingCondition = "ScaleUpLimit"
+		possibleLimitingReason = "the desired replica count is decreasing faster than the maximum scale rate"
+
 	} else {
-		minimumAllowedReplicas = hpaMinReplicas
+		minimumAllowedReplicas = wpaMinReplicas
+		possibleLimitingCondition = "TooFewReplicas"
+		possibleLimitingReason = "the desired replica count is below the minimum replica count"
 	}
 
-	// Do not upscale too much to prevent incorrect rapid increase of the number of master replicas caused by
-	// bogus CPU usage report from heapster/kubelet (like in issue #k/k32304).
 	scaleUpLimit := calculateScaleUpLimit(wpa, currentReplicas)
 
-	if hpaMaxReplicas > scaleUpLimit {
+	if wpaMaxReplicas > scaleUpLimit {
 		maximumAllowedReplicas = scaleUpLimit
-
+		log.Info(fmt.Sprintf("Upscaling rate too high. Desired %d from %d. Limit is %d", desiredReplicas, currentReplicas, wpa.Spec.ScaleUpLimitFactor))
 		possibleLimitingCondition = "ScaleUpLimit"
 		possibleLimitingReason = "the desired replica count is increasing faster than the maximum scale rate"
 	} else {
-		maximumAllowedReplicas = hpaMaxReplicas
+		maximumAllowedReplicas = wpaMaxReplicas
 
 		possibleLimitingCondition = "TooManyReplicas"
 		possibleLimitingReason = "the desired replica count is above the maximum replica count"
 	}
 
+	// make sure the desiredReplicas is between the allowed boundaries.
 	if desiredReplicas < minimumAllowedReplicas {
-		possibleLimitingCondition = "TooFewReplicas"
-
 		return minimumAllowedReplicas, possibleLimitingCondition, possibleLimitingReason
 	} else if desiredReplicas > maximumAllowedReplicas {
 		return maximumAllowedReplicas, possibleLimitingCondition, possibleLimitingReason
@@ -634,5 +641,25 @@ func convertDesiredReplicasWithRules(wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 
 // Scaleup limit is used to maximize the upscaling rate.
 func calculateScaleUpLimit(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas int32) int32 {
-	return int32(math.Max(wpa.Spec.ScaleUpLimitFactor*float64(currentReplicas), float64(wpa.Spec.ScaleUpLimitMinimum)))
+	// (10 - 7)/10
+	// (desiredReplicas - currentReplicas)/desiredReplicas = factor
+	// f = 25% -> (X - 7)/X = 0.25 -> X = 9 -> Des * f =Des - Cur -> Des = FLOOR(Cur/(1-f))
+
+	if wpa.Spec.ScaleUpLimitFactor >= 100 {
+		return wpa.Spec.MaxReplicas
+	}
+	return int32(math.Floor(float64(currentReplicas)/ (100-wpa.Spec.ScaleUpLimitFactor)))
+}
+
+// Scaledown limit is used to maximize the downscaling rate.
+func calculateScaleDownLimit(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas int32) int32 {
+	// (currentReplicas - desiredReplicas)/currentReplicas = factor
+	// factor = 30%; ScaleDownMax = 25%
+	// 10 - X = 0.25*10 -> X = 7.5 -> Ceil -> 8
+	// currentRe - SDM*curerntRepliac
+	// SDM = 10% 10-X=1 -> X=9
+	if wpa.Spec.ScaleDownLimitFactor >= 100 {
+		return 0
+	}
+	return int32(math.Ceil(float64(currentReplicas) - wpa.Spec.ScaleDownLimitFactor*float64(currentReplicas)/100))
 }
