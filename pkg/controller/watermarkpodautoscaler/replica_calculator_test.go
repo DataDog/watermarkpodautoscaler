@@ -39,7 +39,7 @@ func (tc *replicaCalcTestCase) prep(t *testing.T) *emfake.FakeExternalMetricsCli
 	fakeEMClient := &emfake.FakeExternalMetricsClient{}
 
 	fakeEMClient.AddReactor("list", "*", func(action core.Action) (handled bool, ret runtime.Object, err error) {
-		fmt.Printf("fakeEMClient.AddReactor list *: %v\n", action)
+		t.Logf("fakeEMClient.AddReactor list *: %v\n", action)
 		listAction, wasList := action.(core.ListAction)
 		if !wasList {
 			return true, nil, fmt.Errorf("expected a list-for action, got %v instead", action)
