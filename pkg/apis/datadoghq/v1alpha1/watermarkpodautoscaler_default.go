@@ -9,7 +9,7 @@ const (
 	defaultScaleDownLimitFactor            = 20
 	defaultScaleUpLimitFactor              = 50
 	// Most common use case is to autoscale over avg:kubernetes.cpu.usage, which directly correlates to the # replicas.
-	defaultAlgorithm                       = "absolute"
+	defaultAlgorithm = "absolute"
 )
 
 // DefaultWatermarkPodAutoscaler sets the default in the WPA

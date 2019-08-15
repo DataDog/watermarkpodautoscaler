@@ -3,6 +3,7 @@ package watermarkpodautoscaler
 import (
 	"context"
 	"fmt"
+
 	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
 	"github.com/magiconair/properties/assert"
 	appsv1 "k8s.io/api/apps/v1"
@@ -969,37 +970,35 @@ func TestCalculateScaleUpLimit(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
 
 	tests := []struct {
-		name string
-		wpa *v1alpha1.WatermarkPodAutoscaler
-		cappedUpscale int32
+		name            string
+		wpa             *v1alpha1.WatermarkPodAutoscaler
+		cappedUpscale   int32
 		currentReplicas int32
-
 	}{
 		{
-			name: "30%",
-			wpa: makeWPAScaleFactor(30, 0),
-			cappedUpscale: 549,
+			name:            "30%",
+			wpa:             makeWPAScaleFactor(30, 0),
+			cappedUpscale:   549,
 			currentReplicas: 423,
 		},
 		{
-			name: "0%",
-			wpa: makeWPAScaleFactor(0, 0),
-			cappedUpscale: 424,
+			name:            "0%",
+			wpa:             makeWPAScaleFactor(0, 0),
+			cappedUpscale:   424,
 			currentReplicas: 423,
 		},
 		{
-			name: "100%",
-			wpa: makeWPAScaleFactor(100, 0),
-			cappedUpscale: 846,
+			name:            "100%",
+			wpa:             makeWPAScaleFactor(100, 0),
+			cappedUpscale:   846,
 			currentReplicas: 423,
 		},
 		{
-			name: "73%",
-			wpa: makeWPAScaleFactor(73, 0),
-			cappedUpscale: 731,
+			name:            "73%",
+			wpa:             makeWPAScaleFactor(73, 0),
+			cappedUpscale:   731,
 			currentReplicas: 423,
 		},
-
 	}
 
 	for _, tt := range tests {
@@ -1014,37 +1013,35 @@ func TestCalculateScaleDownLimit(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
 
 	tests := []struct {
-		name string
-		wpa *v1alpha1.WatermarkPodAutoscaler
+		name            string
+		wpa             *v1alpha1.WatermarkPodAutoscaler
 		cappedDownscale int32
 		currentReplicas int32
-
 	}{
 		{
-			name: "30%",
-			wpa: makeWPAScaleFactor(0, 30),
+			name:            "30%",
+			wpa:             makeWPAScaleFactor(0, 30),
 			cappedDownscale: 297,
 			currentReplicas: 423,
 		},
 		{
-			name: "0%",
-			wpa: makeWPAScaleFactor(0, 0),
+			name:            "0%",
+			wpa:             makeWPAScaleFactor(0, 0),
 			cappedDownscale: 422,
 			currentReplicas: 423,
 		},
 		{
-			name: "100%",
-			wpa: makeWPAScaleFactor(0, 100),
+			name:            "100%",
+			wpa:             makeWPAScaleFactor(0, 100),
 			cappedDownscale: 0,
 			currentReplicas: 423,
 		},
 		{
-			name: "73%",
-			wpa: makeWPAScaleFactor(0, 73),
+			name:            "73%",
+			wpa:             makeWPAScaleFactor(0, 73),
 			cappedDownscale: 115,
 			currentReplicas: 423,
 		},
-
 	}
 
 	for _, tt := range tests {
@@ -1059,7 +1056,7 @@ func makeWPAScaleFactor(scaleUpLimit, scaleDownLimit int32) *v1alpha1.WatermarkP
 	return &v1alpha1.WatermarkPodAutoscaler{
 		Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 			ScaleDownLimitFactor: scaleDownLimit,
-			ScaleUpLimitFactor: scaleUpLimit,
+			ScaleUpLimitFactor:   scaleUpLimit,
 		},
 	}
 }
