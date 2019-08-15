@@ -646,40 +646,10 @@ func convertDesiredReplicasWithRules(wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 // Scaleup limit is used to maximize the upscaling rate.
 func calculateScaleUpLimit(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas int32) int32 {
 	// returns TO how much we can upscale, not BY how much.
-	// 50%: 2->3 ( 2+2/50 )
-	// %: 2->4 (
-	 //return int32(math.Max(1, math.Floor(float64(currentReplicas) + float64(currentReplicas)/ (100-wpa.Spec.ScaleUpLimitFactor))))
-	 // Desired = current + ratio * Desired ?
-	 // Max = Current + max(1, floor(Current * ratio)) ?
-	 	// 30%
-	 		// 3  -> 4  (0.9) -> max of 1 so 1.
-	 		// 10 -> 13 (3)
-	 		// 51 -> 66 (15.3)
-	 	// 40%
-	 		// 3  -> 4  (1.2)
-	 		// 10 -> 14 (4)
-	 		// 51 -> 71 (20.4)
-	 	// 70%
-	 		// 3  -> 5  (2.1)
-	 		// 10 -> 17 (7)
-	 		// 51 -> 86 (35.7)
 	return int32(float64(currentReplicas) + math.Max(1, math.Floor(wpa.Spec.ScaleUpLimitFactor/100 * float64(currentReplicas))))
 }
 
 // Scaledown limit is used to maximize the downscaling rate.
 func calculateScaleDownLimit(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas int32) int32 {
-	// Max = Current - max(1, floor(Current * ratio))
-	// 30%
-		// 3  -> 2  (3.9)
-		// 10 -> 7 (13)
-		// 51 -> 36 (66.3)
-	// 40%
-		// 3  -> 2  (1.2)
-		// 10 -> 14 (4)
-		// 51 -> 31 (20.4)
-	// 70%
-		// 3  -> 1  (2.1)
-		// 10 -> 3 (7)
-		// 51 -> 16 (35.7)
 	return int32(float64(currentReplicas) - math.Max(1, math.Floor(wpa.Spec.ScaleDownLimitFactor/100*float64(currentReplicas))))
 }
