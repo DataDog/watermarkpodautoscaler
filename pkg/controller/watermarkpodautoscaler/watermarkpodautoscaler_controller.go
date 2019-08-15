@@ -605,7 +605,7 @@ func convertDesiredReplicasWithRules(wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 	} else if desiredReplicas < scaleDownLimit {
 		minimumAllowedReplicas = scaleDownLimit
 		restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "reason": "downscale_capping"}).Set(1)
-		log.Info(fmt.Sprintf("Downscaling rate higher than limit %f. Capping the maximum downscale to %d", wpa.Spec.ScaleDownLimitFactor, scaleDownLimit))
+		log.Info(fmt.Sprintf("Downscaling rate higher than limit of %d%%. Capping the maximum downscale to %d replicas", wpa.Spec.ScaleDownLimitFactor, scaleDownLimit))
 		possibleLimitingCondition = "ScaleUpLimit"
 		possibleLimitingReason = "the desired replica count is decreasing faster than the maximum scale rate"
 
@@ -622,7 +622,7 @@ func convertDesiredReplicasWithRules(wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 		maximumAllowedReplicas = scaleUpLimit
 		restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "reason": "upscale_capping"}).Set(1)
 
-		log.Info(fmt.Sprintf("Upscaling rate higher than limit %f. Capping the maximum upscale to %d replicas", wpa.Spec.ScaleUpLimitFactor, scaleUpLimit))
+		log.Info(fmt.Sprintf("Upscaling rate higher than limit of %d%%. Capping the maximum upscale to %d replicas", wpa.Spec.ScaleUpLimitFactor, scaleUpLimit))
 		possibleLimitingCondition = "ScaleUpLimit"
 		possibleLimitingReason = "the desired replica count is increasing faster than the maximum scale rate"
 	} else {
@@ -646,10 +646,10 @@ func convertDesiredReplicasWithRules(wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 // Scaleup limit is used to maximize the upscaling rate.
 func calculateScaleUpLimit(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas int32) int32 {
 	// returns TO how much we can upscale, not BY how much.
-	return int32(float64(currentReplicas) + math.Max(1, math.Floor(wpa.Spec.ScaleUpLimitFactor/100 * float64(currentReplicas))))
+	return int32(float64(currentReplicas) + math.Max(1, math.Floor(float64(wpa.Spec.ScaleUpLimitFactor/100 * currentReplicas))))
 }
 
 // Scaledown limit is used to maximize the downscaling rate.
 func calculateScaleDownLimit(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas int32) int32 {
-	return int32(float64(currentReplicas) - math.Max(1, math.Floor(wpa.Spec.ScaleDownLimitFactor/100*float64(currentReplicas))))
+	return int32(float64(currentReplicas) - math.Max(1, math.Floor(float64(wpa.Spec.ScaleDownLimitFactor/100*currentReplicas))))
 }
