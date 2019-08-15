@@ -109,7 +109,7 @@ var (
 		},
 		[]string{
 			"wpa_name",
-			"metric_name",
+			"reason",
 		})
 )
 
@@ -268,10 +268,9 @@ func (r *ReconcileWatermarkPodAutoscaler) Reconcile(request reconcile.Request) (
 	}
 
 	if err := r.reconcileWPA(instance, deploy); err != nil {
-		// Should never happen, actually.
 		log.Info(err.Error())
 		r.eventRecorder.Event(instance, corev1.EventTypeWarning, "FailedProcessWPA", err.Error())
-		setCondition(instance, autoscalingv2.AbleToScale, corev1.ConditionTrue, "FailedProcessWPA", "Error happened while processing the WPA")
+		setCondition(instance, autoscalingv2.AbleToScale, corev1.ConditionFalse, "FailedProcessWPA", "Error happened while processing the WPA")
 		return reconcile.Result{}, nil
 	}
 
@@ -294,7 +293,7 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.Wa
 
 	setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, "SucceededGetScale", "the WPA controller was able to get the target's current scale")
 
-	var metricStatuses []autoscalingv2.MetricStatus
+	metricStatuses :=  wpaStatusOriginal.CurrentMetrics
 	proposedReplicas := int32(0)
 	metricName := ""
 
@@ -303,7 +302,6 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.Wa
 	now := time.Now()
 
 	rescale := true
-
 	switch {
 	case *deploy.Spec.Replicas == 0:
 		// Autoscaling is disabled for this resource
@@ -380,6 +378,7 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.Wa
 		r.eventRecorder.Eventf(wpa, corev1.EventTypeNormal, "NotScaling", fmt.Sprintf("Decided not to scale %s to %d (last scale time was %v )", reference, desiredReplicas, wpa.Status.LastScaleTime))
 		desiredReplicas = currentReplicas
 	}
+
 	replicaEffective.With(prometheus.Labels{"wpa_name": wpa.Name, "deploy": deploy.Name}).Set(float64(desiredReplicas))
 	setStatus(wpa, currentReplicas, desiredReplicas, metricStatuses, rescale)
 	return r.updateStatusIfNeeded(wpaStatusOriginal, wpa)
@@ -603,28 +602,32 @@ func convertDesiredReplicasWithRules(wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 	// Compute the maximum and minimum number of replicas we can have
 	if wpaMinReplicas == 0 {
 		minimumAllowedReplicas = 1
-	} else if wpaMinReplicas < scaleDownLimit {
+	} else if desiredReplicas < scaleDownLimit {
 		minimumAllowedReplicas = scaleDownLimit
-		log.Info(fmt.Sprintf("Downscaling rate too high. Desired %d from %d. Limit is %d", desiredReplicas, currentReplicas, wpa.Spec.ScaleDownLimitFactor))
+		restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "reason": "downscale_capping"}).Set(1)
+		log.Info(fmt.Sprintf("Downscaling rate higher than limit %f. Capping the maximum downscale to %d", wpa.Spec.ScaleDownLimitFactor, scaleDownLimit))
 		possibleLimitingCondition = "ScaleUpLimit"
 		possibleLimitingReason = "the desired replica count is decreasing faster than the maximum scale rate"
 
 	} else {
 		minimumAllowedReplicas = wpaMinReplicas
+		restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "reason": "downscale_capping"}).Set(0)
 		possibleLimitingCondition = "TooFewReplicas"
 		possibleLimitingReason = "the desired replica count is below the minimum replica count"
 	}
 
 	scaleUpLimit := calculateScaleUpLimit(wpa, currentReplicas)
 
-	if wpaMaxReplicas > scaleUpLimit {
+	if desiredReplicas > scaleUpLimit {
 		maximumAllowedReplicas = scaleUpLimit
-		log.Info(fmt.Sprintf("Upscaling rate too high. Desired %d from %d. Limit is %d", desiredReplicas, currentReplicas, wpa.Spec.ScaleUpLimitFactor))
+		restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "reason": "upscale_capping"}).Set(1)
+
+		log.Info(fmt.Sprintf("Upscaling rate higher than limit %f. Capping the maximum upscale to %d replicas", wpa.Spec.ScaleUpLimitFactor, scaleUpLimit))
 		possibleLimitingCondition = "ScaleUpLimit"
 		possibleLimitingReason = "the desired replica count is increasing faster than the maximum scale rate"
 	} else {
 		maximumAllowedReplicas = wpaMaxReplicas
-
+		restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "reason": "upscale_capping"}).Set(0)
 		possibleLimitingCondition = "TooManyReplicas"
 		possibleLimitingReason = "the desired replica count is above the maximum replica count"
 	}
@@ -633,6 +636,7 @@ func convertDesiredReplicasWithRules(wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 	if desiredReplicas < minimumAllowedReplicas {
 		return minimumAllowedReplicas, possibleLimitingCondition, possibleLimitingReason
 	} else if desiredReplicas > maximumAllowedReplicas {
+		log.Info(fmt.Sprintf("Returning %d replicas, condition: %s reason %s", maximumAllowedReplicas, possibleLimitingCondition, possibleLimitingReason))
 		return maximumAllowedReplicas, possibleLimitingCondition, possibleLimitingReason
 	}
 
@@ -641,25 +645,41 @@ func convertDesiredReplicasWithRules(wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 
 // Scaleup limit is used to maximize the upscaling rate.
 func calculateScaleUpLimit(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas int32) int32 {
-	// (10 - 7)/10
-	// (desiredReplicas - currentReplicas)/desiredReplicas = factor
-	// f = 25% -> (X - 7)/X = 0.25 -> X = 9 -> Des * f =Des - Cur -> Des = FLOOR(Cur/(1-f))
-
-	if wpa.Spec.ScaleUpLimitFactor >= 100 {
-		return wpa.Spec.MaxReplicas
-	}
-	return int32(math.Floor(float64(currentReplicas)/ (100-wpa.Spec.ScaleUpLimitFactor)))
+	// returns TO how much we can upscale, not BY how much.
+	// 50%: 2->3 ( 2+2/50 )
+	// %: 2->4 (
+	 //return int32(math.Max(1, math.Floor(float64(currentReplicas) + float64(currentReplicas)/ (100-wpa.Spec.ScaleUpLimitFactor))))
+	 // Desired = current + ratio * Desired ?
+	 // Max = Current + max(1, floor(Current * ratio)) ?
+	 	// 30%
+	 		// 3  -> 4  (0.9) -> max of 1 so 1.
+	 		// 10 -> 13 (3)
+	 		// 51 -> 66 (15.3)
+	 	// 40%
+	 		// 3  -> 4  (1.2)
+	 		// 10 -> 14 (4)
+	 		// 51 -> 71 (20.4)
+	 	// 70%
+	 		// 3  -> 5  (2.1)
+	 		// 10 -> 17 (7)
+	 		// 51 -> 86 (35.7)
+	return int32(float64(currentReplicas) + math.Max(1, math.Floor(wpa.Spec.ScaleUpLimitFactor/100 * float64(currentReplicas))))
 }
 
 // Scaledown limit is used to maximize the downscaling rate.
 func calculateScaleDownLimit(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas int32) int32 {
-	// (currentReplicas - desiredReplicas)/currentReplicas = factor
-	// factor = 30%; ScaleDownMax = 25%
-	// 10 - X = 0.25*10 -> X = 7.5 -> Ceil -> 8
-	// currentRe - SDM*curerntRepliac
-	// SDM = 10% 10-X=1 -> X=9
-	if wpa.Spec.ScaleDownLimitFactor >= 100 {
-		return 0
-	}
-	return int32(math.Ceil(float64(currentReplicas) - wpa.Spec.ScaleDownLimitFactor*float64(currentReplicas)/100))
+	// Max = Current - max(1, floor(Current * ratio))
+	// 30%
+		// 3  -> 2  (3.9)
+		// 10 -> 7 (13)
+		// 51 -> 36 (66.3)
+	// 40%
+		// 3  -> 2  (1.2)
+		// 10 -> 14 (4)
+		// 51 -> 31 (20.4)
+	// 70%
+		// 3  -> 1  (2.1)
+		// 10 -> 3 (7)
+		// 51 -> 16 (35.7)
+	return int32(float64(currentReplicas) - math.Max(1, math.Floor(wpa.Spec.ScaleDownLimitFactor/100*float64(currentReplicas))))
 }

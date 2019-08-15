@@ -48,7 +48,10 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, met
 
 	metrics, timestamp, err := c.metricsClient.GetExternalMetric(metricName, wpa.Namespace, labelSelector)
 	if err != nil {
-		restrictedScaling.Delete(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName})
+		// When we add official support for several metrics, move this Delete to only occur if no metric is available at all.
+		restrictedScaling.Delete(prometheus.Labels{"wpa_name": wpa.Name, "reason": "upscale_capping"})
+		restrictedScaling.Delete(prometheus.Labels{"wpa_name": wpa.Name, "reason": "downscale_capping"})
+		restrictedScaling.Delete(prometheus.Labels{"wpa_name": wpa.Name, "reason": "within_bounds"})
 		value.Delete(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName})
 		return 0, 0, time.Time{}, fmt.Errorf("unable to get external metric %s/%s/%+v: %s", wpa.Namespace, metricName, selector, err)
 	}
@@ -84,13 +87,13 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, met
 		replicaCount = int32(math.Floor(float64(currentReplicas) * adjustedUsage / (float64(lowMark))))
 		log.Info(fmt.Sprintf("Value is below lowMark. Usage: %f ReplicaCount %d", milliAdjustedUsage, replicaCount))
 	default:
-		restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(1)
+		restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "reason": "within_bounds"}).Set(1)
 		value.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(milliAdjustedUsage)
 		log.Info(fmt.Sprintf("Within bounds of the watermarks. Value: %v is [%d; %d] Tol: +/- %v%%", adjustedUsage, lowMark, highMark, wpa.Spec.Tolerance))
 		return currentReplicas, utilization, timestamp, nil
 	}
 
-	restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(0)
+	restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "reason": "within_bounds"}).Set(0)
 	value.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(milliAdjustedUsage)
 
 	return replicaCount, utilization, timestamp, nil
