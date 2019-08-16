@@ -33,7 +33,11 @@ As we use it locally we are also going to submit a KEP to hopefully get its feat
 
 ## The algorithm
 
-There are two options to 
+There are two options to compute the desired number of replicas.
+Depending on your use case, you might want to consider one or the other.
+1. `average`
+    If
+2. `absolute`
 
 
 ## Developer guide
