@@ -19,7 +19,6 @@ build:
   stage: build
   tags: [ "runner:main", "size:large" ]
   script:
-  - go mod download
   - make build
 
 unit_tests:
