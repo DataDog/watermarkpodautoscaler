@@ -990,6 +990,12 @@ func TestCalculateScaleUpLimit(t *testing.T) {
 			currentReplicas: 423,
 		},
 		{
+			name:            "12%",
+			wpa:             makeWPAScaleFactor(12, 0),
+			cappedUpscale:   473,
+			currentReplicas: 423,
+		},
+		{
 			name:            "100%",
 			wpa:             makeWPAScaleFactor(100, 0),
 			cappedUpscale:   846,
