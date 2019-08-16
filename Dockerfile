@@ -1,10 +1,7 @@
-FROM golang as build-env
+FROM golang:1.12 as build-env
 ARG VERSION=""
 
 WORKDIR /src
-
-COPY ./go.mod ./go.sum ./
-RUN go mod download
 
 COPY . .
 RUN make TAG=$VERSION build
