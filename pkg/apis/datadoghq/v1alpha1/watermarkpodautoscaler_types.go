@@ -33,12 +33,12 @@ type WatermarkPodAutoscalerSpec struct {
 	// Percentage of replicas that can be added in an upscale event. Max value will set the limit at the Maximum number of Replicas.
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=100
-	ScaleUpLimitFactor int32 `json:"scaleUpLimitFactor,omitempty"`
+	ScaleUpLimitFactor float64 `json:"scaleUpLimitFactor,omitempty"`
 
 	// Percentage of replicas that can be added in an upscale event. Max value will set the limit at the Maximum number of Replicas.
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=100
-	ScaleDownLimitFactor int32 `json:"scaleDownLimitFactor,omitempty"`
+	ScaleDownLimitFactor float64 `json:"scaleDownLimitFactor,omitempty"`
 
 	// +kubebuilder:validation:Minimum=0.01
 	// +kubebuilder:validation:Maximum=0.99

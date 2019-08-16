@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
 	"github.com/magiconair/properties/assert"
 	appsv1 "k8s.io/api/apps/v1"
@@ -1052,11 +1054,104 @@ func TestCalculateScaleDownLimit(t *testing.T) {
 	}
 }
 
-func makeWPAScaleFactor(scaleUpLimit, scaleDownLimit int32) *v1alpha1.WatermarkPodAutoscaler {
+func makeWPASpec(wpaMinReplicas, wpaMaxReplicas int32, scaleUpLimit, scaleDownLimit float64) *v1alpha1.WatermarkPodAutoscaler {
+	wpa := makeWPAScaleFactor(scaleUpLimit, scaleDownLimit)
+	wpa.Spec.MinReplicas = &wpaMinReplicas
+	wpa.Spec.MaxReplicas = wpaMaxReplicas
+	return wpa
+}
+
+func makeWPAScaleFactor(scaleUpLimit, scaleDownLimit float64) *v1alpha1.WatermarkPodAutoscaler {
 	return &v1alpha1.WatermarkPodAutoscaler{
 		Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 			ScaleDownLimitFactor: scaleDownLimit,
 			ScaleUpLimitFactor:   scaleUpLimit,
 		},
+	}
+}
+
+func TestConvertDesiredReplicasWithRules(t *testing.T) {
+	logf.SetLogger(logf.ZapLogger(true))
+
+	tests := []struct {
+		name                      string
+		wpa                       *v1alpha1.WatermarkPodAutoscaler
+		possibleLimitingCondition string
+		possibleLimitingReason    string
+		desiredReplicas           int32
+		normalizedReplicas        int32
+		currentReplicas           int32
+	}{
+		{
+			name:                      "desiredReplicas < wpaMinReplicas < scaleDownLimit",
+			possibleLimitingCondition: "ScaleDownLimit",
+			possibleLimitingReason:    "the desired replica count is decreasing faster than the maximum scale rate",
+			desiredReplicas:           10,
+			currentReplicas:           50,
+			normalizedReplicas:        45,
+			wpa:                       makeWPASpec(15, 80, 30, 10),
+		},
+		{
+			name:                      "desiredReplicas < scaleDownLimit < wpaMinReplicas ",
+			possibleLimitingCondition: "ScaleDownLimit",
+			possibleLimitingReason:    "the desired replica count is decreasing faster than the maximum scale rate",
+			desiredReplicas:           10,
+			currentReplicas:           50,
+			normalizedReplicas:        30,
+			wpa:                       makeWPASpec(30, 80, 30, 70),
+		},
+		{
+			name:                      "wpaMinReplicas < desiredReplicas < scaleDownLimit",
+			possibleLimitingCondition: "ScaleDownLimit",
+			possibleLimitingReason:    "the desired replica count is decreasing faster than the maximum scale rate",
+			desiredReplicas:           15,
+			currentReplicas:           50,
+			normalizedReplicas:        35,
+			wpa:                       makeWPASpec(10, 6, 30, 30),
+		},
+		{
+			name:                      "wpaMinReplicas < scaleDownLimit < desiredReplicas",
+			possibleLimitingCondition: "DesiredWithinRange",
+			possibleLimitingReason:    "the desired count is within the acceptable range",
+			desiredReplicas:           40,
+			currentReplicas:           50,
+			normalizedReplicas:        40,
+			wpa:                       makeWPASpec(10, 80, 30, 30),
+		},
+		{
+			name:                      "wpaMaxReplicas < scaleUpLimit < desiredReplicas",
+			possibleLimitingCondition: "ScaleUpLimit",
+			possibleLimitingReason:    "the desired replica count is increasing faster than the maximum scale rate",
+			desiredReplicas:           80,
+			currentReplicas:           50,
+			normalizedReplicas:        60,
+			wpa:                       makeWPASpec(3, 60, 20, 0),
+		},
+		{
+			name:                      "wpaMaxReplicas < desiredReplicas < scaleUpLimit",
+			possibleLimitingCondition: "TooManyReplicas",
+			possibleLimitingReason:    "the desired replica count is above the maximum replica count",
+			desiredReplicas:           65,
+			currentReplicas:           50,
+			normalizedReplicas:        60,
+			wpa:                       makeWPASpec(3, 60, 40, 0),
+		},
+		{
+			name:                      "desiredReplicas < wpaMaxReplicas < scaleUpLimit",
+			possibleLimitingCondition: "DesiredWithinRange",
+			possibleLimitingReason:    "the desired count is within the acceptable range",
+			desiredReplicas:           55,
+			currentReplicas:           50,
+			normalizedReplicas:        55,
+			wpa:                       makeWPASpec(3, 60, 40, 0),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			des, cond, rea := convertDesiredReplicasWithRules(tt.wpa, tt.currentReplicas, tt.desiredReplicas, *tt.wpa.Spec.MinReplicas, tt.wpa.Spec.MaxReplicas)
+			require.Equal(t, tt.normalizedReplicas, des)
+			require.Equal(t, tt.possibleLimitingCondition, cond)
+			require.Equal(t, tt.possibleLimitingReason, rea)
+		})
 	}
 }
