@@ -1,12 +1,11 @@
 image: golang:1.12
 variables:
   GO111MODULE: "on"
-  GOPATH: "$CI_PROJECT_DIR/.cache"
   KINDPUSH: "true"
   PROJECTNAME: "watermarkpodautoscaler"
 cache:
   paths:
-  - .cache
+  - $GOPATH/pkg/mod/cache/
 
 stages:
   - build
@@ -20,13 +19,14 @@ build:
   stage: build
   tags: [ "runner:main", "size:large" ]
   script:
-    - make build
+  - go mod download
+  - make build
 
-# unit_tests:
-#   stage: test
-#   tags: [ "runner:main", "size:large" ]
-#   script:
-#   - make test
+ unit_tests:
+   stage: test
+   tags: [ "runner:main", "size:large" ]
+   script:
+   - make test
 
 lint_code:
   stage: test
