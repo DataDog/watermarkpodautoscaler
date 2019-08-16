@@ -3,9 +3,6 @@ variables:
   GO111MODULE: "on"
   KINDPUSH: "true"
   PROJECTNAME: "watermarkpodautoscaler"
-cache:
-  paths:
-  - $GOPATH/pkg/mod/cache/
 
 stages:
   - build
