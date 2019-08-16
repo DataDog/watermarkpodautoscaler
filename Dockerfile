@@ -1,4 +1,4 @@
-FROM golang as build-env
+FROM golang:1.12 as build-env
 ARG VERSION=""
 
 WORKDIR /src
