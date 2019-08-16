@@ -22,11 +22,11 @@ build:
   - go mod download
   - make build
 
- unit_tests:
-   stage: test
-   tags: [ "runner:main", "size:large" ]
-   script:
-   - make test
+unit_tests:
+  stage: test
+  tags: [ "runner:main", "size:large" ]
+  script:
+  - make test
 
 lint_code:
   stage: test
