@@ -25,7 +25,6 @@ import (
 	"k8s.io/metrics/pkg/client/external_metrics"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -258,12 +257,6 @@ func (r *ReconcileWatermarkPodAutoscaler) Reconcile(request reconcile.Request) (
 	if err := r.client.Get(context.TODO(), namespacedName, deploy); err != nil {
 		// Error reading the object, repeat later
 		log.Info(fmt.Sprintf("Error reading Deployment '%v': %v", namespacedName, err))
-		return resRepeat, nil
-	}
-
-	if err := controllerutil.SetControllerReference(instance, deploy, r.scheme); err != nil {
-		// Error communicating with apiserver, repeat later
-		log.Info(fmt.Sprintf("Can't set the controller reference for the deployment %v: %v", namespacedName, err))
 		return resRepeat, nil
 	}
 
