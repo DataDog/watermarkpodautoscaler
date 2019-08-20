@@ -163,9 +163,9 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	predicate := predicate.Funcs{UpdateFunc: updatePredicate}
+	p := predicate.Funcs{UpdateFunc: updatePredicate}
 	// Watch for changes to primary resource WatermarkPodAutoscaler
-	return c.Watch(&source.Kind{Type: &datadoghqv1alpha1.WatermarkPodAutoscaler{}}, &handler.EnqueueRequestForObject{}, predicate)
+	return c.Watch(&source.Kind{Type: &datadoghqv1alpha1.WatermarkPodAutoscaler{}}, &handler.EnqueueRequestForObject{}, p)
 }
 
 // When the WPA is changed (status is changed, edited by the user, etc),
@@ -233,7 +233,6 @@ func (r *ReconcileWatermarkPodAutoscaler) Reconcile(request reconcile.Request) (
 		// default values of the WatermarkPodAutoscaler are set. Return and requeue to show them in the spec.
 		return reconcile.Result{Requeue: true}, nil
 	}
-
 	if err := datadoghqv1alpha1.CheckWPAValidity(instance); err != nil {
 		log.Error(err, fmt.Sprintf("Got an invalid WPA spec in %s", request.NamespacedName.String()))
 		// If the WPA spec is incorrect (most likely, in "metrics" section) stop processing it
@@ -259,7 +258,6 @@ func (r *ReconcileWatermarkPodAutoscaler) Reconcile(request reconcile.Request) (
 		log.Info(fmt.Sprintf("Error reading Deployment '%v': %v", namespacedName, err))
 		return resRepeat, nil
 	}
-
 	if err := r.reconcileWPA(instance, deploy); err != nil {
 		log.Info(err.Error())
 		r.eventRecorder.Event(instance, corev1.EventTypeWarning, "FailedProcessWPA", err.Error())
