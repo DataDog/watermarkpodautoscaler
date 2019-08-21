@@ -318,11 +318,11 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.Wa
 			if err2 := r.updateStatusIfNeeded(wpaStatusOriginal, wpa); err2 != nil {
 				r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedUpdateReplicas", err2.Error())
 				setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, "FailedUpdateReplicas", "the WPA controller was unable to update the number of replicas: %v", err)
-				log.Info(fmt.Sprintf("the WPA controller was unable to update the number of replicas: %v", err2))
+				log.Info(fmt.Sprintf("The WPA controller was unable to update the number of replicas: %v", err2))
 				return nil
 			}
 			r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedComputeMetricsReplicas", err.Error())
-			log.Info("failed to compute desired number of replicas based on listed metrics for %s: %v", reference, err)
+			log.Info(fmt.Sprintf("Failed to compute desired number of replicas based on listed metrics for %s: %v", reference, err))
 			return nil
 		}
 		log.Info(fmt.Sprintf("Proposing %d replicas: Based on %s at %s targeting: %s", proposedReplicas, metricName, now.Format("15:04:05"), reference))
@@ -341,7 +341,7 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.Wa
 		}
 
 		desiredReplicas = normalizeDesiredReplicas(wpa, currentReplicas, desiredReplicas)
-		log.Info(fmt.Sprintf(" -> after normalization: %d", desiredReplicas))
+		log.Info(fmt.Sprintf("Normalized to: %d replicas", desiredReplicas))
 
 		rescale = shouldScale(wpa, currentReplicas, desiredReplicas, now)
 	}
@@ -421,7 +421,7 @@ func canScale(backoffUp, backoffDown bool, currentReplicas, desiredReplicas int3
 		log.Info("Will not scale: number of replicas has not changed")
 		return false
 	}
-	log.Info(fmt.Sprintf("backoffUp: %v, backoffDown: %v, desiredReplicas %d, currentReplicas: %d", backoffUp, backoffDown, desiredReplicas, currentReplicas))
+	log.Info(fmt.Sprintf("Cooldown status: backoffUp: %v, backoffDown: %v, desiredReplicas %d, currentReplicas: %d", backoffUp, backoffDown, desiredReplicas, currentReplicas))
 	return !backoffUp && desiredReplicas > currentReplicas || !backoffDown && desiredReplicas < currentReplicas
 }
 

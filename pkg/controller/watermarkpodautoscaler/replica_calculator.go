@@ -46,7 +46,6 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, met
 	if err != nil {
 		return 0, 0, time.Time{}, err
 	}
-	log.Info(fmt.Sprintf("Using label selector: %v", labelSelector))
 
 	metrics, timestamp, err := c.metricsClient.GetExternalMetric(metricName, wpa.Namespace, labelSelector)
 	if err != nil {
