@@ -180,16 +180,16 @@ Finally, closing the loop we have a verification that the deployment was correct
 
 #### FAQ:
 
-    - What happens if I scale manually my deployment ?  
+- What happens if I scale manually my deployment ?  
     In the next reconcile loop, the new number of replicas will be considered to compute the desired number of replicas. You might see a log saying that the resource was modified by someone else. If the number of replicas configured is outside of the bounds however the controller will scale this back to a number of replicas within the acceptable range.
 
-    - What is the footprint of the controller ?  
+- What is the footprint of the controller ?  
     From our testing, it is a factor of the number of deployments in the cluster. 
     Barbet: 500+ deployments, 65MB - 10mCores
     Chinook: 1600+ deployments, 105MB - 5mCores
     **Worth noting:** When the APIServer restart, the controller-runtime caches the old state and the new one for a second and then merges everything. This makes the memory usage shoot up and can OOM the controller.
 
-    - Is the Controller Stateless ?  
+- Is the Controller Stateless ?  
     Yes.
 
 #### RBAC:
