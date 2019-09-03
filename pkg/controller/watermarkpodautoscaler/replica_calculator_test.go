@@ -76,6 +76,7 @@ func (tc *replicaCalcTestCase) prep(t *testing.T) *emfake.FakeExternalMetricsCli
 }
 
 func (tc *replicaCalcTestCase) runTest(t *testing.T) {
+	logf.SetLogger(logf.ZapLogger(true))
 	emClient := tc.prep(t)
 	mClient := metrics.NewRESTMetricsClient(nil, nil, emClient)
 	replicaCalculator := &ReplicaCalculator{
@@ -86,7 +87,7 @@ func (tc *replicaCalcTestCase) runTest(t *testing.T) {
 	var outTimestamp time.Time
 	var err error
 	if tc.metric.spec.External.MetricSelector != nil {
-		outReplicas, outUtilization, outTimestamp, err = replicaCalculator.GetExternalMetricReplicas(tc.currentReplicas, tc.metric.spec, tc.wpa)
+		outReplicas, outUtilization, outTimestamp, err = replicaCalculator.GetExternalMetricReplicas(logf.Log, tc.currentReplicas, tc.metric.spec, tc.wpa)
 	}
 	if tc.expectedError != nil {
 		require.Error(t, err, "there should be an error calculating the replica count")

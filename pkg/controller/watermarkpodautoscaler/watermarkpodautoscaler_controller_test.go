@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	logr "github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 
 	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
@@ -618,7 +619,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			if tt.args.loadFunc != nil {
 				tt.args.loadFunc(r.client, tt.args.wpa, tt.args.deploy)
 			}
-			err := r.reconcileWPA(tt.args.wpa, tt.args.deploy)
+			err := r.reconcileWPA(logf.Log.WithName(tt.name), tt.args.wpa, tt.args.deploy)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ReconcileWatermarkPodAutoscaler.Reconcile() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -824,7 +825,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 			}
 			// If we have 2 metrics, we can assert on the two statuses
 			// We can also use the returned replica, metric etc that is from the highest scaling event
-			replicas, metric, statuses, _, err := r.computeReplicasForMetrics(tt.args.wpa, tt.args.deploy)
+			replicas, metric, statuses, _, err := r.computeReplicasForMetrics(logf.Log.WithName(tt.name), tt.args.wpa, tt.args.deploy)
 
 			if err != nil && err.Error() != tt.err.Error() {
 				t.Errorf("Unexpected error %v", err)
@@ -847,7 +848,7 @@ type fakeReplicaCalculator struct {
 	replicasFunc func(currentReplicas int32, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCount int32, utilization int64, timestamp time.Time, err error)
 }
 
-func (f *fakeReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
+func (f *fakeReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, currentReplicas int32, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
 	if f.replicasFunc != nil {
 		return f.replicasFunc(currentReplicas, metric, wpa)
 	}
@@ -960,7 +961,7 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			scale := shouldScale(tt.args.wpa, tt.args.currentReplicas, tt.args.desiredReplicas, tt.args.timestamp)
+			scale := shouldScale(logf.Log.WithName(tt.name), tt.args.wpa, tt.args.currentReplicas, tt.args.desiredReplicas, tt.args.timestamp)
 			if scale != tt.shoudScale {
 				t.Error("Incorrect scale")
 			}
@@ -1154,7 +1155,7 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			des, cond, rea := convertDesiredReplicasWithRules(tt.wpa, tt.currentReplicas, tt.desiredReplicas, *tt.wpa.Spec.MinReplicas, tt.wpa.Spec.MaxReplicas)
+			des, cond, rea := convertDesiredReplicasWithRules(logf.Log.WithName(tt.name), tt.wpa, tt.currentReplicas, tt.desiredReplicas, *tt.wpa.Spec.MinReplicas, tt.wpa.Spec.MaxReplicas)
 			require.Equal(t, tt.normalizedReplicas, des)
 			require.Equal(t, tt.possibleLimitingCondition, cond)
 			require.Equal(t, tt.possibleLimitingReason, rea)

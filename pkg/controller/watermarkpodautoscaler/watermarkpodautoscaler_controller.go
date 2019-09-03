@@ -10,6 +10,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	logr "github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -202,8 +203,8 @@ type ReconcileWatermarkPodAutoscaler struct {
 // +kubebuilder:rbac:groups=,resources=pods,verbs=get;list
 // +kubebuilder:rbac:groups=datadoghq.com,resources=watermarkpodautoscalers,verbs=get;list;watch;create;update;patch;delete
 func (r *ReconcileWatermarkPodAutoscaler) Reconcile(request reconcile.Request) (reconcile.Result, error) {
-	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
-	reqLogger.Info("Reconciling WatermarkPodAutoscaler")
+	logger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
+	logger.Info("Reconciling WatermarkPodAutoscaler")
 
 	// resRepeat will be returned if we want to re-run reconcile process
 	// NB: we can't return non-nil err, as the "reconcile" msg will be added to the rate-limited queue
@@ -224,17 +225,17 @@ func (r *ReconcileWatermarkPodAutoscaler) Reconcile(request reconcile.Request) (
 		return reconcile.Result{}, err
 	}
 	if !datadoghqv1alpha1.IsDefaultWatermarkPodAutoscaler(instance) {
-		log.Info("Some configuration options are missing, falling back to the default ones")
+		logger.Info("Some configuration options are missing, falling back to the default ones")
 		defaultWPA := datadoghqv1alpha1.DefaultWatermarkPodAutoscaler(instance)
 		if err := r.client.Update(context.TODO(), defaultWPA); err != nil {
-			log.Error(err, "Failed to set the default values during reconciliation")
+			logger.Error(err, "Failed to set the default values during reconciliation")
 			return reconcile.Result{}, err
 		}
 		// default values of the WatermarkPodAutoscaler are set. Return and requeue to show them in the spec.
 		return reconcile.Result{Requeue: true}, nil
 	}
 	if err := datadoghqv1alpha1.CheckWPAValidity(instance); err != nil {
-		log.Error(err, fmt.Sprintf("Got an invalid WPA spec in %s", request.NamespacedName.String()))
+		logger.Error(err, fmt.Sprintf("Got an invalid WPA spec in %s", request.NamespacedName.String()))
 		// If the WPA spec is incorrect (most likely, in "metrics" section) stop processing it
 		// When the spec is updated, the wpa will be re-added to the reconcile queue
 		r.eventRecorder.Event(instance, corev1.EventTypeWarning, "FailedSpecCheck", err.Error())
@@ -255,11 +256,11 @@ func (r *ReconcileWatermarkPodAutoscaler) Reconcile(request reconcile.Request) (
 
 	if err := r.client.Get(context.TODO(), namespacedName, deploy); err != nil {
 		// Error reading the object, repeat later
-		log.Info(fmt.Sprintf("Error reading Deployment '%v': %v", namespacedName, err))
+		logger.Error(err, "Error reading Deployment")
 		return resRepeat, nil
 	}
-	if err := r.reconcileWPA(instance, deploy); err != nil {
-		log.Info(err.Error())
+	if err := r.reconcileWPA(logger, instance, deploy); err != nil {
+		logger.Error(err, "Error during reconcileWPA")
 		r.eventRecorder.Event(instance, corev1.EventTypeWarning, "FailedProcessWPA", err.Error())
 		setCondition(instance, autoscalingv2.AbleToScale, corev1.ConditionFalse, "FailedProcessWPA", "Error happened while processing the WPA")
 		return reconcile.Result{}, nil
@@ -269,15 +270,15 @@ func (r *ReconcileWatermarkPodAutoscaler) Reconcile(request reconcile.Request) (
 }
 
 // reconcileWPA is the core of the controller.
-func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, deploy *appsv1.Deployment) error {
+func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, deploy *appsv1.Deployment) error {
 	defer func() {
 		if err1 := recover(); err1 != nil {
-			log.Info(fmt.Sprintf("RunTime error in reconcileWPA: %s", err1))
+			logger.Error(fmt.Errorf("recover error"), "RunTime error in reconcileWPA", "returnValue", err1)
 		}
 	}()
 
 	currentReplicas := deploy.Status.Replicas
-	log.Info(fmt.Sprintf("Target deploy: {%v/%v replicas:%v}", deploy.Namespace, deploy.Name, currentReplicas))
+	logger.Info("Target deploy", "replicas", currentReplicas)
 	wpaStatusOriginal := wpa.Status.DeepCopy()
 
 	reference := fmt.Sprintf("%s/%s/%s", wpa.Spec.ScaleTargetRef.Kind, wpa.Namespace, wpa.Spec.ScaleTargetRef.Name)
@@ -312,20 +313,20 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.Wa
 		var err error
 		var metricTimestamp time.Time
 
-		proposedReplicas, metricName, metricStatuses, metricTimestamp, err = r.computeReplicasForMetrics(wpa, deploy)
+		proposedReplicas, metricName, metricStatuses, metricTimestamp, err = r.computeReplicasForMetrics(logger, wpa, deploy)
 		if err != nil {
 			r.setCurrentReplicasInStatus(wpa, currentReplicas)
 			if err2 := r.updateStatusIfNeeded(wpaStatusOriginal, wpa); err2 != nil {
 				r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedUpdateReplicas", err2.Error())
 				setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, "FailedUpdateReplicas", "the WPA controller was unable to update the number of replicas: %v", err)
-				log.Info(fmt.Sprintf("The WPA controller was unable to update the number of replicas: %v", err2))
+				logger.Error(err2, "The WPA controller was unable to update the number of replicas")
 				return nil
 			}
 			r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedComputeMetricsReplicas", err.Error())
-			log.Info(fmt.Sprintf("Failed to compute desired number of replicas based on listed metrics for %s: %v", reference, err))
+			logger.Error(err, "Failed to compute desired number of replicas based on listed metrics.", "reference", reference)
 			return nil
 		}
-		log.Info(fmt.Sprintf("Proposing %d replicas: Based on %s at %s targeting: %s", proposedReplicas, metricName, now.Format("15:04:05"), reference))
+		logger.Info("Proposing replicas", "proposedReplicas", proposedReplicas, "metricName", metricName, "reference", reference)
 
 		rescaleMetric := ""
 		if proposedReplicas > desiredReplicas {
@@ -340,10 +341,10 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.Wa
 			rescaleReason = "All metrics below target"
 		}
 
-		desiredReplicas = normalizeDesiredReplicas(wpa, currentReplicas, desiredReplicas)
-		log.Info(fmt.Sprintf("Normalized to: %d replicas", desiredReplicas))
+		desiredReplicas = normalizeDesiredReplicas(logger, wpa, currentReplicas, desiredReplicas)
+		logger.Info("Normalized replicas", "desiredReplicas", desiredReplicas)
 
-		rescale = shouldScale(wpa, currentReplicas, desiredReplicas, now)
+		rescale = shouldScale(logger, wpa, currentReplicas, desiredReplicas, now)
 	}
 
 	if rescale {
@@ -364,7 +365,7 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.Wa
 		setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, datadoghqv1alpha1.ConditionReasonSucceededRescale, "the HPA controller was able to update the target scale to %d", desiredReplicas)
 		r.eventRecorder.Eventf(wpa, corev1.EventTypeNormal, "SuccessfulRescale", fmt.Sprintf("New size: %d; reason: %s", desiredReplicas, rescaleReason))
 
-		log.Info(fmt.Sprintf("Successful rescale of %s, old size: %d, new size: %d, reason: %s", wpa.Name, currentReplicas, desiredReplicas, rescaleReason))
+		logger.Info("Successful rescale", "currentReplicas", currentReplicas, "desiredReplicas", desiredReplicas, "rescaleReason", rescaleReason)
 	} else {
 		r.eventRecorder.Eventf(wpa, corev1.EventTypeNormal, "NotScaling", fmt.Sprintf("Decided not to scale %s to %d (last scale time was %v )", reference, desiredReplicas, wpa.Status.LastScaleTime))
 		desiredReplicas = currentReplicas
@@ -375,9 +376,9 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(wpa *datadoghqv1alpha1.Wa
 	return r.updateStatusIfNeeded(wpaStatusOriginal, wpa)
 }
 
-func shouldScale(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, desiredReplicas int32, timestamp time.Time) bool {
+func shouldScale(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, desiredReplicas int32, timestamp time.Time) bool {
 	if wpa.Status.LastScaleTime == nil {
-		log.Info("No timestamp for the lastScale event")
+		logger.Info("No timestamp for the lastScale event")
 		return true
 	}
 
@@ -390,7 +391,7 @@ func shouldScale(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas,
 		transitionCountdown.With(prometheus.Labels{"wpa_name": wpa.Name, "transition": "downscale"}).Set(downscaleCountdown)
 		setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, "BackoffDownscale", "the time since the previous scale is still within the downscale forbidden window")
 		backoffDown = true
-		log.Info(fmt.Sprintf("Too early to downscale. Last scale was at %s, next downscale will be at %s, last metrics timestamp: %s", wpa.Status.LastScaleTime, wpa.Status.LastScaleTime.Add(downscaleForbiddenWindow), timestamp))
+		logger.Info("Too early to downscale", "lastScaleTime", wpa.Status.LastScaleTime, "nextDownscaleTimestamp", wpa.Status.LastScaleTime.Add(downscaleForbiddenWindow), "lastMetricsTimestamp", timestamp)
 	} else {
 		transitionCountdown.With(prometheus.Labels{"wpa_name": wpa.Name, "transition": "downscale"}).Set(0)
 	}
@@ -401,7 +402,7 @@ func shouldScale(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas,
 	if upscaleCountdown > 0 {
 		transitionCountdown.With(prometheus.Labels{"wpa_name": wpa.Name, "transition": "upscale"}).Set(upscaleCountdown)
 		backoffUp = true
-		log.Info(fmt.Sprintf("Too early to upscale. Last scale was at %s, next upscale will be at %s, last metrics timestamp: %s", wpa.Status.LastScaleTime, wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow), timestamp))
+		logger.Info("Too early to upscale. Last scale was at %s, next upscale will be at %s, last metrics timestamp: %s", "lastScaleTime", wpa.Status.LastScaleTime, "nextUpscaleTimestamp", wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow), "lastMetricsTimestamp", timestamp)
 
 		if backoffDown {
 			setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, "BackoffBoth", "the time since the previous scale is still within both the downscale and upscale forbidden windows")
@@ -412,16 +413,16 @@ func shouldScale(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas,
 		transitionCountdown.With(prometheus.Labels{"wpa_name": wpa.Name, "transition": "upscale"}).Set(0)
 	}
 
-	return canScale(backoffUp, backoffDown, currentReplicas, desiredReplicas)
+	return canScale(logger, backoffUp, backoffDown, currentReplicas, desiredReplicas)
 }
 
 // canScale ensures that we only scale under the right conditions.
-func canScale(backoffUp, backoffDown bool, currentReplicas, desiredReplicas int32) bool {
+func canScale(logger logr.Logger, backoffUp, backoffDown bool, currentReplicas, desiredReplicas int32) bool {
 	if desiredReplicas == currentReplicas {
-		log.Info("Will not scale: number of replicas has not changed")
+		logger.Info("Will not scale: number of replicas has not changed")
 		return false
 	}
-	log.Info(fmt.Sprintf("Cooldown status: backoffUp: %v, backoffDown: %v, desiredReplicas %d, currentReplicas: %d", backoffUp, backoffDown, desiredReplicas, currentReplicas))
+	logger.Info("Cooldown status", "backoffUp", backoffUp, "backoffDown", backoffDown, "desiredReplicas", desiredReplicas, "currentReplicas", currentReplicas)
 	return !backoffUp && desiredReplicas > currentReplicas || !backoffDown && desiredReplicas < currentReplicas
 }
 
@@ -460,7 +461,7 @@ func setStatus(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, d
 	}
 }
 
-func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, deploy *appsv1.Deployment) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, err error) {
+func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, deploy *appsv1.Deployment) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, err error) {
 	currentReplicas := deploy.Status.Replicas
 	statuses = make([]autoscalingv2.MetricStatus, len(wpa.Spec.Metrics))
 
@@ -476,7 +477,7 @@ func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(wpa *datadog
 			if metricSpec.External.HighWatermark != nil && metricSpec.External.LowWatermark != nil {
 				metricNameProposal = fmt.Sprintf("%s{%v}", metricSpec.External.MetricName, metricSpec.External.MetricSelector.MatchLabels)
 
-				replicaCountProposal, utilizationProposal, timestampProposal, err = r.replicaCalc.GetExternalMetricReplicas(currentReplicas, metricSpec, wpa)
+				replicaCountProposal, utilizationProposal, timestampProposal, err = r.replicaCalc.GetExternalMetricReplicas(logger, currentReplicas, metricSpec, wpa)
 				if err != nil {
 					replicaProposal.Delete(prometheus.Labels{"wpa_name": wpa.Name, "deploy": deploy.Name})
 					r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedGetExternalMetric", err.Error())
@@ -561,7 +562,7 @@ func setConditionInList(inputList []autoscalingv2.HorizontalPodAutoscalerConditi
 
 // normalizeDesiredReplicas takes the metrics desired replicas value and normalizes it based on the appropriate conditions (i.e. < maxReplicas, >
 // minReplicas, etc...)
-func normalizeDesiredReplicas(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas int32, prenormalizedDesiredReplicas int32) int32 {
+func normalizeDesiredReplicas(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas int32, prenormalizedDesiredReplicas int32) int32 {
 	var minReplicas int32
 	if wpa.Spec.MinReplicas != nil {
 		minReplicas = *wpa.Spec.MinReplicas
@@ -569,7 +570,7 @@ func normalizeDesiredReplicas(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, cur
 		minReplicas = 0
 	}
 
-	desiredReplicas, condition, reason := convertDesiredReplicasWithRules(wpa, currentReplicas, prenormalizedDesiredReplicas, minReplicas, wpa.Spec.MaxReplicas)
+	desiredReplicas, condition, reason := convertDesiredReplicasWithRules(logger, wpa, currentReplicas, prenormalizedDesiredReplicas, minReplicas, wpa.Spec.MaxReplicas)
 
 	if desiredReplicas == prenormalizedDesiredReplicas {
 		setCondition(wpa, autoscalingv2.ScalingLimited, corev1.ConditionFalse, condition, reason)
@@ -581,7 +582,7 @@ func normalizeDesiredReplicas(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, cur
 }
 
 // convertDesiredReplicas performs the actual normalization, without depending on the `WatermarkPodAutoscaler`
-func convertDesiredReplicasWithRules(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, desiredReplicas, wpaMinReplicas, wpaMaxReplicas int32) (int32, string, string) {
+func convertDesiredReplicasWithRules(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, desiredReplicas, wpaMinReplicas, wpaMaxReplicas int32) (int32, string, string) {
 
 	var minimumAllowedReplicas int32
 	var maximumAllowedReplicas int32
@@ -598,7 +599,7 @@ func convertDesiredReplicasWithRules(wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 		restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "reason": "downscale_capping"}).Set(1)
 		possibleLimitingCondition = "ScaleDownLimit"
 		possibleLimitingReason = "the desired replica count is decreasing faster than the maximum scale rate"
-		log.Info(fmt.Sprintf("Downscaling rate higher than limit of %.1f%% down to %d replicas. Capping the maximum downscale to %d replicas", wpa.Spec.ScaleDownLimitFactor, wpaMinReplicas, minimumAllowedReplicas))
+		logger.Info("Downscaling rate higher than limit of `scaleDownLimitFactor`, capping the maximum downscale to 'minimumAllowedReplicas'", "scaleDownLimitFactor", fmt.Sprintf("%.1f%%", wpa.Spec.ScaleDownLimitFactor), "wpaMinReplicas", wpaMinReplicas, "minimumAllowedReplicas", minimumAllowedReplicas)
 	case desiredReplicas >= scaleDownLimit:
 		minimumAllowedReplicas = wpaMinReplicas
 		restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "reason": "downscale_capping"}).Set(0)
@@ -615,7 +616,7 @@ func convertDesiredReplicasWithRules(wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 	if desiredReplicas > scaleUpLimit {
 		maximumAllowedReplicas = int32(math.Min(float64(scaleUpLimit), float64(wpaMaxReplicas)))
 		restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "reason": "upscale_capping"}).Set(1)
-		log.Info(fmt.Sprintf("Upscaling rate higher than limit of %.1f%% up to %d replicas. Capping the maximum upscale to %d replicas", wpa.Spec.ScaleUpLimitFactor, wpaMaxReplicas, maximumAllowedReplicas))
+		logger.Info("Upscaling rate higher than limit of 'ScaleUpLimitFactor' up to 'maximumAllowedReplicas' replicas. Capping the maximum upscale to %d replicas", "scaleUpLimitFactor", fmt.Sprintf("%.1f%%", wpa.Spec.ScaleUpLimitFactor), "wpaMaxReplicas", wpaMaxReplicas, "maximumAllowedReplicas", maximumAllowedReplicas)
 		possibleLimitingCondition = "ScaleUpLimit"
 		possibleLimitingReason = "the desired replica count is increasing faster than the maximum scale rate"
 	} else {
@@ -627,7 +628,7 @@ func convertDesiredReplicasWithRules(wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 
 	// make sure the desiredReplicas is between the allowed boundaries.
 	if desiredReplicas > maximumAllowedReplicas {
-		log.Info(fmt.Sprintf("Returning %d replicas, condition: %s reason %s", maximumAllowedReplicas, possibleLimitingCondition, possibleLimitingReason))
+		logger.Info("Returning replicas, condition and reason", "replicas", maximumAllowedReplicas, "condition", possibleLimitingCondition, "reason", possibleLimitingReason)
 		return maximumAllowedReplicas, possibleLimitingCondition, possibleLimitingReason
 	}
 
