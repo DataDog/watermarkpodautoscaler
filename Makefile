@@ -3,9 +3,9 @@ ARTIFACT=controller
 ARTIFACT_PLUGIN=kubectl-${PROJECT_NAME}
 
 # 0.0 shouldn't clobber any released builds
-TAG=v0.0.1
-DOCKER_REGISTRY = ""
-PREFIX = ${DOCKER_REGISTRY}datadog/${PROJECT_NAME}-${ARTIFACT}
+TAG?=v0.0.1
+DOCKER_REGISTRY=
+PREFIX?=${DOCKER_REGISTRY}datadog/${PROJECT_NAME}
 SOURCEDIR = "."
 
 SOURCES := $(shell find $(SOURCEDIR) ! -name "*_test.go" -name '*.go')
@@ -15,6 +15,7 @@ GIT_TAG?=$(shell git tag|tail -1)
 GIT_COMMIT?=$(shell git rev-parse HEAD)
 DATE=$(shell date +%Y-%m-%d/%H:%M:%S )
 LDFLAGS= -ldflags "-w -X ${BUILDINFOPKG}.Tag=${GIT_TAG} -X ${BUILDINFOPKG}.Commit=${GIT_COMMIT} -X ${BUILDINFOPKG}.Version=${TAG} -X ${BUILDINFOPKG}.BuildTime=${DATE} -s"
+GOARGS=
 
 all: build
 
@@ -27,12 +28,12 @@ tidy:
 build: ${ARTIFACT}
 
 ${ARTIFACT}: ${SOURCES}
-	CGO_ENABLED=0 go build -i -installsuffix cgo ${LDFLAGS} -o ${ARTIFACT} ./cmd/manager/main.go
+	CGO_ENABLED=0 go build ${GOARGS} -i -installsuffix cgo ${LDFLAGS} -o ${ARTIFACT} ./cmd/manager/main.go
 
 build-plugin: ${ARTIFACT_PLUGIN}
 
 ${ARTIFACT_PLUGIN}: ${SOURCES}
-	CGO_ENABLED=0 go build -i -installsuffix cgo ${LDFLAGS} -o ${ARTIFACT_PLUGIN} ./cmd/${ARTIFACT_PLUGIN}/main.go
+	CGO_ENABLED=0 go build ${GOARGS} -i -installsuffix cgo ${LDFLAGS} -o ${ARTIFACT_PLUGIN} ./cmd/${ARTIFACT_PLUGIN}/main.go
 
 container:
 	./bin/operator-sdk build $(PREFIX):$(TAG)
@@ -46,8 +47,8 @@ container-ci:
 test:
 	./go.test.sh
 
-e2e: container	
-	operator-sdk test local ./test/e2e --image $(PREFIX):$(TAG)
+e2e:	
+	operator-sdk test local  --verbose ./test/e2e --image $(PREFIX):$(TAG)
 
 push: container
 	docker push $(PREFIX):$(TAG)

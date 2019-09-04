@@ -4,7 +4,7 @@ ARG VERSION=""
 WORKDIR /src
 
 COPY . .
-RUN make TAG=$VERSION build
+RUN make GOARGS="-mod=vendor" TAG=$VERSION build
 
 FROM registry.access.redhat.com/ubi7/ubi-minimal:latest AS final
 

@@ -15,6 +15,11 @@ github.com/BurntSushi/toml
 github.com/PuerkitoBio/purell
 # github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578
 github.com/PuerkitoBio/urlesc
+# github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc
+github.com/alecthomas/template
+github.com/alecthomas/template/parse
+# github.com/alecthomas/units v0.0.0-20151022065526-2efee857e7cf
+github.com/alecthomas/units
 # github.com/appscode/jsonpatch v0.0.0-20190108182946-7c0e3b262f30
 github.com/appscode/jsonpatch
 # github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973
@@ -136,8 +141,9 @@ github.com/operator-framework/operator-sdk/pkg/leader
 github.com/operator-framework/operator-sdk/pkg/log/zap
 github.com/operator-framework/operator-sdk/pkg/metrics
 github.com/operator-framework/operator-sdk/pkg/restmapper
-github.com/operator-framework/operator-sdk/version
 github.com/operator-framework/operator-sdk/pkg/test
+github.com/operator-framework/operator-sdk/pkg/test/e2eutil
+github.com/operator-framework/operator-sdk/version
 github.com/operator-framework/operator-sdk/internal/pkg/scaffold
 github.com/operator-framework/operator-sdk/internal/util/k8sutil
 github.com/operator-framework/operator-sdk/internal/util/projutil
@@ -160,6 +166,7 @@ github.com/prometheus/client_golang/prometheus/internal
 # github.com/prometheus/client_model v0.0.0-20190129233127-fd36f4220a90
 github.com/prometheus/client_model/go
 # github.com/prometheus/common v0.2.0
+github.com/prometheus/common/log
 github.com/prometheus/common/expfmt
 github.com/prometheus/common/model
 github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg
@@ -231,8 +238,10 @@ golang.org/x/oauth2/jwt
 # golang.org/x/sync v0.0.0-20190227155943-e225da77a7e6
 golang.org/x/sync/semaphore
 # golang.org/x/sys v0.0.0-20190405154228-4b34438f7a67
+golang.org/x/sys/windows/svc/eventlog
 golang.org/x/sys/unix
 golang.org/x/sys/windows
+golang.org/x/sys/windows/registry
 # golang.org/x/text v0.3.1-0.20180807135948-17ff2d5776d2
 golang.org/x/text/transform
 golang.org/x/text/unicode/norm
@@ -301,6 +310,8 @@ google.golang.org/grpc/credentials/internal
 google.golang.org/grpc/balancer/base
 google.golang.org/grpc/binarylog/grpc_binarylog_v1
 google.golang.org/grpc/internal/syscall
+# gopkg.in/alecthomas/kingpin.v2 v2.2.6
+gopkg.in/alecthomas/kingpin.v2
 # gopkg.in/inf.v0 v0.9.1
 gopkg.in/inf.v0
 # gopkg.in/yaml.v2 v2.2.2
@@ -309,11 +320,11 @@ gopkg.in/yaml.v2
 k8s.io/api/core/v1
 k8s.io/api/autoscaling/v2beta1
 k8s.io/api/apps/v1
-k8s.io/api/authentication/v1
+k8s.io/api/rbac/v1
 k8s.io/api/autoscaling/v1
+k8s.io/api/authentication/v1
 k8s.io/api/policy/v1beta1
 k8s.io/api/autoscaling/v2beta2
-k8s.io/api/rbac/v1
 k8s.io/api/admissionregistration/v1alpha1
 k8s.io/api/admissionregistration/v1beta1
 k8s.io/api/apps/v1beta1
@@ -341,8 +352,8 @@ k8s.io/api/storage/v1beta1
 k8s.io/api/admission/v1beta1
 # k8s.io/apiextensions-apiserver v0.0.0-20190228180357-d002e88f6236 => k8s.io/apiextensions-apiserver v0.0.0-20181213153335-0fe22c71c476
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1
-k8s.io/apiextensions-apiserver/pkg/apis/apiextensions
 k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/scheme
+k8s.io/apiextensions-apiserver/pkg/apis/apiextensions
 # k8s.io/apimachinery v0.0.0-20190624085041-961b39a1baa0 => k8s.io/apimachinery v0.0.0-20181127025237-2b1284ed4c93
 k8s.io/apimachinery/pkg/util/intstr
 k8s.io/apimachinery/pkg/runtime
@@ -393,6 +404,7 @@ k8s.io/client-go/plugin/pkg/client/auth
 k8s.io/client-go/kubernetes
 k8s.io/client-go/kubernetes/typed/core/v1
 k8s.io/client-go/tools/record
+k8s.io/client-go/kubernetes/scheme
 k8s.io/client-go/discovery
 k8s.io/client-go/rest
 k8s.io/client-go/restmapper
@@ -401,7 +413,6 @@ k8s.io/client-go/plugin/pkg/client/auth/gcp
 k8s.io/client-go/plugin/pkg/client/auth/oidc
 k8s.io/client-go/plugin/pkg/client/auth/openstack
 k8s.io/client-go/tools/clientcmd
-k8s.io/client-go/kubernetes/scheme
 k8s.io/client-go/tools/leaderelection
 k8s.io/client-go/tools/leaderelection/resourcelock
 k8s.io/client-go/kubernetes/typed/admissionregistration/v1alpha1
@@ -442,6 +453,7 @@ k8s.io/client-go/util/workqueue
 k8s.io/client-go/tools/cache
 k8s.io/client-go/tools/metrics
 k8s.io/client-go/testing
+k8s.io/client-go/discovery/cached
 k8s.io/client-go/pkg/version
 k8s.io/client-go/plugin/pkg/client/auth/exec
 k8s.io/client-go/rest/watch
@@ -456,7 +468,6 @@ k8s.io/client-go/util/integer
 k8s.io/client-go/tools/pager
 k8s.io/client-go/util/buffer
 k8s.io/client-go/util/retry
-k8s.io/client-go/discovery/cached
 k8s.io/client-go/pkg/apis/clientauthentication
 k8s.io/client-go/pkg/apis/clientauthentication/v1alpha1
 k8s.io/client-go/pkg/apis/clientauthentication/v1beta1
@@ -496,6 +507,9 @@ k8s.io/gengo/examples/set-gen/sets
 k8s.io/heapster/metrics/api/v1/types
 # k8s.io/klog v0.3.1
 k8s.io/klog
+# k8s.io/kube-aggregator v0.0.0-20181213152105-1e8cd453c474
+k8s.io/kube-aggregator/pkg/apis/apiregistration/v1
+k8s.io/kube-aggregator/pkg/apis/apiregistration
 # k8s.io/kube-openapi v0.0.0-20190320154901-5e45bb682580 => k8s.io/kube-openapi v0.0.0-20180711000925-0cf8f7e6ed1d
 k8s.io/kube-openapi/cmd/openapi-gen
 k8s.io/kube-openapi/cmd/openapi-gen/args

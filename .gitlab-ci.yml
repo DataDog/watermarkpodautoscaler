@@ -1,15 +1,25 @@
 image: golang:1.12
 variables:
   GO111MODULE: "on"
-  KINDPUSH: "true"
   PROJECTNAME: "watermarkpodautoscaler"
+  TARGET_TAG: "v$CI_PIPELINE_ID-${CI_COMMIT_SHA:0:7}"
+  DOCKER_REGISTRY: "486234852809.dkr.ecr.us-east-1.amazonaws.com/ci"
+  GOPATH: "$CI_PROJECT_DIR/.cache"
+  FAKE_EXTERNALSERVER_DOCKER_IMAGE: docker.io/cedriclamoriniere/fake-custom-metrics-server:latest
+cache: &global_cache
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+  - .cache
+  policy: pull-push
 
 stages:
   - build
   - test
   - image
+  - test-e2e
 
 before_script:
+  - mkdir -p .cache
   - make install-tools
 
 build:
@@ -35,8 +45,24 @@ build_image:
   tags: [ "runner:docker", "size:large" ]
   image: 486234852809.dkr.ecr.us-east-1.amazonaws.com/docker-notary:0.6.1
   script:
-    - DOCKER_REGISTRY="486234852809.dkr.ecr.us-east-1.amazonaws.com/ci"
-    - TARGET_TAG=v$CI_PIPELINE_ID-${CI_COMMIT_SHA:0:7}
     - IMAGE_NAME=$DOCKER_REGISTRY/$PROJECTNAME:$TARGET_TAG
     - docker build --build-arg VERSION=$TARGET_TAG -t $IMAGE_NAME -f Dockerfile .
     - docker push $IMAGE_NAME
+
+test_e2e:
+  stage: test-e2e
+  tags: [ "runner:docker", "size:large" ]
+  image: 486234852809.dkr.ecr.us-east-1.amazonaws.com/docker-notary:0.6.1
+  before_script:
+    - mkdir -p .cache
+    - ./hack/install_golang.sh
+    - ./hack/install_kube.sh
+    - apt-get update && apt-get install -y mercurial jq
+    - make install-tools
+  script:
+    - export PATH=$PATH:/usr/local/go/bin:$(pwd)/bin
+    - export KUBECONFIG="$(kind get kubeconfig-path)"
+    - MASTER_IP=$(docker network inspect bridge | jq -r '.[].Containers[] | select( .Name | contains("kind-control-plane")).IPv4Address' | cut -d'/' -f1)
+    - sed -i "s/127.0.0.1:32001/$MASTER_IP:6443/" $KUBECONFIG
+    - kubectl cluster-info
+    - make TAG=$TARGET_TAG PREFIX=$DOCKER_REGISTRY/$PROJECTNAME e2e
