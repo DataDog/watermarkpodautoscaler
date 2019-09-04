@@ -8,6 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
+	logr "github.com/go-logr/logr"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -18,7 +19,7 @@ import (
 
 // ReplicaCalculatorItf interface for ReplicaCalculator
 type ReplicaCalculatorItf interface {
-	GetExternalMetricReplicas(currentReplicas int32, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCount int32, utilization int64, timestamp time.Time, err error)
+	GetExternalMetricReplicas(logger logr.Logger, currentReplicas int32, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCount int32, utilization int64, timestamp time.Time, err error)
 }
 
 // ReplicaCalculator is responsible for calculation of the number of replicas
@@ -39,7 +40,7 @@ func NewReplicaCalculator(metricsClient metricsclient.MetricsClient, podsGetter 
 // GetExternalMetricReplicas calculates the desired replica count based on a
 // target metric value (as a milli-value) for the external metric in the given
 // namespace, and the current replica count.
-func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
+func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, currentReplicas int32, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
 	metricName := metric.External.MetricName
 	selector := metric.External.MetricSelector
 	labelSelector, err := metav1.LabelSelectorAsSelector(selector)
@@ -56,7 +57,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, met
 		value.Delete(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName})
 		return 0, 0, time.Time{}, fmt.Errorf("unable to get external metric %s/%s/%+v: %s", wpa.Namespace, metricName, selector, err)
 	}
-	log.Info(fmt.Sprintf("Metrics from the External Metrics Provider: %v", metrics))
+	logger.Info("Metrics from the External Metrics Provider", "metrics", metrics)
 
 	averaged := 1.0
 	if wpa.Spec.Algorithm == "average" {
@@ -73,7 +74,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, met
 	highMark := metric.External.HighWatermark
 	lowMark := metric.External.LowWatermark
 
-	log.Info(fmt.Sprintf("About to compare utilization %s vs LWM %s and HWM %s", utilizationQuantity.String(), lowMark.String(), highMark.String()))
+	logger.Info("About to compare utilization vs LWM and HWM", "utilization", utilizationQuantity.String(), "lwm", lowMark.String(), "hwm", highMark.String())
 
 	adjustedHM := float64(highMark.MilliValue()) + wpa.Spec.Tolerance*float64(highMark.MilliValue())
 	adjustedLM := float64(lowMark.MilliValue()) - wpa.Spec.Tolerance*float64(lowMark.MilliValue())
@@ -82,14 +83,14 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(currentReplicas int32, met
 	switch {
 	case adjustedUsage > adjustedHM:
 		replicaCount = int32(math.Ceil(float64(currentReplicas) * adjustedUsage / (float64(highMark.MilliValue()))))
-		log.Info(fmt.Sprintf("Value is above highMark. Usage: %s. ReplicaCount %d", utilizationQuantity.String(), replicaCount))
+		logger.Info("Value is above highMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount)
 	case adjustedUsage < adjustedLM:
 		replicaCount = int32(math.Floor(float64(currentReplicas) * adjustedUsage / (float64(lowMark.MilliValue()))))
-		log.Info(fmt.Sprintf("Value is below lowMark. Usage: %s ReplicaCount %d", utilizationQuantity.String(), replicaCount))
+		logger.Info("Value is below lowMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount)
 	default:
 		restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "reason": "within_bounds"}).Set(1)
 		value.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(adjustedUsage)
-		log.Info(fmt.Sprintf("Within bounds of the watermarks. Value: %s is [%s; %s] Tol: +/- %v%%", utilizationQuantity.String(), lowMark.String(), highMark.String(), wpa.Spec.Tolerance))
+		logger.Info("Within bounds of the watermarks", "value", utilizationQuantity.String(), "lwm", lowMark.String(), "hwm", highMark.String(), "tolerance", wpa.Spec.Tolerance)
 		return currentReplicas, utilizationQuantity.MilliValue(), timestamp, nil
 	}
 
