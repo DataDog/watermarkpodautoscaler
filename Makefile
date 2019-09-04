@@ -62,6 +62,7 @@ validate:
 generate:
 	./bin/operator-sdk generate k8s
 	./bin/operator-sdk generate openapi
+	./hack/update-codegen.sh
 
 CRDS = $(wildcard deploy/crds/*_crd.yaml)
 local-load: $(CRDS)

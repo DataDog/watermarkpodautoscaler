@@ -1,5 +1,3 @@
-// NOTE: Boilerplate only.  Ignore this file.
-
 // Package v1alpha1 contains API Schema definitions for the datadoghq v1alpha1 API group
 // +k8s:deepcopy-gen=package,register
 // +groupName=datadoghq.com
@@ -16,4 +14,16 @@ var (
 
 	// SchemeBuilder is used to add go types to the GroupVersionKind scheme
 	SchemeBuilder = &scheme.Builder{GroupVersion: SchemeGroupVersion}
+	// AddToScheme is a global function that registers this API group & version to a scheme
+	AddToScheme = SchemeBuilder.AddToScheme
 )
+
+// Kind takes an unqualified kind and returns back a Group qualified GroupKind
+func Kind(kind string) schema.GroupKind {
+	return SchemeGroupVersion.WithKind(kind).GroupKind()
+}
+
+// Resource takes an unqualified resource and returns a Group qualified GroupResource
+func Resource(resource string) schema.GroupResource {
+	return SchemeGroupVersion.WithResource(resource).GroupResource()
+}

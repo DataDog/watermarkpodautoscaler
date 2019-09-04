@@ -6,6 +6,28 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// WatermarkPodAutoscaler is the Schema for the watermarkpodautoscalers API
+// +k8s:openapi-gen=true
+// +genclient
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="value",type="string",JSONPath=".status.currentMetrics[*].external.currentValue.."
+// +kubebuilder:printcolumn:name="high watermark",type="string",JSONPath=".spec.metrics[*].external.highWatermark.."
+// +kubebuilder:printcolumn:name="low watermark",type="string",JSONPath=".spec.metrics[*].external.lowWatermark.."
+// +kubebuilder:printcolumn:name="age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:printcolumn:name="min replicas",type="integer",JSONPath=".spec.minReplicas"
+// +kubebuilder:printcolumn:name="max replicas",type="integer",JSONPath=".spec.maxReplicas"
+// +kubebuilder:resource:path=watermarkpodautoscalers,shortName=wpa
+type WatermarkPodAutoscaler struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   WatermarkPodAutoscalerSpec   `json:"spec,omitempty"`
+	Status WatermarkPodAutoscalerStatus `json:"status,omitempty"`
+}
+
 // CrossVersionObjectReference contains enough information to let you identify the referred resource.
 type CrossVersionObjectReference struct {
 	// Kind of the referent; More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds"
@@ -113,26 +135,6 @@ type WatermarkPodAutoscalerStatus struct {
 	DesiredReplicas    int32                                            `json:"desiredReplicas"`
 	CurrentMetrics     []autoscalingv2.MetricStatus                     `json:"currentMetrics"`
 	Conditions         []autoscalingv2.HorizontalPodAutoscalerCondition `json:"conditions"`
-}
-
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
-// WatermarkPodAutoscaler is the Schema for the watermarkpodautoscalers API
-// +k8s:openapi-gen=true
-// +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:name="value",type="string",JSONPath=".status.currentMetrics[*].external.currentValue.."
-// +kubebuilder:printcolumn:name="high watermark",type="string",JSONPath=".spec.metrics[*].external.highWatermark.."
-// +kubebuilder:printcolumn:name="low watermark",type="string",JSONPath=".spec.metrics[*].external.lowWatermark.."
-// +kubebuilder:printcolumn:name="age",type="date",JSONPath=".metadata.creationTimestamp"
-// +kubebuilder:printcolumn:name="min replicas",type="integer",JSONPath=".spec.minReplicas"
-// +kubebuilder:printcolumn:name="max replicas",type="integer",JSONPath=".spec.maxReplicas"
-// +kubebuilder:resource:path=watermarkpodautoscalers,shortName=wpa
-type WatermarkPodAutoscaler struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec   WatermarkPodAutoscalerSpec   `json:"spec,omitempty"`
-	Status WatermarkPodAutoscalerStatus `json:"status,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
