@@ -2,7 +2,7 @@ image: golang:1.12
 variables:
   GO111MODULE: "on"
   PROJECTNAME: "watermarkpodautoscaler"
-  TARGET_TAG: "v$CI_PIPELINE_ID-${CI_COMMIT_SHA:0:7}"
+  TARGET_TAG: v$CI_PIPELINE_ID-$CI_COMMIT_SHORT_SHA
   DOCKER_REGISTRY: "486234852809.dkr.ecr.us-east-1.amazonaws.com/ci"
   GOPATH: "$CI_PROJECT_DIR/.cache"
   FAKE_EXTERNALSERVER_DOCKER_IMAGE: docker.io/cedriclamoriniere/fake-custom-metrics-server:latest
@@ -17,6 +17,7 @@ stages:
   - test
   - image
   - test-e2e
+  - release
 
 before_script:
   - mkdir -p .cache
@@ -46,7 +47,7 @@ build_image:
   image: 486234852809.dkr.ecr.us-east-1.amazonaws.com/docker-notary:0.6.1
   script:
     - IMAGE_NAME=$DOCKER_REGISTRY/$PROJECTNAME:$TARGET_TAG
-    - docker build --build-arg VERSION=$TARGET_TAG -t $IMAGE_NAME -f Dockerfile .
+    - docker build -t $IMAGE_NAME -f Dockerfile .
     - docker push $IMAGE_NAME
 
 test_e2e:
@@ -66,3 +67,16 @@ test_e2e:
     - sed -i "s/127.0.0.1:32001/$MASTER_IP:6443/" $KUBECONFIG
     - kubectl cluster-info
     - make TAG=$TARGET_TAG PREFIX=$DOCKER_REGISTRY/$PROJECTNAME e2e
+
+push_release_tag:
+  only:
+    - tags
+  stage: release
+  tags: [ "runner:docker", "size:large" ]
+  image: 486234852809.dkr.ecr.us-east-1.amazonaws.com/docker-notary:0.6.1
+  script:
+    - IMAGE_NAME=$DOCKER_REGISTRY/$PROJECTNAME:$TARGET_TAG
+    - RELEASE_IMAGE_NAME=$DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG
+    - docker pull $IMAGE_NAME
+    - docker tag $IMAGE_NAME $RELEASE_IMAGE_NAME
+    - docker push $RELEASE_IMAGE_NAME

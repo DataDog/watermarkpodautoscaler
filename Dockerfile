@@ -1,10 +1,9 @@
 FROM golang:1.12 as build-env
-ARG VERSION=""
 
 WORKDIR /src
 
 COPY . .
-RUN make GOARGS="-mod=vendor" TAG=$VERSION build
+RUN make GOARGS="-mod=vendor" build
 
 FROM registry.access.redhat.com/ubi7/ubi-minimal:latest AS final
 
