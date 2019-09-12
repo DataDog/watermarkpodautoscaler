@@ -1,7 +1,7 @@
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
-  name: watermarkpodautoscaler.datadoghq.com
+  name: watermarkpodautoscalers.datadoghq.com
 spec:
   additionalPrinterColumns:
   - JSONPath: .status.currentMetrics[*].external.currentValue..
@@ -26,7 +26,7 @@ spec:
   names:
     kind: WatermarkPodAutoscaler
     listKind: WatermarkPodAutoscalerList
-    plural: watermarkpodautoscaler
+    plural: watermarkpodautoscalers
     shortNames:
     - wpa
     singular: watermarkpodautoscaler
