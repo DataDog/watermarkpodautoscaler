@@ -126,7 +126,7 @@ type WatermarkPodAutoscalerStatus struct {
 // +kubebuilder:printcolumn:name="age",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:printcolumn:name="min replicas",type="integer",JSONPath=".spec.minReplicas"
 // +kubebuilder:printcolumn:name="max replicas",type="integer",JSONPath=".spec.maxReplicas"
-// +kubebuilder:resource:path=watermarkpodautoscaler,shortName=wpa
+// +kubebuilder:resource:path=watermarkpodautoscalers,shortName=wpa
 type WatermarkPodAutoscaler struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

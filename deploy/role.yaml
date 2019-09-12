@@ -31,7 +31,7 @@ rules:
 - apiGroups:
   - apps
   resourceNames:
-  - watermarkpodautoscaler
+  - watermarkpodautoscalers
   resources:
   - deployments/finalizers
   verbs:
