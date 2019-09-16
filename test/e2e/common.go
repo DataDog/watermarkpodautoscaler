@@ -12,10 +12,7 @@ import (
 
 func initTestFwkResources(t *testing.T, deploymentName string) (string, *framework.TestCtx, *framework.Framework) {
 	ctx := framework.NewTestCtx(t)
-	err := ctx.InitializeClusterResources(&framework.CleanupOptions{TestContext: ctx, Timeout: cleanupTimeout, RetryInterval: cleanupRetryInterval})
-	if err != nil {
-		t.Fatalf("failed to initialize cluster resources: %v", err)
-	}
+
 	t.Log("Initialized cluster resources")
 	namespace, err := ctx.GetNamespace()
 	if err != nil {
@@ -28,9 +25,15 @@ func initTestFwkResources(t *testing.T, deploymentName string) (string, *framewo
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	err = ctx.InitializeClusterResources(&framework.CleanupOptions{TestContext: ctx, Timeout: cleanupTimeout, RetryInterval: cleanupRetryInterval})
+	if err != nil {
+		t.Fatalf("failed to initialize cluster resources: %v", err)
+	}
+
 	// get global framework variables
 	f := framework.Global
-	err = e2eutil.WaitForDeployment(t, f.KubeClient, namespace, deploymentName, 1, retryInterval, timeout)
+	err = e2eutil.WaitForOperatorDeployment(t, f.KubeClient, namespace, deploymentName, 1, retryInterval, timeout)
 	if err != nil {
 		t.Fatal(err)
 	}
