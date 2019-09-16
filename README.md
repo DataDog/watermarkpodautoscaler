@@ -47,7 +47,7 @@ The WPA controller will use `math.Floor` if the value is under the Lower WaterMa
 
 ### The process
 
-Create your [WPA](https://github.com/DataDog/watermarkpodautoscaler/blob/charlyf/readme/deploy/crds/datadoghq_v1alpha1_watermarkpodautoscaler_cr.yaml) in the same namespace as your target deplyment, then create an HPA targetting a deployment that does not exist, but configure the same metric as in the WPA. This is because I have not implemented the informer on the DCA side to watch for WPAs.
+Create your [WPA](https://github.com/DataDog/watermarkpodautoscaler/blob/charlyf/readme/deploy/crds/datadoghq_v1alpha1_watermarkpodautoscaler_cr.yaml) in the same namespace as your target deployment, then create an HPA targeting a deployment that does not exist, but configure the same metric as in the WPA. This is because I have not implemented the informer on the DCA side to watch for WPAs.
 
 ### Concrete examples
 
@@ -83,7 +83,7 @@ We can use the metric `watermarkpodautoscaler.wpa_controller_restricted_scaling{
 * **Velocity**
 
 The second set of configuration options pertains to the scaling velocity of your deployment, controlled by `scaleDownLimitFactor` and `scaleUpLimitFactor`.
-They are integers between 0 and 100 and represent the maximum ratio of respecively downscaling and upscaling given the current number of replicas.
+They are integers between 0 and 100 and represent the maximum ratio of respectively downscaling and upscaling given the current number of replicas.
 
 In this case, should we have 10 replicas and a recommended number of replicas at 14 (see the Algorithm section for more details on the recommendation) with a scaleUpFactor of 30 (%), we would be capped at 13 replicas.
 
@@ -96,12 +96,12 @@ In this similar example, we avoid downscaling too much, and can use the same set
 It is important to note that we always make conservative scaling decision.
 - with a `scaleUpLimitFactor` of 29% if we have 10 replicas and are recommended 13 we will upscale to 12.
 - with a `scaleDownLimitFactor` of 29% if we have 10 replicas and are recommended 7 we will downscale to 8.
-- The minimum amount of replicas we can recomment to add or remove is 1 (not 0), this is to avoid edge scenarii when using a small number of replicas
+- The minimum amount of replicas we can recommend to add or remove is 1 (not 0), this is to avoid edge scenarii when using a small number of replicas
 - It is important to keep in mind that the options `minReplicas` and `maxReplicas` take precedence. As per the ##Precedence paragraph
 
 * **Cooldown periods**
 
-Finally the last options we want to use are `downscaleForbiddenWindowSeconds` and `upscaleForbiddenWindowSeconds` in seconds that represent respecively how much time we wait before we can respecitvely scale down and scale up after a **scaling event**. We only keep the last scaling event, and we do not compare the `upscaleForbiddenWindowSeconds` to the last time we only upscaled.
+Finally the last options we want to use are `downscaleForbiddenWindowSeconds` and `upscaleForbiddenWindowSeconds` in seconds that represent respectively how much time we wait before we can respectively scale down and scale up after a **scaling event**. We only keep the last scaling event, and we do not compare the `upscaleForbiddenWindowSeconds` to the last time we only upscaled.
 
 In the following example we can see that the recommended number of replicas is ignored if we are in a cooldown period. The downscale cooldown period can me visualised with `watermarkpodautoscaler.wpa_controller_transition_countdown{transition:downscale}`, and is represented in yellow on the graph below. We can see that it is significantly higher than the upscale cooldown period (`transition:upscale`) in orange on our graph. As soon as we are recommended to scale, only if the appropriate cooldown window is over, will we scale. This will reset both countdowns.
 <img width="911" alt="Forbidden Windows" src="https://user-images.githubusercontent.com/7433560/63389864-a14cf300-c39c-11e9-9ad5-8308af5442ad.png">
@@ -125,7 +125,7 @@ Finally, we look at if we are allowed to scale given the `downscaleForbiddenWind
 
 #### Lifecycle
 
-In addition to the metrics mentioned above, these are logs that will help you better understand the proper functionning of the WPA.
+In addition to the metrics mentioned above, these are logs that will help you better understand the proper functioning of the WPA.
 
 Every 15 seconds, we retrieve the metric listed in the `metrics` section of the spec.
 
@@ -195,7 +195,7 @@ Finally, closing the loop we have a verification that the deployment was correct
 #### RBAC:
 
 As we watch all the WPA definitions cluster wide, we use a clusterrole.
-A useful option is to impersonnate the user to verify rights, so for instance you can verify that you have the right to get a deployment as the WPA controller's service account:
+A useful option is to impersonate the user to verify rights, so for instance you can verify that you have the right to get a deployment as the WPA controller's service account:
 `➜ kubectl get deploy logs-index-router-logs-datadog  --as system:serviceaccount:datadog:watermarkpodautoscaler -n logs-storage`
 
 Or query the External Metrics Provider:
@@ -222,7 +222,7 @@ Requirements:
 * docker
 * git
 
-After cloning the repository: `https://github.com/DataDog/watermarkpodautoscaler`, you need to set some environement variables
+After cloning the repository: `https://github.com/DataDog/watermarkpodautoscaler`, you need to set some environment variables
 
 ```console
 export GO111MODULE=on
@@ -234,7 +234,7 @@ then, to install some tooling dependencies, you need to execute: `make install-t
 
 ### useful commands
 
-* `make build`: build localy the controller
+* `make build`: build locally the controller
 * `make generate`: run the several operator-sdk generator
 * `make test`: run unit-tests
 * `make validate`: run common golang linters (`golangci-lint`)
@@ -245,4 +245,4 @@ then, to install some tooling dependencies, you need to execute: `make install-t
 ## Acknowledgement
 
 Some of the features were inspired by the [Configurable HPA](https://github.com/postmates/configurable-hpa) or CHPA.
-Most of the code structure was also used for the Watermark Pod Autoscaler, although the overal packaging of the CRD was done with the operator-sdk.
+Most of the code structure was also used for the Watermark Pod Autoscaler, although the overall packaging of the CRD was done with the operator-sdk.
