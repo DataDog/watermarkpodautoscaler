@@ -73,7 +73,7 @@ $(filter %.yaml,$(files)): %.yaml: %yaml
 	kubectl apply -f $@
 
 install-tools:
-	./hack/golangci-lint.sh v1.17.1
+	./hack/golangci-lint.sh v1.18.0
 	./hack/install-operator-sdk.sh
 
 .PHONY: vendor build push clean test e2e validate local-load install-tools list

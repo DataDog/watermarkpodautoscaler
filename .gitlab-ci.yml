@@ -1,4 +1,4 @@
-image: golang:1.12
+image: golang:1.13
 variables:
   GO111MODULE: "on"
   PROJECTNAME: "watermarkpodautoscaler"
@@ -66,6 +66,9 @@ test_e2e:
     - MASTER_IP=$(docker network inspect bridge | jq -r '.[].Containers[] | select( .Name | contains("kind-control-plane")).IPv4Address' | cut -d'/' -f1)
     - sed -i "s/127.0.0.1:32001/$MASTER_IP:6443/" $KUBECONFIG
     - kubectl cluster-info
+    - IMAGE_NAME=$DOCKER_REGISTRY/$PROJECTNAME:$TARGET_TAG
+    - docker pull $IMAGE_NAME
+    - kind load docker-image $IMAGE_NAME
     - make TAG=$TARGET_TAG PREFIX=$DOCKER_REGISTRY/$PROJECTNAME e2e
 
 push_release_tag:
