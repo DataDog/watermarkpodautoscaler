@@ -11,7 +11,6 @@ import (
 
 // WatermarkPodAutoscaler is the Schema for the watermarkpodautoscalers API
 // +k8s:openapi-gen=true
-// +genclient
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="value",type="string",JSONPath=".status.currentMetrics[*].external.currentValue.."
 // +kubebuilder:printcolumn:name="high watermark",type="string",JSONPath=".spec.metrics[*].external.highWatermark.."
