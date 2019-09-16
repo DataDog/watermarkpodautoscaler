@@ -61,9 +61,9 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
-	"sigs.k8s.io/controller-runtime/pkg/runtime/signals"
+	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 )
 
 // Change below variables to serve metrics on different host or port.
@@ -159,10 +159,23 @@ func main() {
 		{Port: operatorMetricsPort, Name: metrics.CRPortName, Protocol: v1.ProtocolTCP, TargetPort: intstr.IntOrString{Type: intstr.Int, IntVal: operatorMetricsPort}},
 	}
 	// Create Service object to expose the metrics port(s).
-	_, err = metrics.CreateMetricsService(ctx, cfg, servicePorts)
+	service, err := metrics.CreateMetricsService(ctx, cfg, servicePorts)
 	if err != nil {
-		log.Info(err.Error())
+		log.Info("Could not create metrics Service", "error", err.Error())
 	}
+
+    // CreateServiceMonitors will automatically create the prometheus-operator ServiceMonitor resources
+    // necessary to configure Prometheus to scrape metrics from this operator.
+    services := []*v1.Service{service}
+    _, err = metrics.CreateServiceMonitors(cfg, namespace, services)
+    if err != nil {
+        log.Info("Could not create ServiceMonitor object", "error", err.Error())
+        // If this operator is deployed to a cluster without the prometheus-operator running, it will return
+        // ErrServiceMonitorNotPresent, which can be used to safely skip ServiceMonitor creation.
+        if err == metrics.ErrServiceMonitorNotPresent {
+            log.Info("Install prometheus-operator in your cluster to create ServiceMonitor objects", "error", err.Error())
+        }
+    }
 
 	log.Info("Starting the Cmd.")
 
