@@ -144,7 +144,7 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	return &ReconcileWatermarkPodAutoscaler{
 		client:        mgr.GetClient(),
 		scheme:        mgr.GetScheme(),
-		eventRecorder: mgr.GetRecorder("wpa_controller"),
+		eventRecorder: mgr.GetEventRecorderFor("wpa_controller"),
 		replicaCalc:   replicaCalc,
 		syncPeriod:    defaultSyncPeriod,
 	}
