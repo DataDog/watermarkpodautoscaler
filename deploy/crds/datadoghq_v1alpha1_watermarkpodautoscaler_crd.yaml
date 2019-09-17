@@ -60,6 +60,9 @@ spec:
               maximum: 600
               minimum: 1
               type: integer
+            dryRun:
+              description: Wether planned scale changes are actually applied
+              type: boolean
             maxReplicas:
               format: int32
               maximum: 1000
