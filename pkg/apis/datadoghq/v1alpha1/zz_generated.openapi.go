@@ -111,6 +111,13 @@ func schema_pkg_apis_datadoghq_v1alpha1_WatermarkPodAutoscalerSpec(ref common.Re
 							Format:      "",
 						},
 					},
+					"dryRun": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Wether planned scale changes are actually applied",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
 					"scaleTargetRef": {
 						SchemaProps: spec.SchemaProps{
 							Description: "part of HorizontalPodAutoscalerSpec, see comments in the k8s-1.10.8 repo: staging/src/k8s.io/api/autoscaling/v1/types.go reference to scaled resource; horizontal pod autoscaler will learn the current resource consumption and will set the desired number of pods by using its Scale subresource.",

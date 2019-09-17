@@ -308,6 +308,9 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(logger logr.Logger, wpa *
 	setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, "SucceededGetScale", "the WPA controller was able to get the target's current scale")
 
 	metricStatuses := wpaStatusOriginal.CurrentMetrics
+	if metricStatuses == nil {
+		metricStatuses = []autoscalingv2.MetricStatus{}
+	}
 	proposedReplicas := int32(0)
 	metricName := ""
 
@@ -371,6 +374,12 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(logger logr.Logger, wpa *
 
 	if rescale {
 		setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, "ReadyForScale", "the last scaling time was sufficiently old as to warrant a new scale")
+		if wpa.Spec.DryRun {
+			logger.Info("DryRun mode: scaling change was inhibited", "currentReplicas", currentReplicas, "desiredReplicas", desiredReplicas)
+			setStatus(wpa, currentReplicas, desiredReplicas, metricStatuses, rescale)
+			return r.updateStatusIfNeeded(wpaStatusOriginal, wpa)
+		}
+
 		deploy.Spec.Replicas = &desiredReplicas
 		// TODO use Look into Scale method.
 		if err := r.client.Update(context.TODO(), deploy); err != nil {

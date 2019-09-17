@@ -68,6 +68,9 @@ type WatermarkPodAutoscalerSpec struct {
 	// computed values take the # of replicas into account
 	Algorithm string `json:"algorithm,omitempty"`
 
+	// Wether planned scale changes are actually applied
+	DryRun bool `json:"dryRun,omitempty"`
+
 	// part of HorizontalPodAutoscalerSpec, see comments in the k8s-1.10.8 repo: staging/src/k8s.io/api/autoscaling/v1/types.go
 	// reference to scaled resource; horizontal pod autoscaler will learn the current resource consumption
 	// and will set the desired number of pods by using its Scale subresource.
