@@ -32,7 +32,6 @@ require (
 
 // Pinned to kubernetes-1.13.1
 replace (
-	git.apache.org/thrift.git => github.com/apache/thrift v0.12.0
 	github.com/Azure/go-autorest => github.com/Azure/go-autorest v13.0.0+incompatible
 	github.com/coreos/prometheus-operator => github.com/coreos/prometheus-operator v0.29.0
 	github.com/operator-framework/operator-sdk => github.com/operator-framework/operator-sdk v0.10.1-0.20190910171846-947a464dbe96
