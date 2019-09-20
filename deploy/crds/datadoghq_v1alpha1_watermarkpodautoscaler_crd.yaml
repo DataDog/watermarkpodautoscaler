@@ -22,6 +22,9 @@ spec:
   - JSONPath: .spec.maxReplicas
     name: max replicas
     type: integer
+  - JSONPath: .spec.dryRun
+    name: dry-run
+    type: string
   group: datadoghq.com
   names:
     kind: WatermarkPodAutoscaler
