@@ -25,7 +25,7 @@ If you want to autoscale some of your applications but:
 - You need to specify forbidden windows specific to your application.
 - You want to limit the velocity of scaling.
 
-You might notice that the limitations of the HPA are the basis of the WPA.
+The limitations of the HPA are the basis of the WPA.
 
 ## Usage
 
@@ -34,12 +34,13 @@ You might notice that the limitations of the HPA are the basis of the WPA.
 There are two options to compute the desired number of replicas. Depending on your use case, you might want to consider one or the other.
 
 1. `average`
-    The ratio is computed is `value from the external metrics provider` / `current number of replicas`, it is compared to the watermarks and the recommended number of replicas is `value from the external metrics provider` / `watermark` (low or high depending on the current value).
+    The ratio computed is `value from the external metrics provider` / `current number of replicas`, it is compared to the watermarks and the recommended number of replicas is `value from the external metrics provider` / `watermark` (low or high depending on the current value).
     - The `average` algorithm is a good fit if you use a metric that does not depend on the number of replicas. Typically, the number of requests received by an ELB can indicate how many webservers we want to have given that we know that a single webserver should handle X rq/s.
+    Adding a replica will not increase/decrease the # of requests received.
 
 2. `absolute`
-    The default case is `absolute`, we compare the raw **avg** metric gotten from the external metrics provider and it is considered the utilization ratio and the recommended number of replicas is computed as `current number of replicas` * `value from the external metrics provider` / `watermark`.
-    - The `absolute` algorithm is the default as it represents the most common use case: I want my application to run between 60% and 80% of CPU, if my avg:cpu.usage is at 85%, I need to scale up. The metric has to be correlated to the # of replicas.
+    The default value is `absolute`, we compare the raw **avg** metric gotten from the external metrics provider and it is considered the utilization ratio and the recommended number of replicas is computed as `current number of replicas` * `value from the external metrics provider` / `watermark`.
+    - The `absolute` algorithm is the default as it represents the most common use case: You want your application to run between 60% and 80% of CPU, if avg:cpu.usage is at 85%, you need to scale up. The metric has to be correlated to the # of replicas.
 
 Worth noting: In the upstream controller only the `math.Ceil` function is used to round up the recommended number of replicas.
 This means that if you have a threshold at 10, you will need to reach a utilization of 8.999... from the external metrics provider to downscale by one replica but 10.001 will make you go up 1 replicas.
@@ -47,11 +48,13 @@ The WPA controller will use `math.Floor` if the value is under the Lower WaterMa
 
 ### The process
 
-Create your [WPA](https://github.com/DataDog/watermarkpodautoscaler/blob/charlyf/readme/deploy/crds/datadoghq_v1alpha1_watermarkpodautoscaler_cr.yaml) in the same namespace as your target deployment, then create an HPA targeting a deployment that does not exist, but configure the same metric as in the WPA. This is because I have not implemented the informer on the DCA side to watch for WPAs.
+Create your [WPA](https://github.com/DataDog/watermarkpodautoscaler/blob/master/deploy/crds/datadoghq_v1alpha1_watermarkpodautoscaler_cr.yaml) in the same namespace as your target deployment, then create an HPA targeting a deployment that does not exist, but configure the same metric as in the WPA. This is because I have not implemented the informer on the DCA side to watch for WPAs.
+
+The Datadog Cluster Agent will pick up the Creation/Update/Deletion event and parse through the Spec of the WPA to extract the metric and scope to get from Datadog.
 
 ### Concrete examples
 
-In this example we are using the following configuration:
+In this example we are using the following Spec configuration:
 ```
     downscaleForbiddenWindowSeconds: 60
     upscaleForbiddenWindowSeconds: 30
@@ -63,12 +66,12 @@ In this example we are using the following configuration:
     - external:
         highWatermark: 400m
         lowWatermark: 150m
-        metricName: dd.propjoe.request_duration.max
+        metricName: custom.request_duration.max
         metricSelector:
           matchLabels:
-            kubernetes_cluster: barbet
-            service: propjoe
-            short_image: propjoe
+            kubernetes_cluster: mycluster
+            service: billing
+            short_image: billing-app
       type: External
     tolerance: 0.01
 ```
@@ -85,7 +88,7 @@ We can use the metric `watermarkpodautoscaler.wpa_controller_restricted_scaling{
 The second set of configuration options pertains to the scaling velocity of your deployment, controlled by `scaleDownLimitFactor` and `scaleUpLimitFactor`.
 They are integers between 0 and 100 and represent the maximum ratio of respectively downscaling and upscaling given the current number of replicas.
 
-In this case, should we have 10 replicas and a recommended number of replicas at 14 (see the Algorithm section for more details on the recommendation) with a scaleUpFactor of 30 (%), we would be capped at 13 replicas.
+In this case, should we have 10 replicas and a recommended number of replicas at 14 (see the [Algorithm section](#the-algorithm) for more details on the recommendation) with a scaleUpFactor of 30 (%), we would be capped at 13 replicas.
 
 In the following graph, we can see that the suggested number of replicas (in purple), represented by the metric `watermarkpodautoscaler.wpa_controller_replicas_scaling_proposal` is too high compared to the current number of replicas, this will trigger the upscale capping logic, which can be monitored using the metric `watermarkpodautoscaler.wpa_controller_restricted_scaling{reason:upscale_capping}` (Nota: Same as above, the metric was multiplied to make it more explicit). Thus, the effective number of replicas `watermarkpodautoscaler.wpa_controller_replicas_scaling_effective` will scale up, but according to the `scaleUpLimitFactor`
 <img width="911" alt="Upscale Capping" src="https://user-images.githubusercontent.com/7433560/63385168-f46c7900-c38f-11e9-9e7c-1a7796afd31e.png">
