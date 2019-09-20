@@ -41,9 +41,9 @@ const (
 )
 
 var (
-	log = logf.Log.WithName(subsystem)
-
-	value = prometheus.NewGaugeVec(
+	log                                                                = logf.Log.WithName(subsystem)
+	dryRunCondition autoscalingv2.HorizontalPodAutoscalerConditionType = "DryRun"
+	value                                                              = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
 			Name:      "value",
@@ -275,6 +275,12 @@ func (r *ReconcileWatermarkPodAutoscaler) Reconcile(request reconcile.Request) (
 	namespacedName := types.NamespacedName{Namespace: namespace, Name: name}
 
 	deploy := &appsv1.Deployment{}
+
+	if instance.Spec.DryRun {
+		setCondition(instance, dryRunCondition, corev1.ConditionTrue, "DryRun mode enabled", "Scaling changes won't be applied")
+	} else {
+		setCondition(instance, dryRunCondition, corev1.ConditionFalse, "DryRun mode disabled", "Scaling changes can be applied")
+	}
 
 	if err := r.client.Get(context.TODO(), namespacedName, deploy); err != nil {
 		// Error reading the object, repeat later
