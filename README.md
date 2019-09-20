@@ -100,7 +100,7 @@ It is important to note that we always make conservative scaling decision.
 - with a `scaleUpLimitFactor` of 29% if we have 10 replicas and are recommended 13 we will upscale to 12.
 - with a `scaleDownLimitFactor` of 29% if we have 10 replicas and are recommended 7 we will downscale to 8.
 - The minimum amount of replicas we can recommend to add or remove is 1 (not 0), this is to avoid edge scenarii when using a small number of replicas
-- It is important to keep in mind that the options `minReplicas` and `maxReplicas` take precedence. As per the ##Precedence paragraph
+- It is important to keep in mind that the options `minReplicas` and `maxReplicas` take precedence. As per the [Precedence](#precedence) paragraph
 
 * **Cooldown periods**
 
@@ -110,7 +110,7 @@ In the following example we can see that the recommended number of replicas is i
 <img width="911" alt="Forbidden Windows" src="https://user-images.githubusercontent.com/7433560/63389864-a14cf300-c39c-11e9-9ad5-8308af5442ad.png">
 
 * **Precedence**
-
+<a name="precedence"></a>
 Essentially, as we retrieve the value of the External Metric, we will first compare it to the `highWatermark` + `tolerance` and `lowWatermark` - `tolerance`.
 If we are outside of the bounds, we compute the recommended number of replicas.
 Then we compare this value to the current number of replicas to potentially cap the recommended number of replicas.
