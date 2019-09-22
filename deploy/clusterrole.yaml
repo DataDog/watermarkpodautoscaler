@@ -14,6 +14,7 @@ rules:
   - 'get'
 - apiGroups:
   - apps
+  - extensions
   resourceNames:
   - watermarkpodautoscalers
   resources:

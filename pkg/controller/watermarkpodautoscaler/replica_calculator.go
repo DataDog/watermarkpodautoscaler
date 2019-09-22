@@ -56,10 +56,18 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, curren
 	metrics, timestamp, err := c.metricsClient.GetExternalMetric(metricName, wpa.Namespace, labelSelector)
 	if err != nil {
 		// When we add official support for several metrics, move this Delete to only occur if no metric is available at all.
-		restrictedScaling.Delete(prometheus.Labels{"wpa_name": wpa.Name, "reason": "upscale_capping"})
-		restrictedScaling.Delete(prometheus.Labels{"wpa_name": wpa.Name, "reason": "downscale_capping"})
-		restrictedScaling.Delete(prometheus.Labels{"wpa_name": wpa.Name, "reason": "within_bounds"})
-		value.Delete(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName})
+		labelsWithReason := prometheus.Labels{
+			wpaNamePromLabel:           wpa.Name,
+			resourceNamespacePromLabel: wpa.Namespace,
+			resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
+			resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
+			reasonPromLabel:            "upscale_capping"}
+		restrictedScaling.Delete(labelsWithReason)
+		labelsWithReason[reasonPromLabel] = "downscale_capping"
+		restrictedScaling.Delete(labelsWithReason)
+		labelsWithReason[reasonPromLabel] = "within_bounds"
+		restrictedScaling.Delete(labelsWithReason)
+		value.Delete(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: metricName})
 		return 0, 0, time.Time{}, fmt.Errorf("unable to get external metric %s/%s/%+v: %s", wpa.Namespace, metricName, selector, err)
 	}
 	logger.Info("Metrics from the External Metrics Provider", "metrics", metrics)
@@ -84,6 +92,9 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, curren
 	adjustedHM := float64(highMark.MilliValue()) + wpa.Spec.Tolerance*float64(highMark.MilliValue())
 	adjustedLM := float64(lowMark.MilliValue()) - wpa.Spec.Tolerance*float64(lowMark.MilliValue())
 
+	labelsWithReason := prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reasonPromLabel: "within_bounds"}
+	labelsWithMetricName := prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, metricNamePromLabel: metricName}
+
 	// We do not use the abs as we want to know if we are higher than the high mark or lower than the low mark
 	switch {
 	case adjustedUsage > adjustedHM:
@@ -93,14 +104,14 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, curren
 		replicaCount = int32(math.Floor(float64(currentReplicas) * adjustedUsage / (float64(lowMark.MilliValue()))))
 		logger.Info("Value is below lowMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount)
 	default:
-		restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "reason": "within_bounds"}).Set(1)
-		value.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(adjustedUsage)
+		restrictedScaling.With(labelsWithReason).Set(1)
+		value.With(labelsWithMetricName).Set(adjustedUsage)
 		logger.Info("Within bounds of the watermarks", "value", utilizationQuantity.String(), "lwm", lowMark.String(), "hwm", highMark.String(), "tolerance", wpa.Spec.Tolerance)
 		return currentReplicas, utilizationQuantity.MilliValue(), timestamp, nil
 	}
 
-	restrictedScaling.With(prometheus.Labels{"wpa_name": wpa.Name, "reason": "within_bounds"}).Set(0)
-	value.With(prometheus.Labels{"wpa_name": wpa.Name, "metric_name": metricName}).Set(adjustedUsage)
+	restrictedScaling.With(labelsWithReason).Set(0)
+	value.With(labelsWithMetricName).Set(adjustedUsage)
 
 	return replicaCount, utilizationQuantity.MilliValue(), timestamp, nil
 }
