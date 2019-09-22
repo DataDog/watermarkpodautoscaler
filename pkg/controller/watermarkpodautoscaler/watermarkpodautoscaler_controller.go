@@ -111,6 +111,26 @@ var (
 			"wpa_name",
 			"reason",
 		})
+	replicaMin = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "min_replicas",
+			Help:      "Gauge for the minReplicas value of a given WPA",
+		},
+		[]string{
+			"wpa_name",
+			"deploy",
+		})
+	replicaMax = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "max_replicas",
+			Help:      "Gauge for the maxReplicas value of a given WPA",
+		},
+		[]string{
+			"wpa_name",
+			"deploy",
+		})
 )
 
 func init() {
@@ -121,6 +141,8 @@ func init() {
 	sigmetrics.Registry.MustRegister(replicaEffective)
 	sigmetrics.Registry.MustRegister(restrictedScaling)
 	sigmetrics.Registry.MustRegister(transitionCountdown)
+	sigmetrics.Registry.MustRegister(replicaMin)
+	sigmetrics.Registry.MustRegister(replicaMax)
 }
 
 const (
@@ -464,6 +486,13 @@ func setStatus(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, d
 func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, deploy *appsv1.Deployment) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, err error) {
 	currentReplicas := deploy.Status.Replicas
 	statuses = make([]autoscalingv2.MetricStatus, len(wpa.Spec.Metrics))
+
+	minReplicas := float64(0)
+	if wpa.Spec.MinReplicas != nil {
+		minReplicas = float64(*wpa.Spec.MinReplicas)
+	}
+	replicaMin.With(prometheus.Labels{"wpa_name": wpa.Name, "deploy": wpa.Spec.ScaleTargetRef.Name}).Set(minReplicas)
+	replicaMax.With(prometheus.Labels{"wpa_name": wpa.Name, "deploy": wpa.Spec.ScaleTargetRef.Name}).Set(float64(wpa.Spec.MaxReplicas))
 
 	for i, metricSpec := range wpa.Spec.Metrics {
 
