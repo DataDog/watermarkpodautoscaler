@@ -104,13 +104,14 @@ It is important to note that we always make conservative scaling decision.
 
 * **Cooldown periods**
 
-Finally the last options we want to use are `downscaleForbiddenWindowSeconds` and `upscaleForbiddenWindowSeconds` in seconds that represent respectively how much time we wait before we can respectively scale down and scale up after a **scaling event**. We only keep the last scaling event, and we do not compare the `upscaleForbiddenWindowSeconds` to the last time we only upscaled.
+Finally the last options available are `downscaleForbiddenWindowSeconds` and `upscaleForbiddenWindowSeconds` in seconds that represent respectively how much time to wait before scaling down and scaling up after a **scaling event**. We only keep the last scaling event, and we do not compare the `upscaleForbiddenWindowSeconds` to the last time we only upscaled, for instance.
 
-In the following example we can see that the recommended number of replicas is ignored if we are in a cooldown period. The downscale cooldown period can me visualised with `watermarkpodautoscaler.wpa_controller_transition_countdown{transition:downscale}`, and is represented in yellow on the graph below. We can see that it is significantly higher than the upscale cooldown period (`transition:upscale`) in orange on our graph. As soon as we are recommended to scale, only if the appropriate cooldown window is over, will we scale. This will reset both countdowns.
+In the following example we can see that the recommended number of replicas is ignored if we are in a cooldown period. The downscale cooldown period can be visualised with `watermarkpodautoscaler.wpa_controller_transition_countdown{transition:downscale}`, and is represented in yellow on the graph below. We can see that it is significantly higher than the upscale cooldown period (`transition:upscale`) in orange on our graph. As soon as we are recommended to scale, only if the appropriate cooldown window is over, will we scale. This will reset both countdowns.
 <img width="911" alt="Forbidden Windows" src="https://user-images.githubusercontent.com/7433560/63389864-a14cf300-c39c-11e9-9ad5-8308af5442ad.png">
 
 * **Precedence**
 <a name="precedence"></a>
+
 Essentially, as we retrieve the value of the External Metric, we will first compare it to the `highWatermark` + `tolerance` and `lowWatermark` - `tolerance`.
 If we are outside of the bounds, we compute the recommended number of replicas.
 Then we compare this value to the current number of replicas to potentially cap the recommended number of replicas.
@@ -126,11 +127,43 @@ Finally, we look at if we are allowed to scale given the `downscaleForbiddenWind
 
 ## Troubleshooting
 
-#### Lifecycle
+### On the Datadog Cluster Agent side
+
+The Cluster Agent is running an informer against the WPA resources, and similar to the HPA, upon creation/update/deletion will parse the spec to query the metric from Datadog.
+If you exec in the Datadog Cluster Agent pod and run `agent status` you will be able to see more specific details about the spec of the autoscalers that were parsed (whether it's a horizontal or a watermark pod autoscaler).
+
+```
+  * watermark pod autoscaler: default/example2-watermarkpodautoscaler
+    - name: example2-watermarkpodautoscaler
+    - namespace: default
+    - type: watermark
+    - uid: ff09b7d8-d99b-11e9-a8c1-42010a8001c4
+    Metric name: sinus
+    Labels:
+    - foo: bar
+    Value: 75.1297378540039
+    Timestamp: 15688259400
+    Valid: true
+
+  * horizontal pod autoscaler: default/nginxext
+    - name: nginxext
+    - namespace: default
+    - type: horizontal
+    - uid: 61ef3f6e-af32-11e9-a8c1-42010a8001c4
+    Metric name: docker.mem.rss
+    Labels:
+    - cluster-location: us-central1-a
+    - cluster-name: charly
+    Value: 263888700952
+    Timestamp: 15688259400
+    Valid: true
+```
+
+### Lifecycle of the controller
 
 In addition to the metrics mentioned above, these are logs that will help you better understand the proper functioning of the WPA.
 
-Every 15 seconds, we retrieve the metric listed in the `metrics` section of the spec.
+Every 15 seconds, we retrieve the metric listed in the `metrics` section of the spec from Datadog.
 
 ```
 {"level":"info","ts":1566327479.866722,"logger":"wpa_controller","msg":"Target deploy: {datadog/propjoe-green replicas:6}"}
