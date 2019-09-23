@@ -48,7 +48,7 @@ The WPA controller will use `math.Floor` if the value is under the Lower WaterMa
 
 ### The process
 
-Create your [WPA](https://github.com/DataDog/watermarkpodautoscaler/blob/master/deploy/crds/datadoghq_v1alpha1_watermarkpodautoscaler_cr.yaml) in the same namespace as your target deployment, then create an HPA targeting a deployment that does not exist, but configure the same metric as in the WPA. This is because I have not implemented the informer on the DCA side to watch for WPAs.
+Create your [WPA](https://github.com/DataDog/watermarkpodautoscaler/blob/master/deploy/crds/datadoghq_v1alpha1_watermarkpodautoscaler_cr.yaml) in the same namespace as your target deployment.
 
 The Datadog Cluster Agent will pick up the Creation/Update/Deletion event and parse through the Spec of the WPA to extract the metric and scope to get from Datadog.
 
