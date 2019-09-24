@@ -160,7 +160,7 @@ const (
 )
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager) reconcile.Reconciler {
+func newReconciler(mgr manager.Manager) (reconcile.Reconciler, error) {
 	clientConfig := mgr.GetConfig()
 	metricsClient := metrics.NewRESTMetricsClient(
 		nil,
@@ -170,6 +170,7 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	clientSet, err := kubernetes.NewForConfig(clientConfig)
 	if err != nil {
 		log.Error(err, "Error")
+		return nil, err
 	}
 
 	// init the scaleClient
@@ -180,10 +181,11 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	scaleClient, err := scale.NewForConfig(clientConfig, restMapper, dynamic.LegacyAPIPathResolverFunc, scaleKindResolver)
 	if err != nil {
 		log.Error(err, "Error")
+		return nil, err
 	}
 
 	replicaCalc := NewReplicaCalculator(metricsClient, clientSet.CoreV1())
-	return &ReconcileWatermarkPodAutoscaler{
+	r := &ReconcileWatermarkPodAutoscaler{
 		client:        mgr.GetClient(),
 		scaleClient:   scaleClient,
 		restMapper:    restMapper,
@@ -192,12 +194,17 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		replicaCalc:   replicaCalc,
 		syncPeriod:    defaultSyncPeriod,
 	}
+	return r, nil
 }
 
 // Add creates a new WatermarkPodAutoscaler Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager) error {
-	return add(mgr, newReconciler(mgr))
+	r, err := newReconciler(mgr)
+	if err != nil {
+		return err
+	}
+	return add(mgr, r)
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
