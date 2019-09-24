@@ -6,28 +6,39 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - services
-  - events
   - configmaps
   verbs:
-  - '*'
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  resourceNames:
+    - watermarkpodautoscaler-lock
+  verbs:
+  - update
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - 'create'
 - apiGroups:
   - ""
   resources:
   - pods
   verbs:
   - get
-  - watch
-  - list
 - apiGroups:
   - apps
   resources:
-  - deployments
-  - daemonsets
-  - replicasets
-  - statefulsets
+  - replicasets/scale
+  - deployments/scale
+  - statefulsets/scale
   verbs:
-  - '*'
+  - 'update'
+  - 'get'
 - apiGroups:
   - apps
   resourceNames:
@@ -39,6 +50,7 @@ rules:
 - apiGroups:
   - datadoghq.com
   resources:
-  - '*'
+  - watermarkpodautoscalers
+  - watermarkpodautoscalers/status
   verbs:
   - '*'
