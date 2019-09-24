@@ -4,10 +4,14 @@ import (
 	goctx "context"
 	"testing"
 
+	v1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2beta1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	apis "github.com/DataDog/watermarkpodautoscaler/pkg/apis"
+	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
 	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
 	wpatest "github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1/test"
 
@@ -58,7 +62,17 @@ func SimpleCase(t *testing.T) {
 				APIVersion: "apps/v1",
 			},
 			MaxReplicas: 10,
-			// TODO: add metrics
+			Metrics: []v1alpha1.MetricSpec{
+				{
+					Type: v1alpha1.ExternalMetricSourceType,
+					External: &v1alpha1.ExternalMetricSource{
+						MetricName:     "metric_name",
+						MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}},
+						HighWatermark:  resource.NewQuantity(100, resource.DecimalSI),
+						LowWatermark:   resource.NewQuantity(50, resource.DecimalSI),
+					},
+				},
+			},
 		},
 	}
 	newWPA := wpatest.NewWatermarkPodAutoscaler(namespace, "app", newWPAOptions)
@@ -66,7 +80,19 @@ func SimpleCase(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("newWPA create: %s/%s", namespace, "app")
-	// TODO create configMap for the fake external metrics
+
+	// create configMap for the fake external metrics
+	metricConfigMap := &corev1.ConfigMap{
+		Data: map[string]string{
+			"metric_name": "[{\"value\":\"150\",\"metricName\":\"metric_name\", \"metricLabels\": {\"label\": \"value\"}}]",
+		},
+	}
+	metricConfigMap.Name = metricsserver.ConfigMapName
+	metricConfigMap.Namespace = namespace
+	if err := f.Client.Create(goctx.TODO(), metricConfigMap, cleanupOptions); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("metricConfigMap created: %s/%s", namespace, metricsserver.ConfigMapName)
 
 	// check if WPA status is ok
 	isOK := func(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) (bool, error) {
@@ -81,5 +107,19 @@ func SimpleCase(t *testing.T) {
 	if err := utils.WaitForFuncOnWatermarkPodAutoscaler(t, f.Client, namespace, newWPA.Name, isOK, retryInterval, timeout); err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("newWPA valide: %s/%s", namespace, "app")
+	t.Logf("newWPA valid: %s/%s", namespace, "app")
+
+	// check if WPA autoscaling is OK
+	isAutoscalingOK := func(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, fakeapp *v1.Deployment) (bool, error) {
+		target := int32(2)
+		if wpa.Status.DesiredReplicas == target && fakeapp.Status.Replicas == target {
+			return true, nil
+		}
+		return false, nil
+	}
+
+	if err := utils.WaitForFuncOnFakeAppScaling(t, f.Client, namespace, newWPA.Name, fakeAppDep.Name, isAutoscalingOK, retryInterval, timeout); err != nil {
+		t.Fatal(err)
+	}
+	t.Log("Autoscaling valid")
 }
