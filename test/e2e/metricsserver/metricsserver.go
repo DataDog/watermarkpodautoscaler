@@ -29,6 +29,15 @@ var (
 	cleanupTimeout       = time.Second * 240
 )
 
+const (
+	// customMetricsNamespace used for the fake custom-metrics server
+	customMetricsNamespace = "custom-metrics"
+	// customMetricsName used for the fake custom-metrics server
+	customMetricsName = "custom-metrics-apiserver"
+	// ConfigMapName used to configure the fake custom-metrics server
+	ConfigMapName = "fake-custom-metrics-server"
+)
+
 // InitMetricsServer used to initialize the fake-custom-metrics-server
 func InitMetricsServer(t *testing.T, ctx *framework.TestCtx, deployDir, namespace string) {
 	// register apiregistration kind to the decoder and sdk
@@ -158,7 +167,7 @@ func InitMetricsServer(t *testing.T, ctx *framework.TestCtx, deployDir, namespac
 		}
 	}
 
-	err = e2eutil.WaitForDeployment(t, f.KubeClient, "custom-metrics", "custom-metrics-apiserver", 1, retryInterval, timeout)
+	err = e2eutil.WaitForDeployment(t, f.KubeClient, customMetricsNamespace, customMetricsName, 1, retryInterval, timeout)
 	if err != nil {
 		t.Fatal(err)
 	}

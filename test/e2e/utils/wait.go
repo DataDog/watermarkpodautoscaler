@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	v1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
 
@@ -34,6 +35,44 @@ func WaitForFuncOnWatermarkPodAutoscaler(t *testing.T, client framework.Framewor
 
 		ok, err := f(WatermarkPodAutoscaler)
 		t.Logf("Waiting for condition function to be true ok for %s WatermarkPodAutoscaler (%t/%v)\n", name, ok, err)
+		return ok, err
+	})
+}
+
+// WaitForFuncOnFakeAppScaling used to wait for autoscaling the fake up with the desired replicas
+func WaitForFuncOnFakeAppScaling(t *testing.T, client framework.FrameworkClient, namespace, name, fakeAppName string, f func(dd *datadoghqv1alpha1.WatermarkPodAutoscaler, fakeApp *v1.Deployment) (bool, error), retryInterval, timeout time.Duration) error {
+	return wait.Poll(retryInterval, timeout, func() (bool, error) {
+		objKey := dynclient.ObjectKey{
+			Namespace: namespace,
+			Name:      name,
+		}
+		watermarkPodAutoscaler := &datadoghqv1alpha1.WatermarkPodAutoscaler{}
+		err := client.Get(context.TODO(), objKey, watermarkPodAutoscaler)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				t.Logf("Waiting for availability of %s WatermarkPodAutoscaler\n", name)
+				return false, nil
+			}
+			return false, err
+		}
+
+		objKey = dynclient.ObjectKey{
+			Namespace: namespace,
+			Name:      fakeAppName,
+		}
+		fakeApp := &v1.Deployment{}
+		err = client.Get(context.TODO(), objKey, fakeApp)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				t.Logf("Waiting for availability of %s FakeAppDeployment\n", name)
+				return false, nil
+			}
+			return false, err
+		}
+
+		ok, err := f(watermarkPodAutoscaler, fakeApp)
+		t.Logf("Waiting for condition function to be true ok for %s WatermarkPodAutoscaler (%t/%v)\n", name, ok, err)
+		t.Logf("Waiting for condition function to be true ok for %s FakeAppDeployment (%t/%v)\n", fakeAppName, ok, err)
 		return ok, err
 	})
 }

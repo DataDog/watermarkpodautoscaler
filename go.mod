@@ -3,12 +3,18 @@ module github.com/DataDog/watermarkpodautoscaler
 require (
 	github.com/Azure/go-autorest/autorest v0.9.1 // indirect
 	github.com/Azure/go-autorest/autorest/adal v0.6.0 // indirect
+	github.com/NYTimes/gziphandler v1.0.1 // indirect
+	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/go-logr/logr v0.1.0
+	github.com/gorilla/websocket v1.4.0 // indirect
+	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
+	github.com/jonboulle/clockwork v0.1.0 // indirect
 	github.com/magiconair/properties v1.8.0
 
 	github.com/operator-framework/operator-sdk v0.8.2-0.20190522220659-031d71ef8154
 	github.com/prometheus/client_golang v0.9.3
 	github.com/prometheus/common v0.4.0
+	github.com/soheilhy/cmux v0.1.4 // indirect
 	github.com/spf13/pflag v1.0.3
 	github.com/stretchr/testify v1.3.0
 	k8s.io/api v0.0.0-20190831074750-7364b6bdad65
