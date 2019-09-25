@@ -81,10 +81,25 @@ func SimpleCase(t *testing.T) {
 	}
 	t.Logf("newWPA create: %s/%s", namespace, "app")
 
+	fakeMetrics := []utils.FakeMetric{
+		{
+			Value:      "150",
+			MetricName: "metric_name",
+			MetricLabels: map[string]string{
+				"label": "value",
+			},
+		},
+	}
+
+	fakeMetricsString, err := utils.JsonEncode(fakeMetrics)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// create configMap for the fake external metrics
 	metricConfigMap := &corev1.ConfigMap{
 		Data: map[string]string{
-			"metric_name": "[{\"value\":\"150\",\"metricName\":\"metric_name\", \"metricLabels\": {\"label\": \"value\"}}]",
+			"metric_name": fakeMetricsString,
 		},
 	}
 	metricConfigMap.Name = metricsserver.ConfigMapName
