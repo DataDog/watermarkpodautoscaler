@@ -27,7 +27,10 @@ tidy:
 
 build: ${ARTIFACT}
 
-license:
+bin/wwhrd:
+	./hack/install-wwhrd.sh
+
+license: bin/wwhrd
 	./hack/license.sh
 
 verify-license:
@@ -82,6 +85,5 @@ $(filter %.yaml,$(files)): %.yaml: %yaml
 install-tools:
 	./hack/golangci-lint.sh v1.18.0
 	./hack/install-operator-sdk.sh
-	./hack/install-wwhrd.sh
 
 .PHONY: vendor build push clean test e2e validate local-load install-tools verify-license list
