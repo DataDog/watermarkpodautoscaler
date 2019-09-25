@@ -28,6 +28,15 @@ tidy:
 
 build: ${ARTIFACT}
 
+bin/wwhrd:
+	./hack/install-wwhrd.sh
+
+license: bin/wwhrd
+	./hack/license.sh
+
+verify-license:
+	./hack/verify-license.sh
+
 ${ARTIFACT}: ${SOURCES}
 	CGO_ENABLED=0 go build ${GOARGS} -i -installsuffix cgo ${LDFLAGS} -o ${ARTIFACT} ./cmd/manager/main.go
 
@@ -78,4 +87,4 @@ install-tools:
 	./hack/golangci-lint.sh v1.18.0
 	./hack/install-operator-sdk.sh
 
-.PHONY: vendor build push clean test e2e validate local-load install-tools list
+.PHONY: vendor build push clean test e2e validate local-load install-tools verify-license list
