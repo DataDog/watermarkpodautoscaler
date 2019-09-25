@@ -12,10 +12,11 @@ SOURCES := $(shell find $(SOURCEDIR) ! -name "*_test.go" -name '*.go')
 
 BUILDINFOPKG=github.com/datadog/${PROJECT_NAME}/version
 GIT_TAG?=$(shell git tag|tail -1)
+TAG?=${GIT_TAG}
 GIT_COMMIT?=$(shell git rev-parse HEAD)
 DATE=$(shell date +%Y-%m-%d/%H:%M:%S )
 LDFLAGS= -ldflags "-w -X ${BUILDINFOPKG}.Tag=${GIT_TAG} -X ${BUILDINFOPKG}.Commit=${GIT_COMMIT} -X ${BUILDINFOPKG}.Version=${TAG} -X ${BUILDINFOPKG}.BuildTime=${DATE} -s"
-GOARGS=
+GOARGS?=
 
 all: build
 
