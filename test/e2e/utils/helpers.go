@@ -2,8 +2,8 @@ package utils
 
 import "encoding/json"
 
-// JsonEncode encodes a FakeMetric into json string
-func JsonEncode(metrics []FakeMetric) (string, error) {
+// JSONEncode encodes a FakeMetric into json string
+func JSONEncode(metrics []FakeMetric) (string, error) {
 	encoded, err := json.Marshal(metrics)
 	return string(encoded), err
 }

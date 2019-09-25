@@ -2,7 +2,7 @@ package utils
 
 import "testing"
 
-func TestJsonEncode(t *testing.T) {
+func TestJSONEncode(t *testing.T) {
 	type args struct {
 		m []FakeMetric
 	}
@@ -54,7 +54,7 @@ func TestJsonEncode(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := JsonEncode(tt.args.m)
+			got, err := JSONEncode(tt.args.m)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("JsonEncode() error = %v, wantErr %v", err, tt.wantErr)
 				return

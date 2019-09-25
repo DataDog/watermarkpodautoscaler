@@ -91,7 +91,7 @@ func SimpleCase(t *testing.T) {
 		},
 	}
 
-	fakeMetricsString, err := utils.JsonEncode(fakeMetrics)
+	fakeMetricsString, err := utils.JSONEncode(fakeMetrics)
 	if err != nil {
 		t.Fatal(err)
 	}
