@@ -1,5 +1,7 @@
 # Watermark Pod Autoscaler Controller
 
+**Disclaimer**: This project is still a work in progress, the API might change.
+
 ## Overview
 
 The Watermark Pod Autoscaler (WPA) Controller is a custom controller that extends the Horizontal Pod Autoscaler or HPA.
@@ -166,11 +168,11 @@ In addition to the metrics mentioned above, these are logs that will help you be
 Every 15 seconds, we retrieve the metric listed in the `metrics` section of the spec from Datadog.
 
 ```
-{"level":"info","ts":1566327479.866722,"logger":"wpa_controller","msg":"Target deploy: {datadog/propjoe-green replicas:6}"}
+{"level":"info","ts":1566327479.866722,"logger":"wpa_controller","msg":"Target deploy: {namespace1/my-application replicas:6}"}
 {"level":"info","ts":1566327479.8844478,"logger":"wpa_controller","msg":"Metrics from the External Metrics Provider: [127]"}
 {"level":"info","ts":1566327479.8844907,"logger":"wpa_controller","msg":"About to compare utilization 127 vs LWM 150 and HWM 400"}
 {"level":"info","ts":1566327479.8844962,"logger":"wpa_controller","msg":"Value is below lowMark. Usage: 127 ReplicaCount 5"}
-{"level":"info","ts":1566327479.8845394,"logger":"wpa_controller","msg":"Proposing 5 replicas: Based on dd.propjoe.request_duration.max{map[kubernetes_cluster:barbet service:propjoe short_image:propjoe]} at 18:57:59 targeting: Deployment/datadog/propjoe-green"}
+{"level":"info","ts":1566327479.8845394,"logger":"wpa_controller","msg":"Proposing 5 replicas: Based on cutom_metric.max{map[kubernetes_cluster:my-cluster service:my-service short_image:my-image]} at 18:57:59 targeting: Deployment/namespace1/my-application"}
 ```
 
 We see the current number of replicas seen in the target deployment, here 6.
@@ -184,7 +186,7 @@ If you want to query the External Metrics Provider directly you can use the foll
 you can optionally add label selectors too by adding `?labelSelector=key%3Dvalue`.
 If we wanted to retrieve our metric in this case, we could use:
 
-`➜ kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/datadog/dd.propjoe.request_duration.max?labelSelector=kubernetes_cluster%3Dbarbet%2Cservice%3Dpropjoe%2Cshort_image%3Dpropjoe" | jq .`
+`➜ kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/<namespace of your deployment>/<name of the metrics>?labelSelector=key%3Dvalue%2Cotherkey%3Dothervalue%2Cshort_image%3Dimage" | jq .`
 
 If you see logs such as:
 ```
@@ -192,7 +194,7 @@ If you see logs such as:
 ```
 
 You can verify that this metric is indeed not available from the External Metrics Provider, which could be due to a typo in the labels, or the metric can't be fetched from Datadog (which could be due to various factors: too sparse, API down, rate limit hit...).
-You can go in the logs of the External Metrics Provider to further investigate (Deployment datadog-agent/datadog-cluster-agent, or ping #k8s-dd-agent).
+You can go in the logs of the External Metrics Provider to further investigate.
 
 Then we go through the Scaling velocity capping and the cooldown windows verifications.
 In the case of a scaling capping you would see something like:
@@ -211,7 +213,7 @@ Then we consider the cooldown periods. You will have logs indicative of when the
 
 Finally, closing the loop we have a verification that the deployment was correctly autoscaled:
 ```
-{"level":"info","ts":1566327253.7887673,"logger":"wpa_controller","msg":"Successful rescale of watermarkpodautoscaler-propjoe, old size: 8, new size: 9, reason: dd.propjoe.request_duration.max{map[kubernetes_cluster:barbet service:propjoe short_image:propjoe]} above target"}
+{"level":"info","ts":1566327253.7887673,"logger":"wpa_controller","msg":"Successful rescale of watermarkpodautoscaler, old size: 8, new size: 9, reason: cutom_metric.max{map[kubernetes_cluster:my-cluster service:my-service short_image:my-image]} above target"}
 ```
 
 #### FAQ:
@@ -221,8 +223,8 @@ Finally, closing the loop we have a verification that the deployment was correct
 
 - What is the footprint of the controller ?  
     From our testing, it is a factor of the number of deployments in the cluster. 
-    Barbet: 500+ deployments, 65MB - 10mCores
-    Chinook: 1600+ deployments, 105MB - 5mCores
+    * 500+ deployments, 65MB - 10mCores
+    * 1600+ deployments, 105MB - 5mCores  
     **Worth noting:** When the APIServer restart, the controller-runtime caches the old state and the new one for a second and then merges everything. This makes the memory usage shoot up and can OOM the controller.
 
 - Is the Controller Stateless ?  
@@ -232,20 +234,11 @@ Finally, closing the loop we have a verification that the deployment was correct
 
 As we watch all the WPA definitions cluster wide, we use a clusterrole.
 A useful option is to impersonate the user to verify rights, so for instance you can verify that you have the right to get a deployment as the WPA controller's service account:
-`➜ kubectl get deploy logs-index-router-logs-datadog  --as system:serviceaccount:datadog:watermarkpodautoscaler -n logs-storage`
+`➜ kubectl get deploy <your_deploy>  --as system:serviceaccount:datadog:watermarkpodautoscaler -n <your_ns>`
 
 Or query the External Metrics Provider:
 
-`➜ kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/datadog/metric --as system:serviceaccount:datadog:watermarkpodautoscaler`
-
-
-## Observability
-
-While this is still a WIP as we set in place the best signals to monitor both the controller's health and it's behavior a few dashboards have been created which could give you an idea of what is good to measure to make sure everything is working as expected:
-
-- [Controller's Health and Overview in Staging](https://ddstaging.datadoghq.com/dashboard/2sz-ti4-yhz/watermark-pod-autoscaler-controller)
-- [Propjoe in Barbet [EU/Staging]](https://app.datad0g.eu/dashboard/6ur-73s-ne5/propjoe-autoscaling)
-- Logs-Index-Router [US/Staging]
+`➜ kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/<your_ns>/metric --as system:serviceaccount:<your_ns>:watermarkpodautoscaler`
 
 ## Developer guide
 
@@ -253,7 +246,7 @@ While this is still a WIP as we set in place the best signals to monitor both th
 
 Requirements:
 
-* golang >= 1.12
+* golang >= 1.13
 * make
 * docker
 * git
@@ -270,6 +263,7 @@ then, to install some tooling dependencies, you need to execute: `make install-t
 
 ### useful commands
 
+* `make install-tools`: install the tooling to use the operator sdk
 * `make build`: build locally the controller
 * `make generate`: run the several operator-sdk generator
 * `make test`: run unit-tests
