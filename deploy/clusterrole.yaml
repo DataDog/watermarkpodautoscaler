@@ -4,37 +4,14 @@ metadata:
   name: watermarkpodautoscaler
 rules:
 - apiGroups:
-  - ""
-  resources:
-  - services
-  - events
-  - configmaps
-  verbs:
-  - '*'
-- apiGroups:
-  - ""
-  resources:
-  - pods
-  verbs:
-  - get
-  - watch
-  - list
-- apiGroups:
   - apps
   resources:
-  - deployments
-  - daemonsets
-  - replicasets
-  - statefulsets
+  - replicasets/scale
+  - deployments/scale
+  - statefulsets/scale
   verbs:
-  - '*'
-- apiGroups:
-  - monitoring.coreos.com
-  resources:
-  - servicemonitors
-  verbs:
-  - get
-  - create
+  - 'update'
+  - 'get'
 - apiGroups:
   - apps
   resourceNames:
@@ -46,7 +23,8 @@ rules:
 - apiGroups:
   - datadoghq.com
   resources:
-  - '*'
+  - watermarkpodautoscalers
+  - watermarkpodautoscalers/status
   verbs:
   - '*'
 - apiGroups:
