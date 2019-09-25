@@ -15,6 +15,7 @@ import (
 	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
 	wpatest "github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1/test"
 
+	"github.com/DataDog/watermarkpodautoscaler/pkg/util"
 	"github.com/DataDog/watermarkpodautoscaler/test/e2e/metricsserver"
 	"github.com/DataDog/watermarkpodautoscaler/test/e2e/utils"
 
@@ -81,7 +82,7 @@ func SimpleCase(t *testing.T) {
 	}
 	t.Logf("newWPA create: %s/%s", namespace, "app")
 
-	fakeMetrics := []utils.FakeMetric{
+	fakeMetrics := []util.FakeMetric{
 		{
 			Value:      "150",
 			MetricName: "metric_name",
@@ -91,7 +92,7 @@ func SimpleCase(t *testing.T) {
 		},
 	}
 
-	fakeMetricsString, err := utils.JSONEncode(fakeMetrics)
+	fakeMetricsString, err := util.JSONEncode(fakeMetrics)
 	if err != nil {
 		t.Fatal(err)
 	}
