@@ -9,6 +9,7 @@ spec:
   tolerance: 0.01
   scaleTargetRef:
     kind: Deployment
+    apiVersion: apps/v1
     name: alpine
   metrics:
   - type: External

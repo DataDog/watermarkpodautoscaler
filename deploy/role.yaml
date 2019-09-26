@@ -32,6 +32,7 @@ rules:
   - get
 - apiGroups:
   - apps
+  - extensions
   resources:
   - replicasets/scale
   - deployments/scale
