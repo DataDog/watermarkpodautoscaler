@@ -34,6 +34,7 @@ type WatermarkPodAutoscaler struct {
 }
 
 // CrossVersionObjectReference contains enough information to let you identify the referred resource.
+// +k8s:openapi-gen=true
 type CrossVersionObjectReference struct {
 	// Kind of the referent; More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds"
 	Kind string `json:"kind"`
@@ -82,6 +83,7 @@ type WatermarkPodAutoscalerSpec struct {
 	// and will set the desired number of pods by using its Scale subresource.
 	ScaleTargetRef CrossVersionObjectReference `json:"scaleTargetRef"`
 	// specifications that will be used to calculate the desired replica count
+	// +listType=set
 	Metrics []MetricSpec `json:"metrics,omitempty"`
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=1000
@@ -95,6 +97,7 @@ type WatermarkPodAutoscalerSpec struct {
 // any Kubernetes object (for example length of queue in cloud
 // messaging service, or QPS from loadbalancer running outside of cluster).
 // Exactly one "target" type should be set.
+// +k8s:openapi-gen=true
 type ExternalMetricSource struct {
 	// metricName is the name of the metric in question.
 	MetricName string `json:"metricName" protobuf:"bytes,1,name=metricName"`
@@ -121,6 +124,7 @@ var (
 
 // MetricSpec specifies how to scale based on a single metric
 // (only `type` and one other matching field should be set at once).
+// +k8s:openapi-gen=true
 type MetricSpec struct {
 	// type is the type of metric source.  It should be one of "Object",
 	// "Pods" or "Resource", each mapping to a matching field in the object.
@@ -137,21 +141,25 @@ type MetricSpec struct {
 // WatermarkPodAutoscalerStatus defines the observed state of WatermarkPodAutoscaler
 // +k8s:openapi-gen=true
 type WatermarkPodAutoscalerStatus struct {
-	ObservedGeneration *int64                                           `json:"observedGeneration,omitempty"`
-	LastScaleTime      *metav1.Time                                     `json:"lastScaleTime,omitempty"`
-	CurrentReplicas    int32                                            `json:"currentReplicas"`
-	DesiredReplicas    int32                                            `json:"desiredReplicas"`
-	CurrentMetrics     []autoscalingv2.MetricStatus                     `json:"currentMetrics"`
-	Conditions         []autoscalingv2.HorizontalPodAutoscalerCondition `json:"conditions"`
+	ObservedGeneration *int64       `json:"observedGeneration,omitempty"`
+	LastScaleTime      *metav1.Time `json:"lastScaleTime,omitempty"`
+	CurrentReplicas    int32        `json:"currentReplicas"`
+	DesiredReplicas    int32        `json:"desiredReplicas"`
+	// +listType=set
+	CurrentMetrics []autoscalingv2.MetricStatus `json:"currentMetrics"`
+	// +listType=set
+	Conditions []autoscalingv2.HorizontalPodAutoscalerCondition `json:"conditions"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // WatermarkPodAutoscalerList contains a list of WatermarkPodAutoscaler
+// +k8s:openapi-gen=true
 type WatermarkPodAutoscalerList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []WatermarkPodAutoscaler `json:"items"`
+	// +listType=set
+	Items []WatermarkPodAutoscaler `json:"items"`
 }
 
 func init() {
