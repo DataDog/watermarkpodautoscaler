@@ -63,7 +63,6 @@ spec:
               description: 'part of HorizontalController, see comments in the k8s
                 repo: pkg/controller/podautoscaler/horizontal.go'
               format: int32
-              maximum: 600
               minimum: 1
               type: integer
             dryRun:
@@ -71,7 +70,6 @@ spec:
               type: boolean
             maxReplicas:
               format: int32
-              maximum: 1000
               minimum: 1
               type: integer
             metrics:
@@ -155,7 +153,6 @@ spec:
               type: array
             minReplicas:
               format: int32
-              maximum: 1000
               minimum: 1
               type: integer
             scaleDownLimitFactor:
@@ -187,7 +184,6 @@ spec:
             tolerance: {}
             upscaleForbiddenWindowSeconds:
               format: int32
-              maximum: 600
               minimum: 1
               type: integer
           required:

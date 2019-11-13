@@ -51,11 +51,9 @@ type WatermarkPodAutoscalerSpec struct {
 
 	// part of HorizontalController, see comments in the k8s repo: pkg/controller/podautoscaler/horizontal.go
 	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=600
 	DownscaleForbiddenWindowSeconds int32 `json:"downscaleForbiddenWindowSeconds,omitempty"`
 
 	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=600
 	UpscaleForbiddenWindowSeconds int32 `json:"upscaleForbiddenWindowSeconds,omitempty"`
 
 	// Percentage of replicas that can be added in an upscale event. Max value will set the limit at the Maximum number of Replicas.
@@ -88,10 +86,8 @@ type WatermarkPodAutoscalerSpec struct {
 	// +listType=set
 	Metrics []MetricSpec `json:"metrics,omitempty"`
 	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=1000
 	MinReplicas *int32 `json:"minReplicas,omitempty"`
 	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=1000
 	MaxReplicas int32 `json:"maxReplicas,omitempty"`
 }
 
