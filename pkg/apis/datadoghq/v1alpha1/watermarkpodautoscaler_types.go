@@ -68,8 +68,10 @@ type WatermarkPodAutoscalerSpec struct {
 	// +kubebuilder:validation:Maximum=100
 	ScaleDownLimitFactor float64 `json:"scaleDownLimitFactor,omitempty"`
 
-	// +kubebuilder:validation:Minimum=0.01
-	// +kubebuilder:validation:Maximum=0.99
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:ExclusiveMinimum=true
+	// +kubebuilder:validation:Maximum=1
+	// +kubebuilder:validation:ExclusiveMaximum=true
 	Tolerance float64 `json:"tolerance,omitempty"`
 
 	// computed values take the # of replicas into account
@@ -100,11 +102,11 @@ type WatermarkPodAutoscalerSpec struct {
 // +k8s:openapi-gen=true
 type ExternalMetricSource struct {
 	// metricName is the name of the metric in question.
-	MetricName string `json:"metricName" protobuf:"bytes,1,name=metricName"`
+	MetricName string `json:"metricName"`
 	// metricSelector is used to identify a specific time series
 	// within a given metric.
 	// +optional
-	MetricSelector *metav1.LabelSelector `json:"metricSelector,omitempty" protobuf:"bytes,2,opt,name=metricSelector"`
+	MetricSelector *metav1.LabelSelector `json:"metricSelector,omitempty"`
 
 	HighWatermark *resource.Quantity `json:"highWatermark,omitempty"`
 	LowWatermark  *resource.Quantity `json:"lowWatermark,omitempty"`
@@ -128,14 +130,14 @@ var (
 type MetricSpec struct {
 	// type is the type of metric source.  It should be one of "Object",
 	// "Pods" or "Resource", each mapping to a matching field in the object.
-	Type MetricSourceType `json:"type" protobuf:"bytes,1,name=type"`
+	Type MetricSourceType `json:"type"`
 	// external refers to a global metric that is not associated
 	// with any Kubernetes object. It allows autoscaling based on information
 	// coming from components running outside of cluster
 	// (for example length of queue in cloud messaging service, or
 	// QPS from loadbalancer running outside of cluster).
 	// +optional
-	External *ExternalMetricSource `json:"external,omitempty" protobuf:"bytes,5,opt,name=external"`
+	External *ExternalMetricSource `json:"external,omitempty"`
 }
 
 // WatermarkPodAutoscalerStatus defines the observed state of WatermarkPodAutoscaler
