@@ -331,6 +331,8 @@ func (r *ReconcileWatermarkPodAutoscaler) Reconcile(request reconcile.Request) (
 			r.eventRecorder.Event(instance, corev1.EventTypeWarning, "FailedUpdateStatus", err.Error())
 			return reconcile.Result{}, err
 		}
+		// we don't requeue here since the error was added properly in the WPA.Status
+		// and if the user updates the WPA.Spec the update event will requeue the resource.
 		return reconcile.Result{}, nil
 	}
 
@@ -343,7 +345,9 @@ func (r *ReconcileWatermarkPodAutoscaler) Reconcile(request reconcile.Request) (
 		logger.Error(err, "Error during reconcileWPA")
 		r.eventRecorder.Event(instance, corev1.EventTypeWarning, "FailedProcessWPA", err.Error())
 		setCondition(instance, autoscalingv2.AbleToScale, corev1.ConditionFalse, "FailedProcessWPA", "Error happened while processing the WPA")
-		return reconcile.Result{}, nil
+		// In case of `reconcileWPA` error, we need to requeue the Resource in order to retry to process it again
+		// we put a delay of 1 second in order to not retry directly and limit the number of retries if it only a transient issue.
+		return reconcile.Result{RequeueAfter: time.Second}, nil
 	}
 
 	return resRepeat, nil
