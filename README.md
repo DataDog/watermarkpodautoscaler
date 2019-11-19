@@ -1,6 +1,6 @@
 # Watermark Pod Autoscaler Controller
 
-**Disclaimer**: This project is still a work in progress; the API might change.
+**Disclaimer**: This project is in beta - The API might change.
 
 ## Overview
 
