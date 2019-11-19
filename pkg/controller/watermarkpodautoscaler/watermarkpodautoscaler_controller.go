@@ -539,7 +539,7 @@ func shouldScale(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 	if upscaleCountdown > 0 {
 		transitionCountdown.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, transitionPromLabel: "upscale", resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(upscaleCountdown)
 		backoffUp = true
-		logger.Info("Too early to upscale. Last scale was at %s, next upscale will be at %s, last metrics timestamp: %s", "lastScaleTime", wpa.Status.LastScaleTime, "nextUpscaleTimestamp", wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow), "lastMetricsTimestamp", timestamp)
+		logger.Info("Too early to upscale", "lastScaleTime", wpa.Status.LastScaleTime, "nextUpscaleTimestamp", wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow), "lastMetricsTimestamp", timestamp)
 
 		if backoffDown {
 			setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, "BackoffBoth", "the time since the previous scale is still within both the downscale and upscale forbidden windows")
