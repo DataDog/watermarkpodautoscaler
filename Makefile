@@ -63,6 +63,7 @@ push: container
 
 clean:
 	rm -f ${ARTIFACT}
+	rm -rf ./bin
 
 validate:
 	./bin/golangci-lint run ./...
