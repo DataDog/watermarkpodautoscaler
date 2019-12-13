@@ -61,7 +61,8 @@ const (
 var (
 	log                                                                = logf.Log.WithName(subsystem)
 	dryRunCondition autoscalingv2.HorizontalPodAutoscalerConditionType = "DryRun"
-	value                                                              = prometheus.NewGaugeVec(
+
+	value = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
 			Name:      "value",
@@ -260,9 +261,15 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 func updatePredicate(ev event.UpdateEvent) bool {
 	oldObject := ev.ObjectOld.(*datadoghqv1alpha1.WatermarkPodAutoscaler)
 	newObject := ev.ObjectNew.(*datadoghqv1alpha1.WatermarkPodAutoscaler)
-	// Add the chpa object to the queue only if the spec has changed.
+	// Add the wpa object to the queue only if the spec has changed.
 	// Status change should not lead to a requeue.
-	return !apiequality.Semantic.DeepEqual(newObject.Spec, oldObject.Spec)
+	hasChanged := !apiequality.Semantic.DeepEqual(newObject.Spec, oldObject.Spec)
+	if hasChanged {
+		// remove prometheus metrics associated to this WPA, only metrics associated to metrics
+		// since other could not have changed.
+		cleanupAssociatedMetrics(oldObject, true)
+	}
+	return hasChanged
 }
 
 // blank assignment to verify that ReconcileWatermarkPodAutoscaler implements reconcile.Reconciler
@@ -310,6 +317,12 @@ func (r *ReconcileWatermarkPodAutoscaler) Reconcile(request reconcile.Request) (
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
+
+	var needToReturn bool
+	if needToReturn, err = r.handleFinalizer(logger, instance); err != nil || needToReturn {
+		return reconcile.Result{}, err
+	}
+
 	if !datadoghqv1alpha1.IsDefaultWatermarkPodAutoscaler(instance) {
 		logger.Info("Some configuration options are missing, falling back to the default ones")
 		defaultWPA := datadoghqv1alpha1.DefaultWatermarkPodAutoscaler(instance)
