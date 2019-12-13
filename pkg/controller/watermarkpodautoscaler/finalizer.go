@@ -11,7 +11,6 @@ import (
 	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/util"
 	logr "github.com/go-logr/logr"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -21,8 +20,8 @@ const (
 func (r *ReconcileWatermarkPodAutoscaler) handleFinalizer(reqLogger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) (bool, error) {
 	// Check if the WatermarkPodAutoscaler instance is marked to be deleted, which is
 	// indicated by the deletion timestamp being set.
-	isMemcachedMarkedToBeDeleted := wpa.GetDeletionTimestamp() != nil
-	if isMemcachedMarkedToBeDeleted {
+	isWPAMarkedToBeDeleted := wpa.GetDeletionTimestamp() != nil
+	if isWPAMarkedToBeDeleted {
 		if util.ContainsString(wpa.GetFinalizers(), watermarkpodautoscalerFinalizer) {
 			// Run finalization logic for watermarkpodautoscalerFinalizer. If the
 			// finalization logic fails, don't remove the finalizer so
@@ -66,39 +65,4 @@ func (r *ReconcileWatermarkPodAutoscaler) addFinalizer(reqLogger logr.Logger, wp
 		return err
 	}
 	return nil
-}
-
-func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onlyMetricsSpecific bool) {
-	promLabelsForWpa := prometheus.Labels{
-		wpaNamePromLabel:           wpa.Name,
-		resourceNamespacePromLabel: wpa.Namespace,
-		resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
-		resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
-	}
-
-	if !onlyMetricsSpecific {
-		replicaProposal.Delete(promLabelsForWpa)
-		replicaEffective.Delete(promLabelsForWpa)
-		replicaMin.Delete(promLabelsForWpa)
-		replicaMax.Delete(promLabelsForWpa)
-
-		promLabelsForWpa[reasonPromLabel] = "downscale_capping"
-		restrictedScaling.Delete(promLabelsForWpa)
-		promLabelsForWpa[reasonPromLabel] = "upscale_capping"
-		restrictedScaling.With(promLabelsForWpa)
-		delete(promLabelsForWpa, reasonPromLabel)
-
-		promLabelsForWpa[transitionPromLabel] = "downscale"
-		transitionCountdown.Delete(promLabelsForWpa)
-		promLabelsForWpa[transitionPromLabel] = "upscale"
-		transitionCountdown.Delete(promLabelsForWpa)
-	}
-
-	for _, metricSpec := range wpa.Spec.Metrics {
-		promLabelsForWpa[metricNamePromLabel] = metricSpec.External.MetricName
-
-		lowwm.Delete(promLabelsForWpa)
-		highwm.Delete(promLabelsForWpa)
-		value.Delete(promLabelsForWpa)
-	}
 }
