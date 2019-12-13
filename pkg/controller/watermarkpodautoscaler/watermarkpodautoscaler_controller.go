@@ -40,7 +40,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	sigmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
@@ -48,148 +47,12 @@ import (
 )
 
 const (
-	subsystem                  = "wpa_controller"
-	wpaNamePromLabel           = "wpa_name"
-	resourceNamePromLabel      = "resource_name"
-	resourceKindPromLabel      = "resource_kind"
-	resourceNamespacePromLabel = "resource_namespace"
-	metricNamePromLabel        = "metric_name"
-	reasonPromLabel            = "reason"
-	transitionPromLabel        = "transition"
+	defaultSyncPeriod = 15 * time.Second
 )
 
 var (
 	log                                                                = logf.Log.WithName(subsystem)
 	dryRunCondition autoscalingv2.HorizontalPodAutoscalerConditionType = "DryRun"
-	value                                                              = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Subsystem: subsystem,
-			Name:      "value",
-			Help:      "Gauge of the value used for autoscaling",
-		},
-		[]string{
-			wpaNamePromLabel,
-			metricNamePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			resourceKindPromLabel,
-		})
-	highwm = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Subsystem: subsystem,
-			Name:      "high_watermak",
-			Help:      "Gauge for the high watermark of a given WPA",
-		},
-		[]string{
-			wpaNamePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			resourceKindPromLabel,
-			metricNamePromLabel,
-		})
-	transitionCountdown = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Subsystem: subsystem,
-			Name:      "transition_countdown",
-			Help:      "Gauge indicating the time in seconds before scaling is authorized",
-		},
-		[]string{
-			wpaNamePromLabel,
-			transitionPromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			resourceKindPromLabel,
-		})
-	lowwm = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Subsystem: subsystem,
-			Name:      "low_watermak",
-			Help:      "Gauge for the low watermark of a given WPA",
-		},
-		[]string{
-			wpaNamePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			resourceKindPromLabel,
-			metricNamePromLabel,
-		})
-	replicaProposal = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Subsystem: subsystem,
-			Name:      "replicas_scaling_proposal",
-			Help:      "Gauge for the number of replicas the WPA will suggest to scale to",
-		},
-		[]string{
-			wpaNamePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			resourceKindPromLabel,
-		})
-	replicaEffective = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Subsystem: subsystem,
-			Name:      "replicas_scaling_effective",
-			Help:      "Gauge for the number of replicas the WPA will instruct to scale to",
-		},
-		[]string{
-			wpaNamePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			resourceKindPromLabel,
-		})
-	restrictedScaling = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Subsystem: subsystem,
-			Name:      "restricted_scaling",
-			Help:      "Gauge indicating whether the metric is within the watermarks bounds",
-		},
-		[]string{
-			wpaNamePromLabel,
-			reasonPromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			resourceKindPromLabel,
-		})
-	replicaMin = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Subsystem: subsystem,
-			Name:      "min_replicas",
-			Help:      "Gauge for the minReplicas value of a given WPA",
-		},
-		[]string{
-			wpaNamePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			resourceKindPromLabel,
-		})
-	replicaMax = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Subsystem: subsystem,
-			Name:      "max_replicas",
-			Help:      "Gauge for the maxReplicas value of a given WPA",
-		},
-		[]string{
-			wpaNamePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			resourceKindPromLabel,
-		})
-)
-
-func init() {
-	sigmetrics.Registry.MustRegister(value)
-	sigmetrics.Registry.MustRegister(highwm)
-	sigmetrics.Registry.MustRegister(lowwm)
-	sigmetrics.Registry.MustRegister(replicaProposal)
-	sigmetrics.Registry.MustRegister(replicaEffective)
-	sigmetrics.Registry.MustRegister(restrictedScaling)
-	sigmetrics.Registry.MustRegister(transitionCountdown)
-	sigmetrics.Registry.MustRegister(replicaMin)
-	sigmetrics.Registry.MustRegister(replicaMax)
-}
-
-const (
-	defaultSyncPeriod = 15 * time.Second
 )
 
 // newReconciler returns a new reconcile.Reconciler
@@ -260,9 +123,15 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 func updatePredicate(ev event.UpdateEvent) bool {
 	oldObject := ev.ObjectOld.(*datadoghqv1alpha1.WatermarkPodAutoscaler)
 	newObject := ev.ObjectNew.(*datadoghqv1alpha1.WatermarkPodAutoscaler)
-	// Add the chpa object to the queue only if the spec has changed.
+	// Add the wpa object to the queue only if the spec has changed.
 	// Status change should not lead to a requeue.
-	return !apiequality.Semantic.DeepEqual(newObject.Spec, oldObject.Spec)
+	hasChanged := !apiequality.Semantic.DeepEqual(newObject.Spec, oldObject.Spec)
+	if hasChanged {
+		// remove prometheus metrics associated to this WPA, only metrics associated to metrics
+		// since other could not have changed.
+		cleanupAssociatedMetrics(oldObject, true)
+	}
+	return hasChanged
 }
 
 // blank assignment to verify that ReconcileWatermarkPodAutoscaler implements reconcile.Reconciler
@@ -310,6 +179,12 @@ func (r *ReconcileWatermarkPodAutoscaler) Reconcile(request reconcile.Request) (
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
+
+	var needToReturn bool
+	if needToReturn, err = r.handleFinalizer(logger, instance); err != nil || needToReturn {
+		return reconcile.Result{}, err
+	}
+
 	if !datadoghqv1alpha1.IsDefaultWatermarkPodAutoscaler(instance) {
 		logger.Info("Some configuration options are missing, falling back to the default ones")
 		defaultWPA := datadoghqv1alpha1.DefaultWatermarkPodAutoscaler(instance)
