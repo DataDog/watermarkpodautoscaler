@@ -10,13 +10,16 @@ SOURCEDIR = "."
 
 SOURCES := $(shell find $(SOURCEDIR) ! -name "*_test.go" -name '*.go')
 
-BUILDINFOPKG=github.com/datadog/${PROJECT_NAME}/version
-GIT_TAG?=$(shell git tag|tail -1)
+BUILDINFOPKG=github.com/DataDog/${PROJECT_NAME}/version
+GIT_TAG?=$(shell git tag -l --contains HEAD | tail -1)
+LAST_TAG=$(or $(shell git tag | tail -1),v0.0.0)
 TAG?=${GIT_TAG}
+TAG_HASH=${LAST_TAG}_$(shell git rev-parse --short HEAD)
+VERSION?=$(if $(GIT_TAG),$(GIT_TAG),$(TAG_HASH))
 GIT_COMMIT?=$(shell git rev-parse HEAD)
 DATE=$(shell date +%Y-%m-%d/%H:%M:%S )
-LDFLAGS= -ldflags "-w -X ${BUILDINFOPKG}.Tag=${GIT_TAG} -X ${BUILDINFOPKG}.Commit=${GIT_COMMIT} -X ${BUILDINFOPKG}.Version=${TAG} -X ${BUILDINFOPKG}.BuildTime=${DATE} -s"
-GOARGS?=
+GOMOD?="-mod=vendor"
+LDFLAGS=-ldflags "-w -X ${BUILDINFOPKG}.Tag=${TAG} -X ${BUILDINFOPKG}.Commit=${GIT_COMMIT} -X ${BUILDINFOPKG}.Version=${VERSION} -X ${BUILDINFOPKG}.BuildTime=${DATE} -s"
 
 all: build
 
@@ -38,12 +41,7 @@ verify-license:
 	./hack/verify-license.sh
 
 ${ARTIFACT}: ${SOURCES}
-	CGO_ENABLED=0 go build ${GOARGS} -i -installsuffix cgo ${LDFLAGS} -o ${ARTIFACT} ./cmd/manager/main.go
-
-build-plugin: ${ARTIFACT_PLUGIN}
-
-${ARTIFACT_PLUGIN}: ${SOURCES}
-	CGO_ENABLED=0 go build ${GOARGS} -i -installsuffix cgo ${LDFLAGS} -o ${ARTIFACT_PLUGIN} ./cmd/${ARTIFACT_PLUGIN}/main.go
+	CGO_ENABLED=0 go build ${GOMOD} -i -installsuffix cgo ${LDFLAGS} -o ${ARTIFACT} ./cmd/manager/main.go
 
 container:
 	./bin/operator-sdk build $(PREFIX):$(TAG)
@@ -52,7 +50,7 @@ container:
     endif
 
 container-ci:
-	docker build -t $(PREFIX):$(TAG) --build-arg  "VERSION=$(TAG)" . 
+	docker build -t $(PREFIX):$(TAG) --build-arg  "TAG=$(TAG)" .
 
 test:
 	./go.test.sh
@@ -65,6 +63,7 @@ push: container
 
 clean:
 	rm -f ${ARTIFACT}
+	rm -rf ./bin
 
 validate:
 	./bin/golangci-lint run ./...
@@ -83,8 +82,12 @@ local-load: $(CRDS)
 $(filter %.yaml,$(files)): %.yaml: %yaml
 	kubectl apply -f $@
 
-install-tools:
+install-tools: bin/golangci-lint bin/operator-sdk
+
+bin/golangci-lint:
 	./hack/golangci-lint.sh v1.18.0
+
+bin/operator-sdk:
 	./hack/install-operator-sdk.sh
 
 .PHONY: vendor build push clean test e2e validate local-load install-tools verify-license list
