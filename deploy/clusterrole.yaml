@@ -5,13 +5,21 @@ metadata:
 rules:
 - apiGroups:
   - apps
+  - extensions
   resources:
   - replicasets/scale
   - deployments/scale
   - statefulsets/scale
   verbs:
-  - 'update'
-  - 'get'
+  - update
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
 - apiGroups:
   - apps
   - extensions
