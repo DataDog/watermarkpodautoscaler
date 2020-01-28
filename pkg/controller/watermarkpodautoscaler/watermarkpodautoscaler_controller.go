@@ -9,13 +9,14 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
 
 	"github.com/prometheus/client_golang/prometheus"
-
-	logr "github.com/go-logr/logr"
+	// TODO revisit error level logs as https://github.com/operator-framework/operator-sdk/pull/2319 is merged
+	"github.com/go-logr/logr"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -189,14 +190,14 @@ func (r *ReconcileWatermarkPodAutoscaler) Reconcile(request reconcile.Request) (
 		logger.Info("Some configuration options are missing, falling back to the default ones")
 		defaultWPA := datadoghqv1alpha1.DefaultWatermarkPodAutoscaler(instance)
 		if err := r.client.Update(context.TODO(), defaultWPA); err != nil {
-			logger.Error(err, "Failed to set the default values during reconciliation")
+			logger.Info("Failed to set the default values during reconciliation", "error", err)
 			return reconcile.Result{}, err
 		}
 		// default values of the WatermarkPodAutoscaler are set. Return and requeue to show them in the spec.
 		return reconcile.Result{Requeue: true}, nil
 	}
 	if err := datadoghqv1alpha1.CheckWPAValidity(instance); err != nil {
-		logger.Error(err, fmt.Sprintf("Got an invalid WPA spec in %s", request.NamespacedName.String()))
+		logger.Info("Got an invalid WPA spec", "Instance", request.NamespacedName.String(), "error", err)
 		// If the WPA spec is incorrect (most likely, in "metrics" section) stop processing it
 		// When the spec is updated, the wpa will be re-added to the reconcile queue
 		r.eventRecorder.Event(instance, corev1.EventTypeWarning, "FailedSpecCheck", err.Error())
@@ -217,7 +218,7 @@ func (r *ReconcileWatermarkPodAutoscaler) Reconcile(request reconcile.Request) (
 		setCondition(instance, dryRunCondition, corev1.ConditionFalse, "DryRun mode disabled", "Scaling changes can be applied")
 	}
 	if err := r.reconcileWPA(logger, instance); err != nil {
-		logger.Error(err, "Error during reconcileWPA")
+		logger.Info("Error during reconcileWPA", "error", err)
 		r.eventRecorder.Event(instance, corev1.EventTypeWarning, "FailedProcessWPA", err.Error())
 		setCondition(instance, autoscalingv2.AbleToScale, corev1.ConditionFalse, "FailedProcessWPA", "Error happened while processing the WPA")
 		// In case of `reconcileWPA` error, we need to requeue the Resource in order to retry to process it again
@@ -251,10 +252,9 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(logger logr.Logger, wpa *
 	}
 
 	currentScale, targetGR, err := r.getScaleForResourceMappings(wpa.Namespace, wpa.Spec.ScaleTargetRef.Name, mappings)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return err
-		}
+	if currentScale == nil && strings.Contains(err.Error(), "not found") {
+		// it is possible that one of the GK in the mappings was not found, but if we have at least one that works, we can continue reconciling.
+		return err
 	}
 
 	currentReplicas := currentScale.Status.Replicas
@@ -263,7 +263,6 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(logger logr.Logger, wpa *
 
 	reference := fmt.Sprintf("%s/%s/%s", wpa.Spec.ScaleTargetRef.Kind, wpa.Namespace, wpa.Spec.ScaleTargetRef.Name)
 	setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, "SucceededGetScale", "the WPA controller was able to get the target's current scale")
-
 	metricStatuses := wpaStatusOriginal.CurrentMetrics
 	if metricStatuses == nil {
 		metricStatuses = []autoscalingv2.MetricStatus{}
@@ -300,11 +299,11 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(logger logr.Logger, wpa *
 			if err2 := r.updateStatusIfNeeded(wpaStatusOriginal, wpa); err2 != nil {
 				r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedUpdateReplicas", err2.Error())
 				setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, "FailedUpdateReplicas", "the WPA controller was unable to update the number of replicas: %v", err)
-				logger.Error(err2, "The WPA controller was unable to update the number of replicas")
+				logger.Info("The WPA controller was unable to update the number of replicas", "error", err2)
 				return nil
 			}
 			r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedComputeMetricsReplicas", err.Error())
-			logger.Error(err, "Failed to compute desired number of replicas based on listed metrics.", "reference", reference)
+			logger.Info("Failed to compute desired number of replicas based on listed metrics.", "reference", reference, "error", err)
 			return nil
 		}
 		logger.Info("Proposing replicas", "proposedReplicas", proposedReplicas, "metricName", metricName, "reference", reference)
@@ -379,7 +378,7 @@ func (r *ReconcileWatermarkPodAutoscaler) getScaleForResourceMappings(namespace,
 		if err == nil {
 			break
 		}
-		errs = append(errs, err)
+		errs = append(errs, fmt.Errorf("could not get scale for the GV %s, error: %v", mapping.GroupVersionKind.GroupVersion().String(), err.Error()))
 	}
 	if scale == nil {
 		errs = append(errs, fmt.Errorf("scale not found"))
