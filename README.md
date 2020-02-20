@@ -56,7 +56,7 @@ The WPA controller will use `math.Floor` if the value is under the lower waterma
 
 ### The process
 
-Create your [WPA](https://github.com/DataDog/watermarkpodautoscaler/blob/master/deploy/crds/datadoghq_v1alpha1_watermarkpodautoscaler_cr.yaml) in the same namespace as your target deployment.
+Create your [WPA](https://github.com/DataDog/watermarkpodautoscaler/blob/master/deploy/crds/datadoghq.com_watermarkpodautoscalers_cr.yaml) in the same namespace as your target deployment.
 
 The Datadog Cluster Agent will pick up the creation/update/deletion event. It parses the WPA spec to extract the metric and scope to get from Datadog.
 
@@ -64,25 +64,30 @@ The Datadog Cluster Agent will pick up the creation/update/deletion event. It pa
 
 In this example, we are using the following spec configuration:
 
-```
-    downscaleForbiddenWindowSeconds: 60
-    upscaleForbiddenWindowSeconds: 30
-    scaleDownLimitFactor: 30
-    scaleUpLimitFactor: 50
-    minReplicas: 4
-    maxReplicas: 9
-    metrics:
-    - external:
-        highWatermark: 400m
-        lowWatermark: 150m
-        metricName: custom.request_duration.max
-        metricSelector:
-          matchLabels:
-            kubernetes_cluster: mycluster
-            service: billing
-            short_image: billing-app
-      type: External
-    tolerance: 0.01
+```yaml
+apiVersion: datadoghq.com/v1alpha1
+kind: WatermarkPodAutoscaler
+metadata:
+  name: example-watermarkpodautoscaler
+spec:
+  downscaleForbiddenWindowSeconds: 60
+  upscaleForbiddenWindowSeconds: 30
+  scaleDownLimitFactor: 30
+  scaleUpLimitFactor: 50
+  minReplicas: 4
+  maxReplicas: 9
+  metrics:
+  - external:
+      highWatermark: 400m
+      lowWatermark: 150m
+      metricName: custom.request_duration.max
+      metricSelector:
+        matchLabels:
+          kubernetes_cluster: mycluster
+          service: billing
+          short_image: billing-app
+    type: External
+  tolerance: 0.01
 ```
 
 * **Bounds**
@@ -122,8 +127,16 @@ In the following example, we can see that the recommended number of replicas is 
 <a name="precedence"></a>
 
 As we retrieve the value of the external metric, we will first compare it to the sum `highWatermark` + `tolerance` and to the difference `lowWatermark` - `tolerance`.
-If we are outside of the bounds, we compute the recommended number of replicas. We then compare this value to the current number of replicas to potentially cap the recommended number of replicas.
+If we are outside of the bounds, we compute the recommended number of replicas. We then compare this value to the current number of replicas to potentially cap the recommended number of replicas also according to `minReplicas` and `maxReplicas`.
 Finally, we look at if we are allowed to scale, given the `downscaleForbiddenWindowSeconds` and `upscaleForbiddenWindowSeconds`.
+
+* **Scaling**
+
+If all the conditions are met, the controller will scale the targeted object in `scaleTargetRef` to the recommended number of replicas only if the `dryRun` flag is not set to `true`. It will indicate this by logging:
+
+```json
+{"level":"info","ts":1566327479.866722,"logger":"wpa_controller","msg":"DryRun mode: scaling change was inhibited currentReplicas:8 desiredReplicas:12"}
+```
 
 ## Limitations
 
@@ -140,7 +153,7 @@ Finally, we look at if we are allowed to scale, given the `downscaleForbiddenWin
 The Cluster Agent is running an informer against the WPA resources, and similar to the HPA, upon creation/update/deletion will parse the spec to query the metric from Datadog.
 If you exec in the Datadog Cluster Agent pod and run `agent status` you will be able to see more specific details about the spec of the autoscalers that were parsed (whether it's a horizontal or a watermark pod autoscaler).
 
-```
+```yaml
   * watermark pod autoscaler: default/example2-watermarkpodautoscaler
     - name: example2-watermarkpodautoscaler
     - namespace: default
@@ -173,7 +186,7 @@ In addition to the metrics mentioned above, these are logs that will help you be
 
 Every 15 seconds, we retrieve the metric listed in the `metrics` section of the spec from Datadog.
 
-```
+```json
 {"level":"info","ts":1566327479.866722,"logger":"wpa_controller","msg":"Target deploy: {namespace1/my-application replicas:6}"}
 {"level":"info","ts":1566327479.8844478,"logger":"wpa_controller","msg":"Metrics from the External Metrics Provider: [127]"}
 {"level":"info","ts":1566327479.8844907,"logger":"wpa_controller","msg":"About to compare utilization 127 vs LWM 150 and HWM 400"}
@@ -187,15 +200,19 @@ Given the result of this comparison, we print the recommended number of replicas
 
 If you want to query the External Metrics Provider directly, you can use the following command:
 
-`➜ kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/<namespace of your deployment>/<name of the metrics>" | jq .`
+```shell
+kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/<namespace of your deployment>/<name of the metrics>" | jq .
+```
 
 You can optionally add label selectors too by adding `?labelSelector=key%3Dvalue`.
 If we wanted to retrieve our metric in this case, we could use:
 
-`➜ kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/<namespace of your deployment>/<name of the metrics>?labelSelector=key%3Dvalue%2Cotherkey%3Dothervalue%2Cshort_image%3Dimage" | jq .`
+```shell
+kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/<namespace of your deployment>/<name of the metrics>?labelSelector=key%3Dvalue%2Cotherkey%3Dothervalue%2Cshort_image%3Dimage" | jq .
+```
 
 If you see logs such as:
-```
+```json
 {"level":"info","ts":1566397216.8918724,"logger":"wpa_controller","msg":"failed to compute desired number of replicas based on listed metrics for Deployment/datadog/propjoe-green: failed to get external metric dd.propjoe.request_duration.max: unable to get external metric datadog/propjoe-green/&LabelSelector{MatchLabels:map[string]string{fooa: bar,},MatchExpressions:[],}: no metrics returned from external metrics API"}
 ```
 
@@ -204,21 +221,24 @@ You can look through the External Metrics Provider logs for further investigatio
 
 We then verify the scaling velocity capping and the cooldown windows.
 In the case of a scaling capping, you would see something like:
-```
+
+```json
 {"level":"info","ts":1566327268.8839815,"logger":"wpa_controller","msg":"Upscaling rate higher than limit of 50.0% up to 9 replicas. Capping the maximum upscale to 9 replicas"}
 {"level":"info","ts":1566327268.884001,"logger":"wpa_controller","msg":"Returning 9 replicas, condition: ScaleUpLimit reason the desired replica count is increasing faster than the maximum scale rate"}
 {"level":"info","ts":1566327479.8845513,"logger":"wpa_controller","msg":" -> after normalization: 9"}
 ```
 
 Then we consider the cooldown periods. You will have logs indicative of when the last scaling event was, as well as when the next upscale and downscale events are forbidden until:
-```
+
+```json
 {"level":"info","ts":1566327479.8845847,"logger":"wpa_controller","msg":"Too early to downscale. Last scale was at 2019-08-20 18:57:44 +0000 UTC, next downscale will be at 2019-08-20 18:58:44 +0000 UTC, last metrics timestamp: 2019-08-20 18:57:59 +0000 UTC"}
 {"level":"info","ts":1566327479.8846018,"logger":"wpa_controller","msg":"Too early to upscale. Last scale was at 2019-08-20 18:57:44 +0000 UTC, next upscale will be at 2019-08-20 18:58:14 +0000 UTC, last metrics timestamp: 2019-08-20 18:57:59 +0000 UTC"}
 {"level":"info","ts":1566327479.884608,"logger":"wpa_controller","msg":"backoffUp: true, backoffDown: true, desiredReplicas 5, currentReplicas: 6"}
 ```
 
 Finally, we have verification that the deployment was correctly autoscaled:
-```
+
+```json
 {"level":"info","ts":1566327253.7887673,"logger":"wpa_controller","msg":"Successful rescale of watermarkpodautoscaler, old size: 8, new size: 9, reason: cutom_metric.max{map[kubernetes_cluster:my-cluster service:my-service short_image:my-image]} above target"}
 ```
 
@@ -241,11 +261,15 @@ Finally, we have verification that the deployment was correctly autoscaled:
 Since we watch all the WPA definitions cluster wide, we use a clusterrole.
 
 A useful option is to impersonate the user to verify rights. For instance, to verify that you have the right to get a deployment as the WPA controller's service account:
-`➜ kubectl get deploy <your_deploy>  --as system:serviceaccount:datadog:watermarkpodautoscaler -n <your_ns>`
+```shell
+kubectl get deploy <your_deploy>  --as system:serviceaccount:datadog:watermarkpodautoscaler -n <your_ns>
+```
 
 Or, query the External Metrics Provider:
 
-`➜ kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/<your_ns>/metric --as system:serviceaccount:<your_ns>:watermarkpodautoscaler`
+```shell
+kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/<your_ns>/metric --as system:serviceaccount:<your_ns>:watermarkpodautoscaler
+```
 
 ## Developer guide
 
@@ -260,7 +284,7 @@ Requirements:
 
 After cloning the repository `https://github.com/DataDog/watermarkpodautoscaler`, set some environment variables:
 
-```console
+```shell
 export GO111MODULE=on
 unset GOPATH
 export PATH=$PATH:$(pwd)/bin
