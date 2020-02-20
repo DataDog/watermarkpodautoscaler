@@ -84,7 +84,8 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, curren
 	for _, val := range metrics {
 		sum += val
 	}
-	replicaCount, utilizationQuantity := getReplicaCount(logger, currentReplicas, averaged, metric, wpa, sum, metricName)
+
+	replicaCount, utilizationQuantity := getReplicaCount(logger, currentReplicas, metric, wpa, metricName, averaged, sum, metric.External.LowWatermark, metric.External.HighWatermark)
 
 	return replicaCount, utilizationQuantity, timestamp, nil
 
@@ -119,7 +120,7 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, currentRepli
 		value.Delete(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: string(resourceName)})
 		return 0, 0, time.Time{}, fmt.Errorf("unable to get resource metric %s/%s/%+v: %s", wpa.Namespace, resourceName, selector, err)
 	}
-	logger.Info("Metrics from the Resource Type", "metrics", metrics)
+	logger.Info("Metrics from the Resource Client", "metrics", metrics)
 
 	podList, err := c.podsGetter.Pods(namespace).List(metav1.ListOptions{LabelSelector: labelSelector.String()})
 	if err != nil {
@@ -149,18 +150,15 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, currentRepli
 		sum += podMetric.Value
 	}
 
-	replicaCount, utilizationQuantity := getReplicaCount(logger, currentReplicas, averaged, metric, wpa, sum, string(resourceName))
+	replicaCount, utilizationQuantity := getReplicaCount(logger, currentReplicas, metric, wpa, string(resourceName), averaged, sum, metric.Resource.LowWatermark, metric.Resource.HighWatermark)
 
 	return replicaCount, utilizationQuantity, timestamp, nil
 
 }
 
-func getReplicaCount(logger logr.Logger, currentReplicas int32, averaged float64, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler, sum int64, name string) (replicaCount int32, utilization int64) {
+func getReplicaCount(logger logr.Logger, currentReplicas int32, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler, name string, averaged float64, sum int64, lowMark, highMark *resource.Quantity) (replicaCount int32, utilization int64) {
 	adjustedUsage := float64(sum) / averaged
 	utilizationQuantity := resource.NewMilliQuantity(int64(adjustedUsage), resource.DecimalSI)
-
-	highMark := metric.Resource.HighWatermark
-	lowMark := metric.Resource.LowWatermark
 
 	adjustedHM := float64(highMark.MilliValue()) + wpa.Spec.Tolerance*float64(highMark.MilliValue())
 	adjustedLM := float64(lowMark.MilliValue()) - wpa.Spec.Tolerance*float64(lowMark.MilliValue())
