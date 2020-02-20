@@ -179,7 +179,11 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 	}
 
 	for _, metricSpec := range wpa.Spec.Metrics {
-		promLabelsForWpa[metricNamePromLabel] = metricSpec.External.MetricName
+		if metricSpec.Type == datadoghqv1alpha1.ResourceMetricSourceType {
+			promLabelsForWpa[metricNamePromLabel] = string(metricSpec.Resource.Name)
+		} else {
+			promLabelsForWpa[metricNamePromLabel] = metricSpec.External.MetricName
+		}
 
 		lowwm.Delete(promLabelsForWpa)
 		highwm.Delete(promLabelsForWpa)

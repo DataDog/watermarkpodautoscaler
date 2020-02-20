@@ -12,6 +12,7 @@ spec:
     apiVersion: apps/v1
     name: alpine
   metrics:
+  # Resource or External type supported
   - type: External
     external:
       highWatermark: "12000"
@@ -20,3 +21,11 @@ spec:
       metricSelector:
         matchLabels:
           foo: bar
+  # - type: Resource
+  #   resource:
+  #     highWatermark: 50
+  #     lowWatermark: 1
+  #     name: cpu
+  #     metricSelector:
+  #       matchLabels:
+  #         foo: bar

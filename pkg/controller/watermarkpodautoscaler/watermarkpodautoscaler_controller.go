@@ -35,6 +35,7 @@ import (
 	"k8s.io/client-go/scale"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller/podautoscaler/metrics"
+	resourceclient "k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1beta1"
 	"k8s.io/metrics/pkg/client/external_metrics"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -60,7 +61,7 @@ var (
 func newReconciler(mgr manager.Manager) (reconcile.Reconciler, error) {
 	clientConfig := mgr.GetConfig()
 	metricsClient := metrics.NewRESTMetricsClient(
-		nil,
+		resourceclient.NewForConfigOrDie(clientConfig),
 		nil,
 		external_metrics.NewForConfigOrDie(clientConfig),
 	)
@@ -492,7 +493,7 @@ func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(logger logr.
 	}
 
 	for i, metricSpec := range wpa.Spec.Metrics {
-		if metricSpec.External == nil {
+		if metricSpec.External == nil && metricSpec.Resource == nil {
 			continue
 		}
 
@@ -537,9 +538,47 @@ func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(logger logr.
 			} else {
 				errMsg := "invalid external metric source: the high watermark and the low watermark are required"
 				r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedGetExternalMetric", errMsg)
-				setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, "FailedGetExternalMetric", "the HPA was unable to compute the replica count: %v", err)
+				setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, "FailedGetExternalMetric", "the WPA was unable to compute the replica count: %v", err)
 				return 0, "", nil, time.Time{}, fmt.Errorf(errMsg)
 			}
+		case datadoghqv1alpha1.ResourceMetricSourceType:
+			if metricSpec.Resource.HighWatermark != nil && metricSpec.Resource.LowWatermark != nil {
+				metricNameProposal = fmt.Sprintf("%s{%v}", metricSpec.Resource.Name, metricSpec.Resource.MetricSelector.MatchLabels)
+				promLabelsForWpaWithMetricName := prometheus.Labels{
+					wpaNamePromLabel:           wpa.Name,
+					resourceNamespacePromLabel: wpa.Namespace,
+					resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
+					resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
+					metricNamePromLabel:        string(metricSpec.Resource.Name),
+				}
+
+				replicaCountProposal, utilizationProposal, timestampProposal, err = r.replicaCalc.GetResourceReplicas(logger, currentReplicas, metricSpec, wpa)
+				if err != nil {
+					replicaProposal.Delete(promLabelsForWpa)
+					r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedGetResourceMetric", err.Error())
+					setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, "FailedGetResourceMetric", "the WPA was unable to compute the replica count: %v", err)
+					return 0, "", nil, time.Time{}, fmt.Errorf("failed to get resource metric %s: %v", metricSpec.Resource.Name, err)
+				}
+
+				lowwm.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.Resource.LowWatermark.MilliValue()))
+				highwm.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.Resource.HighWatermark.MilliValue()))
+				replicaProposal.With(promLabelsForWpa).Set(float64(replicaCountProposal))
+
+				statuses[i] = autoscalingv2.MetricStatus{
+					Type: autoscalingv2.ResourceMetricSourceType,
+					Resource: &autoscalingv2.ResourceMetricStatus{
+						Name:                metricSpec.Resource.Name,
+						CurrentAverageValue: *resource.NewMilliQuantity(utilizationProposal, resource.DecimalSI),
+					},
+				}
+
+			} else {
+				errMsg := "invalid resource metric source: the high watermark and the low watermark are required"
+				r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedGetResourceMetric", errMsg)
+				setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, "FailedGetResourceMetric", "the WPA was unable to compute the replica count: %v", err)
+				return 0, "", nil, time.Time{}, fmt.Errorf(errMsg)
+			}
+
 		default:
 			return 0, "", nil, time.Time{}, fmt.Errorf("metricSpec.Type:%s not supported", metricSpec.Type)
 		}

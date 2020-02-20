@@ -808,6 +808,13 @@ func (f *fakeReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, cu
 	return 0, 0, time.Time{}, nil
 }
 
+func (f *fakeReplicaCalculator) GetResourceReplicas(logger logr.Logger, currentReplicas int32, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
+	if f.replicasFunc != nil {
+		return f.replicasFunc(currentReplicas, metric, wpa)
+	}
+	return 0, 0, time.Time{}, nil
+}
+
 func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
 
