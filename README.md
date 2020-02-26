@@ -151,7 +151,22 @@ If all the conditions are met, the controller will scale the targeted object in 
 ### On the Datadog Cluster Agent side
 
 The Cluster Agent is running an informer against the WPA resources, and similar to the HPA, upon creation/update/deletion will parse the spec to query the metric from Datadog.
-If you exec in the Datadog Cluster Agent pod and run `agent status` you will be able to see more specific details about the spec of the autoscalers that were parsed (whether it's a horizontal or a watermark pod autoscaler).
+
+The Cluster Agent doesn't run the WPA listener by default. To enable WPA in the Cluster Agent, set the environment variable `DD_EXTERNAL_METRICS_PROVIDER_WPA_CONTROLLER=true` and update the ClusterRole assigned to the Cluster Agent Service Account to have access to WatermarkPodAutoscaler objects:
+
+```yaml
+[...]
+- apiGroups: ["datadoghq.com"]
+  resources:
+  - watermarkpodautoscalers 
+  verbs:
+  - get
+  - list
+  - watch
+[...]
+```
+
+Once you have applied those changes and created a WPA object, if you exec in the Datadog Cluster Agent pod and run `agent status` you will be able to see more specific details about the spec of the autoscalers that were parsed (whether it's a horizontal or a watermark pod autoscaler).
 
 ```yaml
   * watermark pod autoscaler: default/example2-watermarkpodautoscaler
