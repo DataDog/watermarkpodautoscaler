@@ -86,9 +86,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, curren
 	}
 
 	replicaCount, utilizationQuantity := getReplicaCount(logger, currentReplicas, wpa, metricName, averaged, sum, metric.External.LowWatermark, metric.External.HighWatermark)
-
 	return replicaCount, utilizationQuantity, timestamp, nil
-
 }
 
 // GetResourceReplicas calculates the desired replica count based on a target resource utilization percentage
@@ -151,9 +149,7 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, currentRepli
 	}
 
 	replicaCount, utilizationQuantity := getReplicaCount(logger, currentReplicas, wpa, string(resourceName), averaged, sum, metric.Resource.LowWatermark, metric.Resource.HighWatermark)
-
 	return replicaCount, utilizationQuantity, timestamp, nil
-
 }
 
 func getReplicaCount(logger logr.Logger, currentReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, name string, averaged float64, sum int64, lowMark, highMark *resource.Quantity) (replicaCount int32, utilization int64) {
@@ -208,8 +204,6 @@ func groupPods(podList *v1.PodList, metrics metricsclient.PodMetricsInfo, resour
 		// Unready pods are ignored.
 		if resource == v1.ResourceCPU {
 			var ignorePod bool
-			// adapted from podutil: https://github.com/kubernetes/kubernetes/blob/b1aff7832d8ed78a013f5e0e4b9dc582734d622d/pkg/api/pod/util.go#L220
-			// _, condition := podutil.GetPodCondition(&pod.Status, v1.PodReady) // may be worth adding this podutil dependency
 			_, condition := getPodCondition(&pod.Status, v1.PodReady)
 			if condition == nil || pod.Status.StartTime == nil {
 				ignorePod = true
