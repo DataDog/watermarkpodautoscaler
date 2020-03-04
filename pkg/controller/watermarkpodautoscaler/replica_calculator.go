@@ -64,9 +64,9 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, curren
 			resourceNamespacePromLabel: wpa.Namespace,
 			resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
 			resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
-			reasonPromLabel:            "upscale_capping"}
+			reasonPromLabel:            upscaleCappingPromLabel}
 		restrictedScaling.Delete(labelsWithReason)
-		labelsWithReason[reasonPromLabel] = "downscale_capping"
+		labelsWithReason[reasonPromLabel] = downscaleCappingPromLabel
 		restrictedScaling.Delete(labelsWithReason)
 		labelsWithReason[reasonPromLabel] = "within_bounds"
 		restrictedScaling.Delete(labelsWithReason)
@@ -85,7 +85,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, curren
 		sum += val
 	}
 
-	replicaCount, utilizationQuantity := getReplicaCount(logger, currentReplicas, metric, wpa, metricName, averaged, sum, metric.External.LowWatermark, metric.External.HighWatermark)
+	replicaCount, utilizationQuantity := getReplicaCount(logger, currentReplicas, wpa, metricName, averaged, sum, metric.External.LowWatermark, metric.External.HighWatermark)
 
 	return replicaCount, utilizationQuantity, timestamp, nil
 
@@ -111,9 +111,9 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, currentRepli
 			resourceNamespacePromLabel: wpa.Namespace,
 			resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
 			resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
-			reasonPromLabel:            "upscale_capping"}
+			reasonPromLabel:            upscaleCappingPromLabel}
 		restrictedScaling.Delete(labelsWithReason)
-		labelsWithReason[reasonPromLabel] = "downscale_capping"
+		labelsWithReason[reasonPromLabel] = downscaleCappingPromLabel
 		restrictedScaling.Delete(labelsWithReason)
 		labelsWithReason[reasonPromLabel] = "within_bounds"
 		restrictedScaling.Delete(labelsWithReason)
@@ -150,13 +150,13 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, currentRepli
 		sum += podMetric.Value
 	}
 
-	replicaCount, utilizationQuantity := getReplicaCount(logger, currentReplicas, metric, wpa, string(resourceName), averaged, sum, metric.Resource.LowWatermark, metric.Resource.HighWatermark)
+	replicaCount, utilizationQuantity := getReplicaCount(logger, currentReplicas, wpa, string(resourceName), averaged, sum, metric.Resource.LowWatermark, metric.Resource.HighWatermark)
 
 	return replicaCount, utilizationQuantity, timestamp, nil
 
 }
 
-func getReplicaCount(logger logr.Logger, currentReplicas int32, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler, name string, averaged float64, sum int64, lowMark, highMark *resource.Quantity) (replicaCount int32, utilization int64) {
+func getReplicaCount(logger logr.Logger, currentReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, name string, averaged float64, sum int64, lowMark, highMark *resource.Quantity) (replicaCount int32, utilization int64) {
 	adjustedUsage := float64(sum) / averaged
 	utilizationQuantity := resource.NewMilliQuantity(int64(adjustedUsage), resource.DecimalSI)
 
@@ -224,7 +224,7 @@ func groupPods(podList *v1.PodList, metrics metricsclient.PodMetricsInfo, resour
 		}
 		readyPods.Insert(pod.Name)
 	}
-	return
+	return readyPods, ignoredPods
 }
 
 func removeMetricsForPods(metrics metricsclient.PodMetricsInfo, pods sets.String) {
