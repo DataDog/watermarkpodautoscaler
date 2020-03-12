@@ -99,7 +99,7 @@ func checkWPAMetricsValidity(wpa *WatermarkPodAutoscaler) (err error) {
 				return fmt.Errorf("metric.External is nil while metric.Type is '%s'", metric.Type)
 			}
 			if metric.External.LowWatermark == nil || metric.External.HighWatermark == nil {
-				msg := fmt.Sprintf("Watermarks are not set correctly, removing the WPA %s from the Reconciler", wpa.Name)
+				msg := fmt.Sprintf("Watermarks are not set correctly, removing the WPA %s/%s from the Reconciler", wpa.Namespace, wpa.Name)
 				return fmt.Errorf(msg)
 			}
 			if metric.External.MetricSelector == nil {
@@ -115,7 +115,7 @@ func checkWPAMetricsValidity(wpa *WatermarkPodAutoscaler) (err error) {
 				return fmt.Errorf("metric.Resource is nil while metric.Type is '%s'", metric.Type)
 			}
 			if metric.Resource.LowWatermark == nil || metric.Resource.HighWatermark == nil {
-				msg := fmt.Sprintf("Watermarks are not set correctly, removing the WPA %s from the Reconciler", wpa.Name)
+				msg := fmt.Sprintf("Watermarks are not set correctly, removing the WPA %s/%s from the Reconciler", wpa.Namespace, wpa.Name)
 				return fmt.Errorf(msg)
 			}
 			if metric.Resource.MetricSelector == nil {
@@ -129,7 +129,6 @@ func checkWPAMetricsValidity(wpa *WatermarkPodAutoscaler) (err error) {
 		default:
 			return fmt.Errorf("incorrect metric.Type: '%s'", metric.Type)
 		}
-
 	}
 	return err
 }

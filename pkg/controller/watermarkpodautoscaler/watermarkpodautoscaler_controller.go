@@ -514,7 +514,10 @@ func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(logger logr.
 					metricNamePromLabel:        metricSpec.External.MetricName,
 				}
 
-				replicaCountProposal, utilizationProposal, timestampProposal, err = r.replicaCalc.GetExternalMetricReplicas(logger, currentReplicas, metricSpec, wpa)
+				replicaCalculation, err := r.replicaCalc.GetExternalMetricReplicas(logger, currentReplicas, metricSpec, wpa)
+				replicaCountProposal = replicaCalculation.replicaCount
+				utilizationProposal = replicaCalculation.utilization
+				timestampProposal = replicaCalculation.timestamp
 				if err != nil {
 					replicaProposal.Delete(promLabelsForWpa)
 					r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedGetExternalMetric", err.Error())
@@ -552,7 +555,10 @@ func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(logger logr.
 					metricNamePromLabel:        string(metricSpec.Resource.Name),
 				}
 
-				replicaCountProposal, utilizationProposal, timestampProposal, err = r.replicaCalc.GetResourceReplicas(logger, currentReplicas, metricSpec, wpa)
+				replicaCalculation, err := r.replicaCalc.GetResourceReplicas(logger, currentReplicas, metricSpec, wpa)
+				replicaCountProposal = replicaCalculation.replicaCount
+				utilizationProposal = replicaCalculation.utilization
+				timestampProposal = replicaCalculation.timestamp
 				if err != nil {
 					replicaProposal.Delete(promLabelsForWpa)
 					r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedGetResourceMetric", err.Error())
