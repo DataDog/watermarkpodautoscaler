@@ -54,6 +54,39 @@ This means that if you have a threshold at 10, you will need to reach a utilizat
 
 The WPA controller will use `math.Floor` if the value is under the lower watermark. This ensures symmetrical behavior. Combined with other scaling options, this allows finer control over when to downscale.
 
+### Deployment
+
+To use the Watermark Pod Autoscaler, deploy it in your Kubernetes cluster:
+
+1. Download the [Watermark Pod Autoscaler project zip ball][https://github.com/DataDog/watermarkpodautoscaler/archive/master.zip]. Source code can be found at [`DataDog/watermarkpodautoscaler`][https://github.com/DataDog/watermarkpodautoscaler].
+2. Unzip the project, and go into the `./watermarkpodautoscaler` folder.
+3. Define your namespace and Watermark Pod Autoscaler controller:
+
+   ```shell
+   DD_NAMESPACE="datadog"
+   DD_NAMEWPA="wpacontroller"
+   ```
+
+4. Create the namespace:
+
+   ```shell
+   kubectl create ns $DD_NAMESPACE
+   ```
+
+5. Install the Watermark Pod Autoscaler controller with Helm:
+
+   - Helm v2:
+
+   ```shell
+   helm install --name $DD_NAMEWPA -n $DD_NAMESPACE ./chart/watermarkpodautoscaler
+   ```
+
+   - Helm v3:
+
+   ```shell
+   helm install $DD_NAMEWPA -n $DD_NAMESPACE ./chart/watermarkpodautoscaler
+   ```
+
 ### The process
 
 Create your [WPA](https://github.com/DataDog/watermarkpodautoscaler/blob/master/deploy/crds/datadoghq.com_watermarkpodautoscalers_cr.yaml) in the same namespace as your target deployment.
