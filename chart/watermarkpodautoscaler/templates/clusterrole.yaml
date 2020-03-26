@@ -1,0 +1,50 @@
+{{- if .Values.rbac.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "watermarkpodautoscaler.fullname" . }}
+  labels:
+    {{- include "watermarkpodautoscaler.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - apps
+  - extensions
+  resources:
+  - replicasets/scale
+  - deployments/scale
+  - statefulsets/scale
+  verbs:
+  - update
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - apps
+  - extensions
+  resourceNames:
+  - watermarkpodautoscalers
+  resources:
+  - deployments/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - datadoghq.com
+  resources:
+  - watermarkpodautoscalers
+  - watermarkpodautoscalers/status
+  verbs:
+  - '*'
+- apiGroups:
+  - external.metrics.k8s.io
+  resources:
+  - '*'
+  verbs:
+  - list
+  - get
+  - watch
+{{- end -}}

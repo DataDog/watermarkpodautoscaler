@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "watermarkpodautoscaler.fullname" . }}
+  labels:
+    {{- include "watermarkpodautoscaler.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "watermarkpodautoscaler.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "watermarkpodautoscaler.selectorLabels" . | nindent 8 }}
+      annotations:
+        ad.datadoghq.com/watermarkpodautoscaler.check_names: '["prometheus"]'
+        ad.datadoghq.com/watermarkpodautoscaler.init_configs: '[{}]'
+        ad.datadoghq.com/watermarkpodautoscaler.instances: |
+          [{
+            "prometheus_url": "http://%%host%%:8383/metrics",
+            "namespace":"watermarkpodautoscaler",
+            "metrics": ["wpa","wpa_controller*"]
+          }]
+    spec:
+    {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+      serviceAccountName: {{ include "watermarkpodautoscaler.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+          - watermarkpodautoscaler
+          args:
+            - --zap-level={{ .Values.logLevel }}
+          env:
+            - name: WATCH_NAMESPACE
+            {{- if .Values.watchAllNamespaces }}
+              value: ""
+            {{- else }}
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            {{- end }}
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OPERATOR_NAME
+              value: "watermarkpodautoscaler"
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 8383
+            initialDelaySeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
