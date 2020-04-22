@@ -22,6 +22,8 @@ const (
 	metricNamePromLabel        = "metric_name"
 	reasonPromLabel            = "reason"
 	transitionPromLabel        = "transition"
+	downscaleCappingPromLabel  = "downscale_capping"
+	upscaleCappingPromLabel    = "upscale_capping"
 )
 
 var (
@@ -166,9 +168,9 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 		replicaMin.Delete(promLabelsForWpa)
 		replicaMax.Delete(promLabelsForWpa)
 
-		promLabelsForWpa[reasonPromLabel] = "downscale_capping"
+		promLabelsForWpa[reasonPromLabel] = downscaleCappingPromLabel
 		restrictedScaling.Delete(promLabelsForWpa)
-		promLabelsForWpa[reasonPromLabel] = "upscale_capping"
+		promLabelsForWpa[reasonPromLabel] = upscaleCappingPromLabel
 		restrictedScaling.With(promLabelsForWpa)
 		delete(promLabelsForWpa, reasonPromLabel)
 
@@ -179,7 +181,11 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 	}
 
 	for _, metricSpec := range wpa.Spec.Metrics {
-		promLabelsForWpa[metricNamePromLabel] = metricSpec.External.MetricName
+		if metricSpec.Type == datadoghqv1alpha1.ResourceMetricSourceType {
+			promLabelsForWpa[metricNamePromLabel] = string(metricSpec.Resource.Name)
+		} else {
+			promLabelsForWpa[metricNamePromLabel] = metricSpec.External.MetricName
+		}
 
 		lowwm.Delete(promLabelsForWpa)
 		highwm.Delete(promLabelsForWpa)

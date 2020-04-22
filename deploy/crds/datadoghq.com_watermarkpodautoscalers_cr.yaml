@@ -11,7 +11,10 @@ spec:
     kind: Deployment
     apiVersion: apps/v1
     name: alpine
+  readinessDelay: 10
   metrics:
+  # Resource or External type supported
+  # Example usage of External type
   - type: External
     external:
       highWatermark: "12000"
@@ -20,3 +23,12 @@ spec:
       metricSelector:
         matchLabels:
           foo: bar
+  # Example usage of Resource type
+  # - type: Resource
+  #   resource:
+  #     highWatermark: "50"
+  #     lowWatermark: "10"
+  #     name: cpu
+  #     metricSelector:
+  #       matchLabels:
+  #         foo: bar

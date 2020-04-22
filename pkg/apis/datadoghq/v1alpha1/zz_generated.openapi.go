@@ -21,6 +21,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1.CrossVersionObjectReference":  schema_pkg_apis_datadoghq_v1alpha1_CrossVersionObjectReference(ref),
 		"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1.ExternalMetricSource":         schema_pkg_apis_datadoghq_v1alpha1_ExternalMetricSource(ref),
 		"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1.MetricSpec":                   schema_pkg_apis_datadoghq_v1alpha1_MetricSpec(ref),
+		"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1.ResourceMetricSource":         schema_pkg_apis_datadoghq_v1alpha1_ResourceMetricSource(ref),
 		"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1.WatermarkPodAutoscaler":       schema_pkg_apis_datadoghq_v1alpha1_WatermarkPodAutoscaler(ref),
 		"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1.WatermarkPodAutoscalerList":   schema_pkg_apis_datadoghq_v1alpha1_WatermarkPodAutoscalerList(ref),
 		"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1.WatermarkPodAutoscalerSpec":   schema_pkg_apis_datadoghq_v1alpha1_WatermarkPodAutoscalerSpec(ref),
@@ -122,12 +123,57 @@ func schema_pkg_apis_datadoghq_v1alpha1_MetricSpec(ref common.ReferenceCallback)
 							Ref:         ref("github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1.ExternalMetricSource"),
 						},
 					},
+					"resource": {
+						SchemaProps: spec.SchemaProps{
+							Description: "resource refers to a resource metric (such as those specified in requests and limits) known to Kubernetes describing each pod in the current scale target (e.g. CPU or memory). Such metrics are built in to Kubernetes, and have special scaling options on top of those available to normal per-pod metrics using the \"pods\" source.",
+							Ref:         ref("github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1.ResourceMetricSource"),
+						},
+					},
 				},
 				Required: []string{"type"},
 			},
 		},
 		Dependencies: []string{
-			"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1.ExternalMetricSource"},
+			"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1.ExternalMetricSource", "github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1.ResourceMetricSource"},
+	}
+}
+
+func schema_pkg_apis_datadoghq_v1alpha1_ResourceMetricSource(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ResourceMetricSource indicates how to scale on a resource metric known to Kubernetes, as specified in requests and limits, describing each pod in the current scale target (e.g. CPU or memory).  The values will be averaged together before being compared to the target.  Such metrics are built in to Kubernetes, and have special scaling options on top of those available to normal per-pod metrics using the \"pods\" source.  Only one \"target\" type should be set.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Description: "name is the name of the resource in question.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metricSelector": {
+						SchemaProps: spec.SchemaProps{
+							Description: "metricSelector is used to identify a specific time series within a given metric.",
+							Ref:         ref("k8s.io/apimachinery/pkg/apis/meta/v1.LabelSelector"),
+						},
+					},
+					"highWatermark": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("k8s.io/apimachinery/pkg/api/resource.Quantity"),
+						},
+					},
+					"lowWatermark": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("k8s.io/apimachinery/pkg/api/resource.Quantity"),
+						},
+					},
+				},
+				Required: []string{"name"},
+			},
+		},
+		Dependencies: []string{
+			"k8s.io/apimachinery/pkg/api/resource.Quantity", "k8s.io/apimachinery/pkg/apis/meta/v1.LabelSelector"},
 	}
 }
 
@@ -276,7 +322,7 @@ func schema_pkg_apis_datadoghq_v1alpha1_WatermarkPodAutoscalerSpec(ref common.Re
 					},
 					"dryRun": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Wether planned scale changes are actually applied",
+							Description: "Whether planned scale changes are actually applied",
 							Type:        []string{"boolean"},
 							Format:      "",
 						},
@@ -312,6 +358,12 @@ func schema_pkg_apis_datadoghq_v1alpha1_WatermarkPodAutoscalerSpec(ref common.Re
 						},
 					},
 					"maxReplicas": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"integer"},
+							Format: "int32",
+						},
+					},
+					"readinessDelay": {
 						SchemaProps: spec.SchemaProps{
 							Type:   []string{"integer"},
 							Format: "int32",
