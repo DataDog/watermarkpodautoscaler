@@ -62,7 +62,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 	}
 	currentReadyReplicas, err := c.getReadyPodsCount(metav1.NamespaceAll, lbl, time.Duration(wpa.Spec.ReadinessDelaySeconds)*time.Second)
 	if err != nil {
-		return ReplicaCalculation{0, 0, time.Time{}}, fmt.Errorf("unable to get the number of ready pods across all namespaces for %v: %s", lbl, err.Error())
+		return ReplicaCalculation{}, fmt.Errorf("unable to get the number of ready pods across all namespaces for %v: %s", lbl, err.Error())
 	}
 	averaged := 1.0
 	if wpa.Spec.Algorithm == "average" {
@@ -73,7 +73,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 	selector := metric.External.MetricSelector
 	labelSelector, err := metav1.LabelSelectorAsSelector(selector)
 	if err != nil {
-		return ReplicaCalculation{0, 0, time.Time{}}, err
+		return ReplicaCalculation{}, err
 	}
 
 	metrics, timestamp, err := c.metricsClient.GetExternalMetric(metricName, wpa.Namespace, labelSelector)
@@ -99,6 +99,8 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 	for _, val := range metrics {
 		sum += val
 	}
+
+	// if the average algorithm is used, the metrics retrieved has to be divided by the number of available replicas.
 	adjustedUsage := float64(sum) / averaged
 	replicaCount, utilizationQuantity := getReplicaCount(logger, currentReadyReplicas, wpa, metricName, adjustedUsage, metric.External.LowWatermark, metric.External.HighWatermark)
 	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp}, nil
@@ -229,6 +231,9 @@ func (c *ReplicaCalculator) getReadyPodsCount(namespace string, selector labels.
 			pod.Status.Phase == corev1.PodPending && condition.LastTransitionTime.Sub(pod.Status.StartTime.Time) < readinessDelay {
 			toleratedAsReadyPodCount++
 		}
+	}
+	if toleratedAsReadyPodCount == 0 {
+		return 0, fmt.Errorf("among the %d pods, none is ready. Skipping recommendation", len(podList))
 	}
 	return int32(toleratedAsReadyPodCount), nil
 }

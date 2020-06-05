@@ -1848,6 +1848,28 @@ func TestGetReadyPodsCount(t *testing.T) {
 			expected:      0,
 			errorExpected: fmt.Errorf("no pods returned by selector while calculating replica count"),
 		},
+		{
+			name:     "No ready pods",
+			selector: labels.Set{"name": "test-pod"},
+			conditions: []corev1.PodCondition{
+				{
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+				},
+				{
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+				},
+				{
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+				},
+			},
+			startTimes:    []metav1.Time{startTime, startTime, startTime},
+			phases:        []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodPending},
+			expected:      0,
+			errorExpected: fmt.Errorf("among the 3 pods, none is ready. Skipping recommendation"),
+		},
 	}
 
 	for _, f := range tests {
@@ -1875,7 +1897,7 @@ func TestGetReadyPodsCount(t *testing.T) {
 			val, err := replicaCalculator.getReadyPodsCount(tc.namespace, labels.SelectorFromSet(f.selector), readinessDelay*time.Second)
 			assert.Equal(t, f.expected, val)
 			if f.errorExpected != nil {
-				assert.Error(t, f.errorExpected, err)
+				assert.EqualError(t, f.errorExpected, err.Error())
 			}
 		})
 	}

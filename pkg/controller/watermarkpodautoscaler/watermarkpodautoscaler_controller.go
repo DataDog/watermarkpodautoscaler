@@ -61,15 +61,13 @@ var (
 	dryRunCondition autoscalingv2.HorizontalPodAutoscalerConditionType = "DryRun"
 )
 
-func initializePodInformer(clientConfig *rest.Config) listerv1.PodLister {
+func initializePodInformer(clientConfig *rest.Config, stop chan struct{}) listerv1.PodLister {
 	a := ctrl.SimpleControllerClientBuilder{ClientConfig: clientConfig}
 	versionedClient := a.ClientOrDie("watermark-pod-autoscaler-shared-informer")
 	// Only resync every 5 minutes.
 	// TODO Consider exposing configuration of the resync for the pod informer.
 	sharedInf := informers.NewSharedInformerFactory(versionedClient, 300*time.Second)
 
-	// TODO add better context handling
-	var stop chan struct{}
 	sharedInf.Start(stop)
 
 	go sharedInf.Core().V1().Pods().Informer().Run(stop)
@@ -85,8 +83,8 @@ func newReconciler(mgr manager.Manager) (reconcile.Reconciler, error) {
 		nil,
 		external_metrics.NewForConfigOrDie(clientConfig),
 	)
-
-	podLister := initializePodInformer(clientConfig)
+	var stop chan struct{}
+	podLister := initializePodInformer(clientConfig, stop)
 
 	clientSet, err := kubernetes.NewForConfig(clientConfig)
 	if err != nil {
