@@ -14,14 +14,18 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	v1 "k8s.io/api/core/v1"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
-	corev1fake "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes/fake"
 	core "k8s.io/client-go/testing"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/kubernetes/pkg/controller/podautoscaler/metrics"
 	emapi "k8s.io/metrics/pkg/apis/external_metrics/v1beta1"
 	metricsapi "k8s.io/metrics/pkg/apis/metrics/v1beta1"
@@ -30,25 +34,32 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
 
-type metricInfo struct {
-	podPhase     []v1.PodPhase
-	podCondition []v1.ConditionStatus
+type resourceInfo struct {
+	name     corev1.ResourceName
+	requests []resource.Quantity
+}
 
+type metricInfo struct {
 	spec                v1alpha1.MetricSpec
 	levels              []int64
 	expectedUtilization int64
 }
 
 type replicaCalcTestCase struct {
-	currentReplicas  int32
 	expectedReplicas int32
 	expectedError    error
 	timestamp        time.Time
 
 	namespace string
 	metric    *metricInfo
-	selector  labels.Selector
+	resource  *resourceInfo
+	scale     *autoscalingv1.Scale
 	wpa       *v1alpha1.WatermarkPodAutoscaler
+
+	podCondition         []corev1.PodCondition
+	podStartTime         []metav1.Time
+	podPhase             []corev1.PodPhase
+	podDeletionTimestamp []bool
 }
 
 const (
@@ -58,75 +69,14 @@ const (
 	readinessDelay      = 10
 )
 
-// Helper function to assemble a v1.Pod
-func buildPod(namespace, podName string, podLabels map[string]string, phase v1.PodPhase, podCondition v1.ConditionStatus, request string, timestamp time.Time) v1.Pod {
-	return v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      podName,
-			Namespace: namespace,
-			Labels:    podLabels,
-		},
-		Spec: v1.PodSpec{
-			Containers: []v1.Container{
-				{
-					Resources: v1.ResourceRequirements{
-						Requests: v1.ResourceList{
-							v1.ResourceCPU: resource.MustParse(request),
-						},
-					},
-				},
-			},
-		},
-		Status: v1.PodStatus{
-			Phase: phase,
-			Conditions: []v1.PodCondition{
-				{
-					Type:               v1.PodReady,
-					Status:             podCondition,
-					LastTransitionTime: metav1.Time{Time: timestamp},
-				},
-			},
-			StartTime: &metav1.Time{Time: timestamp},
-		},
-	}
-}
-
-func (tc *replicaCalcTestCase) getFakeCoreV1Client(t *testing.T) *corev1fake.Clientset {
+func (tc *replicaCalcTestCase) getFakeResourceClient() *metricsfake.Clientset {
+	// TODO add assertion similarly to the getFakeEMClient method.
 	podLabels := map[string]string{"name": podNamePrefix}
-	fakeClient := &corev1fake.Clientset{}
-	fakeClient.AddReactor("list", "pods", func(action core.Action) (handled bool, ret runtime.Object, err error) {
-		obj := &v1.PodList{}
-		for i := 0; i < int(tc.currentReplicas); i++ {
-			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
-			var podPhase v1.PodPhase
-			if len(tc.metric.podPhase) > 0 {
-				podPhase = tc.metric.podPhase[i]
-			} else {
-				podPhase = v1.PodRunning
-			}
-			var podCondition v1.ConditionStatus
-			if len(tc.metric.podCondition) > 0 {
-				podCondition = tc.metric.podCondition[i]
-			} else {
-				podCondition = v1.ConditionTrue
-			}
-			pod := buildPod(tc.namespace, podName, podLabels, podPhase, podCondition, "1024", tc.timestamp)
-			obj.Items = append(obj.Items, pod)
-		}
-		return true, obj, nil
-	})
-	return fakeClient
-}
-
-func (tc *replicaCalcTestCase) getFakeResourceClient(t *testing.T) *metricsfake.Clientset {
-	podLabels := map[string]string{"name": podNamePrefix}
-	selector := &metav1.LabelSelector{}
-	tc.selector, _ = metav1.LabelSelectorAsSelector(selector)
 
 	fakeClient := &metricsfake.Clientset{}
-
+	fakeClient.AddWatchReactor("pods", func(action core.Action) (handled bool, ret watch.Interface, err error) { return true, nil, nil })
 	fakeClient.AddReactor("list", "pods", func(action core.Action) (handled bool, ret runtime.Object, err error) {
-		metrics := &metricsapi.PodMetricsList{}
+		podMetrics := &metricsapi.PodMetricsList{}
 		for i, cpu := range tc.metric.levels {
 			metric := metricsapi.PodMetrics{
 				ObjectMeta: metav1.ObjectMeta{
@@ -142,29 +92,32 @@ func (tc *replicaCalcTestCase) getFakeResourceClient(t *testing.T) *metricsfake.
 			for j := 0; j < numContainersPerPod; j++ {
 				cm := metricsapi.ContainerMetrics{
 					Name: fmt.Sprintf("%s-%d-container-%d", podNamePrefix, i, j),
-					Usage: v1.ResourceList{
-						v1.ResourceCPU: *resource.NewMilliQuantity(
+					Usage: corev1.ResourceList{
+						corev1.ResourceCPU: *resource.NewMilliQuantity(
 							cpu,
 							resource.DecimalSI),
-						v1.ResourceMemory: *resource.NewQuantity(
+						corev1.ResourceMemory: *resource.NewQuantity(
 							int64(1024*1024),
 							resource.BinarySI),
 					},
 				}
 				metric.Containers = append(metric.Containers, cm)
 			}
-			metrics.Items = append(metrics.Items, metric)
+			podMetrics.Items = append(podMetrics.Items, metric)
 		}
-		return true, metrics, nil
+		return true, podMetrics, nil
 	})
 	return fakeClient
 }
 
 func (tc *replicaCalcTestCase) getFakeEMClient(t *testing.T) *emfake.FakeExternalMetricsClient {
 	fakeEMClient := &emfake.FakeExternalMetricsClient{}
+	fakeEMClient.AddWatchReactor("pods", func(action core.Action) (handled bool, ret watch.Interface, err error) { return true, nil, nil })
+	fakeEMClient.AddReactor("list", "pods", func(action core.Action) (handled bool, ret runtime.Object, err error) {
+		return false, nil, nil
+	})
 
 	fakeEMClient.AddReactor("list", "*", func(action core.Action) (handled bool, ret runtime.Object, err error) {
-		t.Logf("fakeEMClient.AddReactor list *: %v\n", action)
 		listAction, wasList := action.(core.ListAction)
 		if !wasList {
 			return true, nil, fmt.Errorf("expected a list-for action, got %v instead", action)
@@ -182,7 +135,7 @@ func (tc *replicaCalcTestCase) getFakeEMClient(t *testing.T) *emfake.FakeExterna
 		}
 		assert.Equal(t, selector, listAction.GetListRestrictions().Labels, "the metric selector should have matched the one specified")
 
-		metrics := emapi.ExternalMetricValueList{}
+		extMetrics := emapi.ExternalMetricValueList{}
 
 		for _, level := range tc.metric.levels {
 			metric := emapi.ExternalMetricValue{
@@ -190,28 +143,118 @@ func (tc *replicaCalcTestCase) getFakeEMClient(t *testing.T) *emfake.FakeExterna
 				MetricName: tc.metric.spec.External.MetricName,
 				Value:      *resource.NewMilliQuantity(level, resource.DecimalSI),
 			}
-			metrics.Items = append(metrics.Items, metric)
+			extMetrics.Items = append(extMetrics.Items, metric)
 		}
-		return true, &metrics, nil
+		return true, &extMetrics, nil
 	})
 	return fakeEMClient
+}
+
+func (tc *replicaCalcTestCase) prepareTestClientSet() *fake.Clientset {
+	fakeClient := &fake.Clientset{}
+	fakeClient.AddWatchReactor("pods", func(action core.Action) (handled bool, ret watch.Interface, err error) { return false, nil, nil })
+	fakeClient.AddReactor("list", "pods", func(action core.Action) (handled bool, ret runtime.Object, err error) {
+		obj := &corev1.PodList{}
+		podsCount := int(tc.scale.Status.Replicas)
+		// Failed pods are not included in tc.scale.Status.currentReplicas
+		if tc.podPhase != nil && len(tc.podPhase) > podsCount {
+			podsCount = len(tc.podPhase)
+		}
+		for i := 0; i < podsCount; i++ {
+			podReadiness := corev1.ConditionTrue
+			podTransitionTime := metav1.Now()
+			if tc.podCondition != nil && i < len(tc.podCondition) {
+				podReadiness = tc.podCondition[i].Status
+				podTransitionTime = tc.podCondition[i].LastTransitionTime
+			}
+			var podStartTime metav1.Time
+			if tc.podStartTime != nil {
+				podStartTime = tc.podStartTime[i]
+			}
+			podPhase := corev1.PodRunning
+			if tc.podPhase != nil {
+				podPhase = tc.podPhase[i]
+			}
+			podDeletionTimestamp := false
+			if tc.podDeletionTimestamp != nil {
+				podDeletionTimestamp = tc.podDeletionTimestamp[i]
+			}
+			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
+			pod := corev1.Pod{
+				Status: corev1.PodStatus{
+					Phase:     podPhase,
+					StartTime: &podStartTime,
+					Conditions: []corev1.PodCondition{
+						{
+							Type:               corev1.PodReady,
+							Status:             podReadiness,
+							LastTransitionTime: podTransitionTime,
+						},
+					},
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      podName,
+					Namespace: testNamespace,
+					Labels: map[string]string{
+						"name": podNamePrefix,
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{}, {}},
+				},
+			}
+			if podDeletionTimestamp {
+				pod.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+			}
+
+			if tc.resource != nil && i < len(tc.resource.requests) {
+				pod.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+					Requests: corev1.ResourceList{
+						tc.resource.name: tc.resource.requests[i],
+					},
+				}
+				pod.Spec.Containers[1].Resources = corev1.ResourceRequirements{
+					Requests: corev1.ResourceList{
+						tc.resource.name: tc.resource.requests[i],
+					},
+				}
+			}
+			obj.Items = append(obj.Items, pod)
+		}
+		return true, obj, nil
+	})
+	return fakeClient
 }
 
 func (tc *replicaCalcTestCase) runTest(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
 	tc.namespace = testNamespace
-	coreClient := tc.getFakeCoreV1Client(t)
+	fakeClient := tc.prepareTestClientSet()
+
+	informerFactory := informers.NewSharedInformerFactory(fakeClient, 0)
+	informer := informerFactory.Core().V1().Pods()
+
 	emClient := tc.getFakeEMClient(t)
-	rClient := tc.getFakeResourceClient(t)
+
+	rClient := tc.getFakeResourceClient()
+
 	mClient := metrics.NewRESTMetricsClient(rClient.MetricsV1beta1(), nil, emClient)
 
-	replicaCalculator := NewReplicaCalculator(mClient, coreClient.CoreV1())
+	replicaCalculator := NewReplicaCalculator(mClient, informer.Lister())
+
+	stop := make(chan struct{})
+	defer close(stop)
+	informerFactory.Start(stop)
+	if !cache.WaitForNamedCacheSync("HPA", stop, informer.Informer().HasSynced) {
+		return
+	}
 
 	var replicaCalculation ReplicaCalculation
 	var err error
 	if tc.metric.spec.Resource != nil {
 		// Resource metric tests
-		replicaCalculation, err = replicaCalculator.GetResourceReplicas(logf.Log, tc.currentReplicas, tc.metric.spec, tc.wpa)
+		// Update with the correct labels.
+		replicaCalculation, err = replicaCalculator.GetResourceReplicas(logf.Log, tc.scale, tc.metric.spec, tc.wpa)
 
 		if tc.expectedError != nil {
 			require.Error(t, err, "there should be an error calculating the replica count")
@@ -220,7 +263,7 @@ func (tc *replicaCalcTestCase) runTest(t *testing.T) {
 		}
 	} else if tc.metric.spec.External != nil {
 		// External metric tests
-		replicaCalculation, err = replicaCalculator.GetExternalMetricReplicas(logf.Log, tc.currentReplicas, tc.metric.spec, tc.wpa)
+		replicaCalculation, err = replicaCalculator.GetExternalMetricReplicas(logf.Log, tc.scale, tc.metric.spec, tc.wpa)
 		if tc.expectedError != nil {
 			require.Error(t, err, "there should be an error calculating the replica count")
 			assert.Contains(t, err.Error(), tc.expectedError.Error(), "the error message should have contained the expected error message")
@@ -232,7 +275,6 @@ func (tc *replicaCalcTestCase) runTest(t *testing.T) {
 	assert.Equal(t, tc.expectedReplicas, replicaCalculation.replicaCount, "replicas should be as expected")
 	assert.Equal(t, tc.metric.expectedUtilization, replicaCalculation.utilization, "utilization should be as expected")
 	assert.True(t, tc.timestamp.Equal(replicaCalculation.timestamp), "timestamp should be as expected")
-	return
 }
 
 func TestReplicaCalcDisjointResourcesMetrics(t *testing.T) {
@@ -248,8 +290,7 @@ func TestReplicaCalcDisjointResourcesMetrics(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		currentReplicas: 1,
-		expectedError:   fmt.Errorf("no metrics returned from resource metrics API"),
+		expectedError: fmt.Errorf("no metrics returned from resource metrics API"),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -257,6 +298,7 @@ func TestReplicaCalcDisjointResourcesMetrics(t *testing.T) {
 				Metrics:   []v1alpha1.MetricSpec{metric1},
 			},
 		},
+		scale: makeScale(1, map[string]string{"name": "test-pod"}),
 		metric: &metricInfo{
 			spec:                metric1,
 			levels:              []int64{86000}, // We are higher than the HighWatermark
@@ -266,12 +308,21 @@ func TestReplicaCalcDisjointResourcesMetrics(t *testing.T) {
 	tc.runTest(t)
 }
 
+func makeScale(currentReplicas int32, labelsMap map[string]string) *autoscalingv1.Scale {
+	return &autoscalingv1.Scale{
+		Status: autoscalingv1.ScaleStatus{
+			Selector: labels.FormatLabels(labelsMap),
+			Replicas: currentReplicas,
+		},
+	}
+}
+
 func TestReplicaCalcAbsoluteScaleUp(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
-			Name:           v1.ResourceCPU,
+			Name:           corev1.ResourceCPU,
 			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
 			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
 			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
@@ -279,8 +330,8 @@ func TestReplicaCalcAbsoluteScaleUp(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		currentReplicas:  3,
 		expectedReplicas: 21,
+		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -302,7 +353,7 @@ func TestReplicaCalcAbsoluteScaleDown(t *testing.T) {
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
-			Name:           v1.ResourceCPU,
+			Name:           corev1.ResourceCPU,
 			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
 			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
 			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
@@ -310,8 +361,8 @@ func TestReplicaCalcAbsoluteScaleDown(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		currentReplicas:  3,
 		expectedReplicas: 1,
+		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -333,7 +384,7 @@ func TestReplicaCalcAbsoluteScaleDownLessScale(t *testing.T) {
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
-			Name:           v1.ResourceCPU,
+			Name:           corev1.ResourceCPU,
 			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
 			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
 			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
@@ -341,8 +392,8 @@ func TestReplicaCalcAbsoluteScaleDownLessScale(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		currentReplicas:  3,
 		expectedReplicas: 2,
+		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -364,7 +415,7 @@ func TestReplicaCalcAbsoluteScaleUpPendingLessScale(t *testing.T) {
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
-			Name:           v1.ResourceCPU,
+			Name:           corev1.ResourceCPU,
 			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
 			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
 			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
@@ -372,8 +423,43 @@ func TestReplicaCalcAbsoluteScaleUpPendingLessScale(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		currentReplicas:  3,
 		expectedReplicas: 9,
+		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				// With the absolute algorithm, we will have a utilization of 120k compared to a HWM of 48k (inc. tolerance)
+				// There are 2 Running replicas.
+				// The resulting amount of replicas is 2 * 120 / 40 -> 6
+				Algorithm: "absolute",
+				Tolerance: 0.2,
+				Metrics:   []v1alpha1.MetricSpec{metric1},
+			},
+		},
+		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodRunning, corev1.PodRunning},
+		metric: &metricInfo{
+			spec:                metric1,
+			levels:              []int64{100000, 50000, 70000}, // We are higher than the HighWatermark
+			expectedUtilization: 120000,
+		},
+	}
+	tc.runTest(t)
+}
+
+func TestReplicaCalcAbsoluteScaleUpPendingLessScaleExtraReplica(t *testing.T) {
+	logf.SetLogger(logf.ZapLogger(true))
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ResourceMetricSourceType,
+		Resource: &v1alpha1.ResourceMetricSource{
+			Name:           corev1.ResourceCPU,
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
+			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
+		},
+	}
+
+	tc := replicaCalcTestCase{
+		expectedReplicas: 10,
+		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -381,11 +467,11 @@ func TestReplicaCalcAbsoluteScaleUpPendingLessScale(t *testing.T) {
 				Metrics:   []v1alpha1.MetricSpec{metric1},
 			},
 		},
+		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodRunning, corev1.PodRunning},
 		metric: &metricInfo{
 			spec:                metric1,
-			levels:              []int64{100000, 50000, 60000}, // We are higher than the HighWatermark
-			expectedUtilization: 110000,
-			podPhase:            []v1.PodPhase{v1.PodPending, v1.PodRunning, v1.PodRunning},
+			levels:              []int64{100000, 50001, 70000}, // We are higher than the HighWatermark
+			expectedUtilization: 120001,
 		},
 	}
 	tc.runTest(t)
@@ -396,7 +482,7 @@ func TestReplicaCalcAbsoluteScaleUpPendingNoScale(t *testing.T) {
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
-			Name:           v1.ResourceCPU,
+			Name:           corev1.ResourceCPU,
 			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
 			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
 			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
@@ -404,8 +490,8 @@ func TestReplicaCalcAbsoluteScaleUpPendingNoScale(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		currentReplicas:  3,
 		expectedReplicas: 3,
+		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -413,11 +499,11 @@ func TestReplicaCalcAbsoluteScaleUpPendingNoScale(t *testing.T) {
 				Metrics:   []v1alpha1.MetricSpec{metric1},
 			},
 		},
+		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodRunning},
 		metric: &metricInfo{
 			spec:                metric1,
-			levels:              []int64{100000, 50000, 40000}, // We are at the HighWatermark
+			levels:              []int64{100000, 50000, 40000}, // We are below the HighWatermark + threshold
 			expectedUtilization: 40000,
-			podPhase:            []v1.PodPhase{v1.PodPending, v1.PodPending, v1.PodRunning},
 		},
 	}
 	tc.runTest(t)
@@ -428,7 +514,7 @@ func TestReplicaCalcAbsoluteScaleUpPendingNoScaleStretchTolerance(t *testing.T) 
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
-			Name:           v1.ResourceCPU,
+			Name:           corev1.ResourceCPU,
 			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
 			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
 			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
@@ -436,8 +522,8 @@ func TestReplicaCalcAbsoluteScaleUpPendingNoScaleStretchTolerance(t *testing.T) 
 	}
 
 	tc := replicaCalcTestCase{
-		currentReplicas:  3,
 		expectedReplicas: 3,
+		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -445,11 +531,11 @@ func TestReplicaCalcAbsoluteScaleUpPendingNoScaleStretchTolerance(t *testing.T) 
 				Metrics:   []v1alpha1.MetricSpec{metric1},
 			},
 		},
+		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodRunning},
 		metric: &metricInfo{
 			spec:                metric1,
 			levels:              []int64{100000, 50000, 45000}, // We are at the HighWatermark + tolerance
 			expectedUtilization: 45000,
-			podPhase:            []v1.PodPhase{v1.PodPending, v1.PodPending, v1.PodRunning},
 		},
 	}
 	tc.runTest(t)
@@ -460,7 +546,7 @@ func TestReplicaCalcAbsoluteScaleUpFailedLessScale(t *testing.T) {
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
-			Name:           v1.ResourceCPU,
+			Name:           corev1.ResourceCPU,
 			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
 			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
 			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
@@ -468,8 +554,8 @@ func TestReplicaCalcAbsoluteScaleUpFailedLessScale(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		currentReplicas:  3,
 		expectedReplicas: 9,
+		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -477,11 +563,11 @@ func TestReplicaCalcAbsoluteScaleUpFailedLessScale(t *testing.T) {
 				Metrics:   []v1alpha1.MetricSpec{metric1},
 			},
 		},
+		podPhase: []corev1.PodPhase{corev1.PodFailed, corev1.PodRunning, corev1.PodRunning},
 		metric: &metricInfo{
 			spec:                metric1,
 			levels:              []int64{100000, 50000, 60000}, // We are higher than the HighWatermark
 			expectedUtilization: 110000,
-			podPhase:            []v1.PodPhase{v1.PodFailed, v1.PodRunning, v1.PodRunning},
 		},
 	}
 	tc.runTest(t)
@@ -492,7 +578,7 @@ func TestReplicaCalcAbsoluteScaleUpUnreadyLessScale(t *testing.T) {
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
-			Name:           v1.ResourceCPU,
+			Name:           corev1.ResourceCPU,
 			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
 			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
 			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
@@ -500,8 +586,8 @@ func TestReplicaCalcAbsoluteScaleUpUnreadyLessScale(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		currentReplicas:  3,
-		expectedReplicas: 9,
+		expectedReplicas: 16,
+		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm:             "absolute",
@@ -510,11 +596,24 @@ func TestReplicaCalcAbsoluteScaleUpUnreadyLessScale(t *testing.T) {
 				ReadinessDelaySeconds: readinessDelay,
 			},
 		},
+		podCondition: []corev1.PodCondition{
+			{
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: metav1.Now(),
+			},
+			{
+				Status:             corev1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+			},
+			{
+				Status:             corev1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+			},
+		},
 		metric: &metricInfo{
 			spec:                metric1,
 			levels:              []int64{100000, 50000, 60000}, // We are higher than the HighWatermark
-			expectedUtilization: 110000,
-			podCondition:        []v1.ConditionStatus{v1.ConditionFalse, v1.ConditionTrue, v1.ConditionTrue},
+			expectedUtilization: 210000,
 		},
 	}
 	tc.runTest(t)
@@ -525,7 +624,7 @@ func TestReplicaCalcAverageScaleUp(t *testing.T) {
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
-			Name:           v1.ResourceCPU,
+			Name:           corev1.ResourceCPU,
 			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
 			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
 			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
@@ -533,8 +632,8 @@ func TestReplicaCalcAverageScaleUp(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		currentReplicas:  3,
 		expectedReplicas: 7,
+		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "average",
@@ -556,7 +655,7 @@ func TestReplicaCalcAverageScaleDown(t *testing.T) {
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
-			Name:           v1.ResourceCPU,
+			Name:           corev1.ResourceCPU,
 			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
 			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
 			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
@@ -564,8 +663,8 @@ func TestReplicaCalcAverageScaleDown(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		currentReplicas:  3,
 		expectedReplicas: 1,
+		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "average",
@@ -587,7 +686,7 @@ func TestReplicaCalcAverageScaleDownLessScale(t *testing.T) {
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
-			Name:           v1.ResourceCPU,
+			Name:           corev1.ResourceCPU,
 			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
 			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
 			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
@@ -595,8 +694,8 @@ func TestReplicaCalcAverageScaleDownLessScale(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		currentReplicas:  3,
 		expectedReplicas: 2,
+		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "average",
@@ -618,7 +717,7 @@ func TestReplicaCalcAverageScaleUpPendingLessScale(t *testing.T) {
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
-			Name:           v1.ResourceCPU,
+			Name:           corev1.ResourceCPU,
 			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
 			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
 			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
@@ -626,7 +725,7 @@ func TestReplicaCalcAverageScaleUpPendingLessScale(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		currentReplicas:  3,
+		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
 		expectedReplicas: 5,
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
@@ -635,11 +734,11 @@ func TestReplicaCalcAverageScaleUpPendingLessScale(t *testing.T) {
 				Metrics:   []v1alpha1.MetricSpec{metric1},
 			},
 		},
+		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodRunning, corev1.PodRunning},
 		metric: &metricInfo{
 			spec:                metric1,
 			levels:              []int64{100000, 50000, 60000}, // We are higher than the HighWatermark
 			expectedUtilization: 55000,
-			podPhase:            []v1.PodPhase{v1.PodPending, v1.PodRunning, v1.PodRunning},
 		},
 	}
 	tc.runTest(t)
@@ -650,7 +749,7 @@ func TestReplicaCalcAverageScaleUpPendingNoScale(t *testing.T) {
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
-			Name:           v1.ResourceCPU,
+			Name:           corev1.ResourceCPU,
 			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
 			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
 			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
@@ -658,8 +757,8 @@ func TestReplicaCalcAverageScaleUpPendingNoScale(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		currentReplicas:  3,
 		expectedReplicas: 3,
+		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "average",
@@ -667,11 +766,11 @@ func TestReplicaCalcAverageScaleUpPendingNoScale(t *testing.T) {
 				Metrics:   []v1alpha1.MetricSpec{metric1},
 			},
 		},
+		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodRunning},
 		metric: &metricInfo{
 			spec:                metric1,
 			levels:              []int64{100000, 50000, 40000}, // We are at the HighWatermark
 			expectedUtilization: 40000,
-			podPhase:            []v1.PodPhase{v1.PodPending, v1.PodPending, v1.PodRunning},
 		},
 	}
 	tc.runTest(t)
@@ -682,7 +781,7 @@ func TestReplicaCalcAverageScaleUpPendingNoScaleStretchTolerance(t *testing.T) {
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
-			Name:           v1.ResourceCPU,
+			Name:           corev1.ResourceCPU,
 			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
 			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
 			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
@@ -690,8 +789,8 @@ func TestReplicaCalcAverageScaleUpPendingNoScaleStretchTolerance(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		currentReplicas:  3,
 		expectedReplicas: 3,
+		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "average",
@@ -699,11 +798,11 @@ func TestReplicaCalcAverageScaleUpPendingNoScaleStretchTolerance(t *testing.T) {
 				Metrics:   []v1alpha1.MetricSpec{metric1},
 			},
 		},
+		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodRunning},
 		metric: &metricInfo{
 			spec:                metric1,
 			levels:              []int64{100000, 50000, 45000}, // We are higher than the HighWatermark
 			expectedUtilization: 45000,
-			podPhase:            []v1.PodPhase{v1.PodPending, v1.PodPending, v1.PodRunning},
 		},
 	}
 	tc.runTest(t)
@@ -714,7 +813,7 @@ func TestReplicaCalcAverageScaleUpFailedLessScale(t *testing.T) {
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
-			Name:           v1.ResourceCPU,
+			Name:           corev1.ResourceCPU,
 			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
 			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
 			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
@@ -722,8 +821,8 @@ func TestReplicaCalcAverageScaleUpFailedLessScale(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		currentReplicas:  3,
 		expectedReplicas: 5,
+		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "average",
@@ -731,11 +830,11 @@ func TestReplicaCalcAverageScaleUpFailedLessScale(t *testing.T) {
 				Metrics:   []v1alpha1.MetricSpec{metric1},
 			},
 		},
+		podPhase: []corev1.PodPhase{corev1.PodFailed, corev1.PodRunning, corev1.PodRunning},
 		metric: &metricInfo{
 			spec:                metric1,
 			levels:              []int64{100000, 50000, 60000}, // We are higher than the HighWatermark
 			expectedUtilization: 55000,
-			podPhase:            []v1.PodPhase{v1.PodFailed, v1.PodRunning, v1.PodRunning},
 		},
 	}
 	tc.runTest(t)
@@ -747,7 +846,7 @@ func TestReplicaCalcAverageScaleUpUnreadyLessScale(t *testing.T) {
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
-			Name:           v1.ResourceCPU,
+			Name:           corev1.ResourceCPU,
 			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
 			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
 			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
@@ -755,8 +854,8 @@ func TestReplicaCalcAverageScaleUpUnreadyLessScale(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		currentReplicas:  3,
-		expectedReplicas: 5,
+		expectedReplicas: 6,
+		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm:             "average",
@@ -765,11 +864,24 @@ func TestReplicaCalcAverageScaleUpUnreadyLessScale(t *testing.T) {
 				ReadinessDelaySeconds: readinessDelay,
 			},
 		},
+		podCondition: []corev1.PodCondition{
+			{
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: metav1.Now(),
+			},
+			{
+				Status:             corev1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+			},
+			{
+				Status:             corev1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+			},
+		},
 		metric: &metricInfo{
 			spec:                metric1,
 			levels:              []int64{100000, 50000, 60000}, // We are higher than the HighWatermark
-			expectedUtilization: 55000,
-			podCondition:        []v1.ConditionStatus{v1.ConditionFalse, v1.ConditionTrue, v1.ConditionTrue},
+			expectedUtilization: 70000,
 		},
 	}
 	tc.runTest(t)
@@ -795,8 +907,8 @@ func TestReplicaCalcAboveAbsoluteExternal_Upscale1(t *testing.T) {
 		},
 	}
 	tc := replicaCalcTestCase{
-		currentReplicas:  4,
 		expectedReplicas: 9,
+		scale:            makeScale(4, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -826,8 +938,8 @@ func TestReplicaCalcAboveAbsoluteExternal_Upscale2(t *testing.T) {
 		},
 	}
 	tc := replicaCalcTestCase{
-		currentReplicas:  9,
 		expectedReplicas: 20,
+		scale:            makeScale(9, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -858,8 +970,8 @@ func TestReplicaCalcAboveAbsoluteExternal_Upscale3(t *testing.T) {
 		},
 	}
 	tc := replicaCalcTestCase{
-		currentReplicas:  20,
 		expectedReplicas: 2,
+		scale:            makeScale(20, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -890,8 +1002,8 @@ func TestReplicaCalcWithinAbsoluteExternal(t *testing.T) {
 		},
 	}
 	tc := replicaCalcTestCase{
-		currentReplicas:  9,
 		expectedReplicas: 9,
+		scale:            makeScale(9, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -926,8 +1038,8 @@ func TestReplicaCalcBelowAverageExternal_Downscale1(t *testing.T) {
 		},
 	}
 	tc := replicaCalcTestCase{
-		currentReplicas:  5,
 		expectedReplicas: 4,
+		scale:            makeScale(5, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "average",
@@ -958,8 +1070,8 @@ func TestReplicaCalcBelowAverageExternal_Downscale2(t *testing.T) {
 		},
 	}
 	tc := replicaCalcTestCase{
-		currentReplicas:  4,
 		expectedReplicas: 3,
+		scale:            makeScale(4, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "average",
@@ -990,8 +1102,8 @@ func TestReplicaCalcBelowAverageExternal_Downscale3(t *testing.T) {
 		},
 	}
 	tc := replicaCalcTestCase{
-		currentReplicas:  3,
 		expectedReplicas: 3,
+		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "average",
@@ -1003,6 +1115,237 @@ func TestReplicaCalcBelowAverageExternal_Downscale3(t *testing.T) {
 			spec:                metric1,
 			levels:              []int64{240000}, // We are within the watermarks
 			expectedUtilization: 80000,
+		},
+	}
+	tc.runTest(t)
+}
+
+// We have pods that are pending and not within an acceptable window.
+func TestPendingtExpiredScale(t *testing.T) {
+	logf.SetLogger(logf.ZapLogger(true))
+
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ExternalMetricSourceType,
+		External: &v1alpha1.ExternalMetricSource{
+			MetricName:     "loadbalancer.request.per.seconds",
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"foo": "bar"}},
+			HighWatermark:  resource.NewMilliQuantity(85000, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(75000, resource.DecimalSI),
+		},
+	}
+	tc := replicaCalcTestCase{
+		expectedReplicas: 1,
+		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				Algorithm: "absolute",
+				Tolerance: 0.01,
+				Metrics:   []v1alpha1.MetricSpec{metric1},
+			},
+		},
+		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodRunning, corev1.PodRunning},
+		metric: &metricInfo{
+			spec:                metric1,
+			levels:              []int64{10000}, // We are well under the low watermarks
+			expectedUtilization: 10000,
+		},
+	}
+	tc.runTest(t)
+}
+
+// We have pods that are pending and one is within an acceptable window.
+func TestPendingtNotExpiredScale(t *testing.T) {
+	logf.SetLogger(logf.ZapLogger(true))
+
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ExternalMetricSourceType,
+		External: &v1alpha1.ExternalMetricSource{
+			MetricName:     "loadbalancer.request.per.seconds",
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"foo": "bar"}},
+			HighWatermark:  resource.NewMilliQuantity(85000, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(75000, resource.DecimalSI),
+		},
+	}
+	startTime := metav1.Unix(metav1.Now().Unix()-120, 0)
+	withinDuration := metav1.Unix(startTime.Unix()+readinessDelay/2, 0)
+	expired := metav1.Unix(startTime.Unix()+2*readinessDelay, 0)
+	tc := replicaCalcTestCase{
+		expectedReplicas: 2,
+		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				Algorithm:             "absolute",
+				Tolerance:             0.01,
+				ReadinessDelaySeconds: readinessDelay,
+				Metrics:               []v1alpha1.MetricSpec{metric1},
+			},
+		},
+		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodRunning},
+
+		podCondition: []corev1.PodCondition{
+			{
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: expired,
+			},
+			{
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: withinDuration,
+			},
+			{
+				Status:             corev1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+			},
+		},
+
+		// faking the start of the pod so that it appears to have been pending for less than readinessDelay.
+		podStartTime: []metav1.Time{startTime, startTime, startTime},
+		metric: &metricInfo{
+			spec:                metric1,
+			levels:              []int64{80000}, // We are well under the low watermarks
+			expectedUtilization: 80000,
+		},
+	}
+	tc.runTest(t)
+}
+
+// We have pods that are pending and one is within an acceptable window.
+func TestPendingtNotOverlyScaling(t *testing.T) {
+	logf.SetLogger(logf.ZapLogger(true))
+
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ExternalMetricSourceType,
+		External: &v1alpha1.ExternalMetricSource{
+			MetricName:     "loadbalancer.request.per.seconds",
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"foo": "bar"}},
+			HighWatermark:  resource.NewMilliQuantity(85000, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(75000, resource.DecimalSI),
+		},
+	}
+	startTime := metav1.Unix(metav1.Now().Unix()-120, 0)
+	withinDuration := metav1.Unix(startTime.Unix()+readinessDelay/2, 0)
+	expired := metav1.Unix(startTime.Unix()+2*readinessDelay, 0)
+	tc := replicaCalcTestCase{
+		expectedReplicas: 19,
+		scale:            makeScale(7, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				Algorithm:             "absolute",
+				Tolerance:             0.01,
+				ReadinessDelaySeconds: readinessDelay,
+				Metrics:               []v1alpha1.MetricSpec{metric1},
+			},
+		},
+		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodRunning},
+
+		podCondition: []corev1.PodCondition{
+			{
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: expired,
+			},
+			{
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: expired,
+			},
+			{
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: expired,
+			},
+			{
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: expired,
+			},
+			{
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: expired,
+			},
+			{
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: withinDuration,
+			},
+			{
+				Status:             corev1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+			},
+		},
+
+		// faking the start of the pod so that it appears to have been pending for less than readinessDelay.
+		podStartTime: []metav1.Time{startTime, startTime, startTime, startTime, startTime, startTime, startTime},
+		metric: &metricInfo{
+			spec:                metric1,
+			levels:              []int64{800000}, // We are well under the low watermarks
+			expectedUtilization: 800000,
+		},
+	}
+	tc.runTest(t)
+}
+
+// We have pods that are pending and one is within an acceptable window.
+func TestPendingtUnprotectedOverlyScaling(t *testing.T) {
+	logf.SetLogger(logf.ZapLogger(true))
+
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ExternalMetricSourceType,
+		External: &v1alpha1.ExternalMetricSource{
+			MetricName:     "loadbalancer.request.per.seconds",
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"foo": "bar"}},
+			HighWatermark:  resource.NewMilliQuantity(85000, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(75000, resource.DecimalSI),
+		},
+	}
+	startTime := metav1.Unix(metav1.Now().Unix()-120, 0)
+	withinDuration := metav1.Unix(startTime.Unix()+readinessDelay/2, 0)
+	expired := metav1.Unix(startTime.Unix()+2*readinessDelay, 0)
+	tc := replicaCalcTestCase{
+		expectedReplicas: 66,
+		scale:            makeScale(7, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				Algorithm: "absolute",
+				Tolerance: 0.01,
+				// High to force the consideration of pending pods as running
+				ReadinessDelaySeconds: 6000,
+				Metrics:               []v1alpha1.MetricSpec{metric1},
+			},
+		},
+		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodRunning},
+
+		podCondition: []corev1.PodCondition{
+			{
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: expired,
+			},
+			{
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: expired,
+			},
+			{
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: expired,
+			},
+			{
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: expired,
+			},
+			{
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: expired,
+			},
+			{
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: withinDuration,
+			},
+			{
+				Status:             corev1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+			},
+		},
+
+		// faking the start of the pod so that it appears to have been pending for less than readinessDelay.
+		podStartTime: []metav1.Time{startTime, startTime, startTime, startTime, startTime, startTime, startTime},
+		metric: &metricInfo{
+			spec:                metric1,
+			levels:              []int64{800000}, // We are well under the low watermarks
+			expectedUtilization: 800000,
 		},
 	}
 	tc.runTest(t)
@@ -1022,8 +1365,8 @@ func TestReplicaCalcBelowAverageExternal_Downscale4(t *testing.T) {
 		},
 	}
 	tc := replicaCalcTestCase{
-		currentReplicas:  3,
 		expectedReplicas: 5,
+		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "average",
@@ -1045,54 +1388,50 @@ func TestGroupPods(t *testing.T) {
 
 	tests := []struct {
 		name                string
-		pods                *v1.PodList
+		pods                []*corev1.Pod
 		metrics             metrics.PodMetricsInfo
-		resource            v1.ResourceName
+		resource            corev1.ResourceName
 		expectReadyPodCount int
 		expectIgnoredPods   sets.String
 	}{
 		{
 			"void",
-			&v1.PodList{},
+			[]*corev1.Pod{},
 			metrics.PodMetricsInfo{},
-			v1.ResourceCPU,
+			corev1.ResourceCPU,
 			0,
 			sets.NewString(),
 		},
 		{
 			"count in a ready pod - memory",
-			&v1.PodList{
-				Items: []v1.Pod{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "bentham",
-						},
-						Status: v1.PodStatus{
-							Phase: v1.PodSucceeded,
-						},
+			[]*corev1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "bentham",
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodSucceeded,
 					},
 				},
 			},
 			metrics.PodMetricsInfo{
 				"bentham": metrics.PodMetric{Value: 1, Timestamp: time.Now(), Window: time.Minute},
 			},
-			v1.ResourceMemory,
+			corev1.ResourceMemory,
 			1,
 			sets.NewString(),
 		},
 		{
 			"ignore a pod without ready condition - CPU",
-			&v1.PodList{
-				Items: []v1.Pod{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "lucretius",
-						},
-						Status: v1.PodStatus{
-							Phase: v1.PodSucceeded,
-							StartTime: &metav1.Time{
-								Time: time.Now(),
-							},
+			[]*corev1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "lucretius",
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodSucceeded,
+						StartTime: &metav1.Time{
+							Time: time.Now(),
 						},
 					},
 				},
@@ -1100,29 +1439,27 @@ func TestGroupPods(t *testing.T) {
 			metrics.PodMetricsInfo{
 				"lucretius": metrics.PodMetric{Value: 1},
 			},
-			v1.ResourceCPU,
+			corev1.ResourceCPU,
 			0,
 			sets.NewString("lucretius"),
 		},
 		{
 			"count in a ready pod with fresh metrics during initialization period - CPU",
-			&v1.PodList{
-				Items: []v1.Pod{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "bentham",
+			[]*corev1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "bentham",
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodSucceeded,
+						StartTime: &metav1.Time{
+							Time: time.Now().Add(-1 * time.Minute),
 						},
-						Status: v1.PodStatus{
-							Phase: v1.PodSucceeded,
-							StartTime: &metav1.Time{
-								Time: time.Now().Add(-1 * time.Minute),
-							},
-							Conditions: []v1.PodCondition{
-								{
-									Type:               v1.PodReady,
-									LastTransitionTime: metav1.Time{Time: time.Now().Add(-30 * time.Second)},
-									Status:             v1.ConditionTrue,
-								},
+						Conditions: []corev1.PodCondition{
+							{
+								Type:               corev1.PodReady,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-30 * time.Second)},
+								Status:             corev1.ConditionTrue,
 							},
 						},
 					},
@@ -1131,29 +1468,27 @@ func TestGroupPods(t *testing.T) {
 			metrics.PodMetricsInfo{
 				"bentham": metrics.PodMetric{Value: 1, Timestamp: time.Now(), Window: 30 * time.Second},
 			},
-			v1.ResourceCPU,
+			corev1.ResourceCPU,
 			1,
 			sets.NewString(),
 		},
 		{
 			"ignore an unready pod during initialization period - CPU",
-			&v1.PodList{
-				Items: []v1.Pod{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "lucretius",
+			[]*corev1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "lucretius",
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodSucceeded,
+						StartTime: &metav1.Time{
+							Time: time.Now().Add(-10 * time.Minute),
 						},
-						Status: v1.PodStatus{
-							Phase: v1.PodSucceeded,
-							StartTime: &metav1.Time{
-								Time: time.Now().Add(-10 * time.Minute),
-							},
-							Conditions: []v1.PodCondition{
-								{
-									Type:               v1.PodReady,
-									LastTransitionTime: metav1.Time{Time: time.Now().Add(-9*time.Minute - 54*time.Second)},
-									Status:             v1.ConditionFalse,
-								},
+						Conditions: []corev1.PodCondition{
+							{
+								Type:               corev1.PodReady,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-9*time.Minute - 54*time.Second)},
+								Status:             corev1.ConditionFalse,
 							},
 						},
 					},
@@ -1162,29 +1497,27 @@ func TestGroupPods(t *testing.T) {
 			metrics.PodMetricsInfo{
 				"lucretius": metrics.PodMetric{Value: 1},
 			},
-			v1.ResourceCPU,
+			corev1.ResourceCPU,
 			0,
 			sets.NewString("lucretius"),
 		},
 		{
 			"count in a ready pod without fresh metrics after initialization period - CPU",
-			&v1.PodList{
-				Items: []v1.Pod{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "bentham",
+			[]*corev1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "bentham",
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodSucceeded,
+						StartTime: &metav1.Time{
+							Time: time.Now().Add(-3 * time.Minute),
 						},
-						Status: v1.PodStatus{
-							Phase: v1.PodSucceeded,
-							StartTime: &metav1.Time{
-								Time: time.Now().Add(-3 * time.Minute),
-							},
-							Conditions: []v1.PodCondition{
-								{
-									Type:               v1.PodReady,
-									LastTransitionTime: metav1.Time{Time: time.Now().Add(-3 * time.Minute)},
-									Status:             v1.ConditionTrue,
-								},
+						Conditions: []corev1.PodCondition{
+							{
+								Type:               corev1.PodReady,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-3 * time.Minute)},
+								Status:             corev1.ConditionTrue,
 							},
 						},
 					},
@@ -1193,30 +1526,28 @@ func TestGroupPods(t *testing.T) {
 			metrics.PodMetricsInfo{
 				"bentham": metrics.PodMetric{Value: 1, Timestamp: time.Now().Add(-2 * time.Minute), Window: time.Minute},
 			},
-			v1.ResourceCPU,
+			corev1.ResourceCPU,
 			1,
 			sets.NewString(),
 		},
 
 		{
 			"count in an unready pod that was ready after initialization period - CPU",
-			&v1.PodList{
-				Items: []v1.Pod{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "lucretius",
+			[]*corev1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "lucretius",
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodSucceeded,
+						StartTime: &metav1.Time{
+							Time: time.Now().Add(-10 * time.Minute),
 						},
-						Status: v1.PodStatus{
-							Phase: v1.PodSucceeded,
-							StartTime: &metav1.Time{
-								Time: time.Now().Add(-10 * time.Minute),
-							},
-							Conditions: []v1.PodCondition{
-								{
-									Type:               v1.PodReady,
-									LastTransitionTime: metav1.Time{Time: time.Now().Add(-9 * time.Minute)},
-									Status:             v1.ConditionFalse,
-								},
+						Conditions: []corev1.PodCondition{
+							{
+								Type:               corev1.PodReady,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-9 * time.Minute)},
+								Status:             corev1.ConditionFalse,
 							},
 						},
 					},
@@ -1225,29 +1556,27 @@ func TestGroupPods(t *testing.T) {
 			metrics.PodMetricsInfo{
 				"lucretius": metrics.PodMetric{Value: 1},
 			},
-			v1.ResourceCPU,
+			corev1.ResourceCPU,
 			1,
 			sets.NewString(),
 		},
 		{
 			"ignore pod that has never been ready after initialization period - CPU",
-			&v1.PodList{
-				Items: []v1.Pod{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "lucretius",
+			[]*corev1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "lucretius",
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodSucceeded,
+						StartTime: &metav1.Time{
+							Time: time.Now().Add(-10 * time.Minute),
 						},
-						Status: v1.PodStatus{
-							Phase: v1.PodSucceeded,
-							StartTime: &metav1.Time{
-								Time: time.Now().Add(-10 * time.Minute),
-							},
-							Conditions: []v1.PodCondition{
-								{
-									Type:               v1.PodReady,
-									LastTransitionTime: metav1.Time{Time: time.Now().Add(-9*time.Minute - 55*time.Second)},
-									Status:             v1.ConditionFalse,
-								},
+						Conditions: []corev1.PodCondition{
+							{
+								Type:               corev1.PodReady,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-9*time.Minute - 55*time.Second)},
+								Status:             corev1.ConditionFalse,
 							},
 						},
 					},
@@ -1256,74 +1585,70 @@ func TestGroupPods(t *testing.T) {
 			metrics.PodMetricsInfo{
 				"lucretius": metrics.PodMetric{Value: 1},
 			},
-			v1.ResourceCPU,
+			corev1.ResourceCPU,
 			0,
 			sets.NewString("lucretius"),
 		},
 		{
 			"a missing pod",
-			&v1.PodList{
-				Items: []v1.Pod{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "epicurus",
-						},
-						Status: v1.PodStatus{
-							Phase: v1.PodSucceeded,
-							StartTime: &metav1.Time{
-								Time: time.Now().Add(-3 * time.Minute),
-							},
+			[]*corev1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "epicurus",
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodSucceeded,
+						StartTime: &metav1.Time{
+							Time: time.Now().Add(-3 * time.Minute),
 						},
 					},
 				},
 			},
 			metrics.PodMetricsInfo{},
-			v1.ResourceCPU,
+			corev1.ResourceCPU,
 			0,
 			sets.NewString(),
 		},
 		{
 			"several pods",
-			&v1.PodList{
-				Items: []v1.Pod{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "lucretius",
+			[]*corev1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "lucretius",
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodSucceeded,
+						StartTime: &metav1.Time{
+							Time: time.Now(),
 						},
-						Status: v1.PodStatus{
-							Phase: v1.PodSucceeded,
-							StartTime: &metav1.Time{
-								Time: time.Now(),
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "niccolo",
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodSucceeded,
+						StartTime: &metav1.Time{
+							Time: time.Now().Add(-3 * time.Minute),
+						},
+						Conditions: []corev1.PodCondition{
+							{
+								Type:               corev1.PodReady,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-3 * time.Minute)},
+								Status:             corev1.ConditionTrue,
 							},
 						},
 					},
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "niccolo",
-						},
-						Status: v1.PodStatus{
-							Phase: v1.PodSucceeded,
-							StartTime: &metav1.Time{
-								Time: time.Now().Add(-3 * time.Minute),
-							},
-							Conditions: []v1.PodCondition{
-								{
-									Type:               v1.PodReady,
-									LastTransitionTime: metav1.Time{Time: time.Now().Add(-3 * time.Minute)},
-									Status:             v1.ConditionTrue,
-								},
-							},
-						},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "epicurus",
 					},
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "epicurus",
-						},
-						Status: v1.PodStatus{
-							Phase: v1.PodSucceeded,
-							StartTime: &metav1.Time{
-								Time: time.Now().Add(-3 * time.Minute),
-							},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodSucceeded,
+						StartTime: &metav1.Time{
+							Time: time.Now().Add(-3 * time.Minute),
 						},
 					},
 				},
@@ -1332,26 +1657,24 @@ func TestGroupPods(t *testing.T) {
 				"lucretius": metrics.PodMetric{Value: 1},
 				"niccolo":   metrics.PodMetric{Value: 1},
 			},
-			v1.ResourceCPU,
+			corev1.ResourceCPU,
 			1,
 			sets.NewString("lucretius"),
 		},
 		{
 			name: "pending pods are ignored",
-			pods: &v1.PodList{
-				Items: []v1.Pod{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "unscheduled",
-						},
-						Status: v1.PodStatus{
-							Phase: v1.PodPending,
-						},
+			pods: []*corev1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "unscheduled",
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodPending,
 					},
 				},
 			},
 			metrics:             metrics.PodMetricsInfo{},
-			resource:            v1.ResourceCPU,
+			resource:            corev1.ResourceCPU,
 			expectReadyPodCount: 0,
 			expectIgnoredPods:   sets.NewString("unscheduled"),
 		},
@@ -1378,25 +1701,25 @@ func TestRemoveMetricsForPods(t *testing.T) {
 	fakeMetrics := []fakeMetric{
 		{
 			podName: "pod1",
-			ts:      time.Time(timeSec),
+			ts:      timeSec,
 			window:  time.Duration(300),
 			val:     5,
 		},
 		{
 			podName: "pod2",
-			ts:      time.Time(timeSec),
+			ts:      timeSec,
 			window:  time.Duration(300),
 			val:     5,
 		},
 		{
 			podName: "pod3",
-			ts:      time.Time(timeSec),
+			ts:      timeSec,
 			window:  time.Duration(300),
 			val:     5,
 		},
 		{
 			podName: "pod4",
-			ts:      time.Time(timeSec),
+			ts:      timeSec,
 			window:  time.Duration(300),
 			val:     5,
 		},
@@ -1421,69 +1744,228 @@ func TestRemoveMetricsForPods(t *testing.T) {
 	})
 }
 
+func TestGetReadyPodsCount(t *testing.T) {
+	logf.SetLogger(logf.ZapLogger(true))
+
+	startTime := metav1.Unix(metav1.Now().Unix()-120, 0)
+	readyTolerated := metav1.Unix(startTime.Unix()+readinessDelay/2, 0)
+	expired := metav1.Unix(startTime.Unix()+2*readinessDelay, 0)
+
+	tests := []struct {
+		name          string
+		selector      map[string]string
+		phases        []corev1.PodPhase
+		conditions    []corev1.PodCondition
+		startTimes    []metav1.Time
+		expected      int32
+		errorExpected error
+	}{
+		{
+			name:     "All Pods Running",
+			selector: labels.Set{"name": "test-pod"},
+			conditions: []corev1.PodCondition{
+				{
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: readyTolerated, // LastTransitionTime does not matter in this case.
+				},
+				{
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: readyTolerated,
+				},
+				{
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+				},
+			},
+			startTimes:    []metav1.Time{startTime, startTime, startTime},
+			phases:        []corev1.PodPhase{corev1.PodRunning, corev1.PodRunning, corev1.PodRunning},
+			expected:      3,
+			errorExpected: nil,
+		},
+		{
+			name:     "One Pod Pending but recent, one expired",
+			selector: labels.Set{"name": "test-pod"},
+			conditions: []corev1.PodCondition{
+				{
+					Status:             corev1.ConditionFalse,
+					LastTransitionTime: readyTolerated,
+				},
+				{
+					Status:             corev1.ConditionFalse,
+					LastTransitionTime: expired,
+				},
+				{
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+				},
+			},
+			startTimes:    []metav1.Time{startTime, startTime, startTime},
+			phases:        []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodRunning},
+			expected:      2,
+			errorExpected: nil,
+		},
+		{
+			name:     "All Pods Failed",
+			selector: labels.Set{"name": "test-pod"},
+			conditions: []corev1.PodCondition{
+				{
+					Status:             corev1.ConditionFalse,
+					LastTransitionTime: readyTolerated,
+				},
+				{
+					Status:             corev1.ConditionFalse,
+					LastTransitionTime: expired,
+				},
+				{
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+				},
+			},
+			startTimes:    []metav1.Time{startTime, startTime, startTime},
+			phases:        []corev1.PodPhase{corev1.PodFailed, corev1.PodFailed, corev1.PodFailed},
+			expected:      0,
+			errorExpected: nil,
+		},
+		{
+			name:     "No mathing pods",
+			selector: labels.Set{"name": "wrong"},
+			conditions: []corev1.PodCondition{
+				{
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+				},
+				{
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+				},
+				{
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+				},
+			},
+			startTimes:    []metav1.Time{startTime, startTime, startTime},
+			phases:        []corev1.PodPhase{corev1.PodRunning, corev1.PodRunning, corev1.PodRunning},
+			expected:      0,
+			errorExpected: fmt.Errorf("no pods returned by selector while calculating replica count"),
+		},
+		{
+			name:     "No ready pods",
+			selector: labels.Set{"name": "test-pod"},
+			conditions: []corev1.PodCondition{
+				{
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+				},
+				{
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+				},
+				{
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+				},
+			},
+			startTimes:    []metav1.Time{startTime, startTime, startTime},
+			phases:        []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodPending},
+			expected:      0,
+			errorExpected: fmt.Errorf("among the 3 pods, none is ready. Skipping recommendation"),
+		},
+	}
+
+	for _, f := range tests {
+		t.Run(f.name, func(t *testing.T) {
+			tc := replicaCalcTestCase{
+				podCondition: f.conditions,
+				podPhase:     f.phases,
+				podStartTime: f.startTimes,
+				scale:        makeScale(3, f.selector),
+				namespace:    testNamespace,
+			}
+			fakeClient := tc.prepareTestClientSet() // check what this does
+
+			informerFactory := informers.NewSharedInformerFactory(fakeClient, 0)
+			informer := informerFactory.Core().V1().Pods()
+
+			replicaCalculator := NewReplicaCalculator(nil, informer.Lister())
+
+			stop := make(chan struct{})
+			defer close(stop)
+			informerFactory.Start(stop)
+			if !cache.WaitForNamedCacheSync("HPA", stop, informer.Informer().HasSynced) {
+				return
+			}
+			val, err := replicaCalculator.getReadyPodsCount(tc.namespace, labels.SelectorFromSet(f.selector), readinessDelay*time.Second)
+			assert.Equal(t, f.expected, val)
+			if f.errorExpected != nil {
+				assert.EqualError(t, f.errorExpected, err.Error())
+			}
+		})
+	}
+}
+
 func TestGetPodCondition(t *testing.T) {
 	tests := []struct {
 		name               string
-		status             *v1.PodStatus
-		conditionType      v1.PodConditionType
+		status             *corev1.PodStatus
+		conditionType      corev1.PodConditionType
 		expectIndex        int
-		expectPodCondition *v1.PodCondition
+		expectPodCondition *corev1.PodCondition
 	}{
 		{
 			"pod is ready",
-			&v1.PodStatus{
-				Conditions: []v1.PodCondition{
-					{Type: v1.PodReady},
+			&corev1.PodStatus{
+				Conditions: []corev1.PodCondition{
+					{Type: corev1.PodReady},
 				},
 			},
-			v1.PodReady,
+			corev1.PodReady,
 			0,
-			&v1.PodCondition{Type: v1.PodReady},
+			&corev1.PodCondition{Type: corev1.PodReady},
 		},
 		{
 			"pod is scheduled (not ready)",
-			&v1.PodStatus{
-				Conditions: []v1.PodCondition{
-					{Type: v1.PodScheduled},
+			&corev1.PodStatus{
+				Conditions: []corev1.PodCondition{
+					{Type: corev1.PodScheduled},
 				},
 			},
-			v1.PodReady,
+			corev1.PodReady,
 			-1,
 			nil,
 		},
 		{
 			"pod is initialized (not ready)",
-			&v1.PodStatus{
-				Conditions: []v1.PodCondition{
-					{Type: v1.PodInitialized},
+			&corev1.PodStatus{
+				Conditions: []corev1.PodCondition{
+					{Type: corev1.PodInitialized},
 				},
 			},
-			v1.PodReady,
+			corev1.PodReady,
 			-1,
 			nil,
 		},
 		{
 			"pod is ready, searching for a different condition type",
-			&v1.PodStatus{
-				Conditions: []v1.PodCondition{
-					{Type: v1.PodReady},
+			&corev1.PodStatus{
+				Conditions: []corev1.PodCondition{
+					{Type: corev1.PodReady},
 				},
 			},
-			v1.PodScheduled,
+			corev1.PodScheduled,
 			-1,
 			nil,
 		},
 		{
 			"pod was initialized and ready, searching for ready",
-			&v1.PodStatus{
-				Conditions: []v1.PodCondition{
-					{Type: v1.PodInitialized},
-					{Type: v1.PodReady},
+			&corev1.PodStatus{
+				Conditions: []corev1.PodCondition{
+					{Type: corev1.PodInitialized},
+					{Type: corev1.PodReady},
 				},
 			},
-			v1.PodReady,
+			corev1.PodReady,
 			1,
-			&v1.PodCondition{Type: v1.PodReady},
+			&corev1.PodCondition{Type: corev1.PodReady},
 		},
 	}
 
