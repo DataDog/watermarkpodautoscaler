@@ -60,7 +60,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 	if err != nil {
 		log.Error(err, "Could not parse the labels of the target")
 	}
-	currentReadyReplicas, err := c.getReadyPodsCount(metav1.NamespaceAll, lbl, time.Duration(wpa.Spec.ReadinessDelaySeconds)*time.Second)
+	currentReadyReplicas, err := c.getReadyPodsCount(target.Namespace, lbl, time.Duration(wpa.Spec.ReadinessDelaySeconds)*time.Second)
 	if err != nil {
 		return ReplicaCalculation{}, fmt.Errorf("unable to get the number of ready pods across all namespaces for %v: %s", lbl, err.Error())
 	}
@@ -93,7 +93,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 		value.Delete(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: metricName})
 		return ReplicaCalculation{0, 0, time.Time{}}, fmt.Errorf("unable to get external metric %s/%s/%+v: %s", wpa.Namespace, metricName, selector, err)
 	}
-	logger.V(4).Info("Metrics from the External Metrics Provider", "metrics", metrics)
+	logger.Info("Metrics from the External Metrics Provider", "metrics", metrics)
 
 	var sum int64
 	for _, val := range metrics {
@@ -176,12 +176,13 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 
 func getReplicaCount(logger logr.Logger, currentReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, name string, adjustedUsage float64, lowMark, highMark *resource.Quantity) (replicaCount int32, utilization int64) {
 	utilizationQuantity := resource.NewMilliQuantity(int64(adjustedUsage), resource.DecimalSI)
-
 	adjustedHM := float64(highMark.MilliValue()) + wpa.Spec.Tolerance*float64(highMark.MilliValue())
 	adjustedLM := float64(lowMark.MilliValue()) - wpa.Spec.Tolerance*float64(lowMark.MilliValue())
 
 	labelsWithReason := prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reasonPromLabel: "within_bounds"}
 	labelsWithMetricName := prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, metricNamePromLabel: name}
+
+	logger.Info("getReplicaCount", "currentReplicas", currentReplicas, "adjustedUsage", adjustedUsage, "adjustedHM", adjustedHM, "adjustedLM", adjustedLM, "utilizationQuantity", utilizationQuantity)
 
 	switch {
 	case adjustedUsage > adjustedHM:
@@ -191,7 +192,7 @@ func getReplicaCount(logger logr.Logger, currentReplicas int32, wpa *v1alpha1.Wa
 		replicaCount = int32(math.Floor(float64(currentReplicas) * adjustedUsage / (float64(lowMark.MilliValue()))))
 		// Keep a minimum of 1 replica
 		replicaCount = int32(math.Max(float64(replicaCount), 1))
-		logger.Info("Value is below lowMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount)
+		logger.Info("Value is below lowMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount, "currentReplicas", currentReplicas)
 	default:
 		restrictedScaling.With(labelsWithReason).Set(1)
 		value.With(labelsWithMetricName).Set(adjustedUsage)
@@ -211,7 +212,7 @@ func (c *ReplicaCalculator) getReadyPodsCount(namespace string, selector labels.
 	if err != nil {
 		return 0, fmt.Errorf("unable to get pods while calculating replica count: %v", err)
 	}
-
+	log.Info("podlist details", "len", len(podList), "selector", selector)
 	if len(podList) == 0 {
 		return 0, fmt.Errorf("no pods returned by selector while calculating replica count")
 	}

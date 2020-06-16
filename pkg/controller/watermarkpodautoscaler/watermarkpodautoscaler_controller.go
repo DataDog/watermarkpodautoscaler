@@ -343,7 +343,7 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(logger logr.Logger, wpa *
 		}
 
 		desiredReplicas = normalizeDesiredReplicas(logger, wpa, currentReplicas, desiredReplicas)
-		logger.Info("Normalized replicas", "desiredReplicas", desiredReplicas)
+		logger.Info("Normalized Desired replicas", "desiredReplicas", desiredReplicas)
 
 		rescale = shouldScale(logger, wpa, currentReplicas, desiredReplicas, now)
 	}
