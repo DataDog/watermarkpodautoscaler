@@ -43,7 +43,7 @@ var (
 	highwm = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
-			Name:      "high_watermak",
+			Name:      "high_watermark",
 			Help:      "Gauge for the high watermark of a given WPA",
 		},
 		[]string{
@@ -69,7 +69,7 @@ var (
 	lowwm = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
-			Name:      "low_watermak",
+			Name:      "low_watermark",
 			Help:      "Gauge for the low watermark of a given WPA",
 		},
 		[]string{
