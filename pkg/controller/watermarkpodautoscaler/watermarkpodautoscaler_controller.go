@@ -545,7 +545,9 @@ func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(logger logr.
 				timestampProposal = replicaCalculation.timestamp
 
 				lowwm.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.External.LowWatermark.MilliValue()))
+				lowwmV2.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.External.LowWatermark.MilliValue()))
 				highwm.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.External.HighWatermark.MilliValue()))
+				highwmV2.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.External.HighWatermark.MilliValue()))
 				replicaProposal.With(promLabelsForWpa).Set(float64(replicaCountProposal))
 
 				statuses[i] = autoscalingv2.MetricStatus{
@@ -585,7 +587,9 @@ func (r *ReconcileWatermarkPodAutoscaler) computeReplicasForMetrics(logger logr.
 				timestampProposal = replicaCalculation.timestamp
 
 				lowwm.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.Resource.LowWatermark.MilliValue()))
+				lowwmV2.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.Resource.LowWatermark.MilliValue()))
 				highwm.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.Resource.HighWatermark.MilliValue()))
+				highwmV2.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.Resource.HighWatermark.MilliValue()))
 				replicaProposal.With(promLabelsForWpa).Set(float64(replicaCountProposal))
 
 				statuses[i] = autoscalingv2.MetricStatus{
