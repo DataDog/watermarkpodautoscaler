@@ -53,6 +53,19 @@ var (
 			resourceKindPromLabel,
 			metricNamePromLabel,
 		})
+	highwmV2 = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "high_watermark",
+			Help:      "Gauge for the high watermark of a given WPA",
+		},
+		[]string{
+			wpaNamePromLabel,
+			resourceNamespacePromLabel,
+			resourceNamePromLabel,
+			resourceKindPromLabel,
+			metricNamePromLabel,
+		})
 	transitionCountdown = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
@@ -70,6 +83,19 @@ var (
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
 			Name:      "low_watermak",
+			Help:      "Gauge for the low watermark of a given WPA",
+		},
+		[]string{
+			wpaNamePromLabel,
+			resourceNamespacePromLabel,
+			resourceNamePromLabel,
+			resourceKindPromLabel,
+			metricNamePromLabel,
+		})
+	lowwmV2 = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "low_watermark",
 			Help:      "Gauge for the low watermark of a given WPA",
 		},
 		[]string{
@@ -145,7 +171,9 @@ var (
 func init() {
 	sigmetrics.Registry.MustRegister(value)
 	sigmetrics.Registry.MustRegister(highwm)
+	sigmetrics.Registry.MustRegister(highwmV2)
 	sigmetrics.Registry.MustRegister(lowwm)
+	sigmetrics.Registry.MustRegister(lowwmV2)
 	sigmetrics.Registry.MustRegister(replicaProposal)
 	sigmetrics.Registry.MustRegister(replicaEffective)
 	sigmetrics.Registry.MustRegister(restrictedScaling)
@@ -188,7 +216,9 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 		}
 
 		lowwm.Delete(promLabelsForWpa)
+		lowwmV2.Delete(promLabelsForWpa)
 		highwm.Delete(promLabelsForWpa)
+		highwmV2.Delete(promLabelsForWpa)
 		value.Delete(promLabelsForWpa)
 	}
 }
