@@ -63,6 +63,8 @@ type replicaCalcTestCase struct {
 }
 
 const (
+	testReplicaSetName  = "foo-bar-123-345"
+	testDeploymentName  = "foo-bar-123"
 	testNamespace       = "test-namespace"
 	podNamePrefix       = "test-pod"
 	numContainersPerPod = 1
@@ -198,6 +200,12 @@ func (tc *replicaCalcTestCase) prepareTestClientSet() *fake.Clientset {
 					Labels: map[string]string{
 						"name": podNamePrefix,
 					},
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							Kind: "ReplicaSet",
+							Name: testReplicaSetName,
+						},
+					},
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{{}, {}},
@@ -298,7 +306,7 @@ func TestReplicaCalcDisjointResourcesMetrics(t *testing.T) {
 				Metrics:   []v1alpha1.MetricSpec{metric1},
 			},
 		},
-		scale: makeScale(1, map[string]string{"name": "test-pod"}),
+		scale: makeScale(testDeploymentName, 1, map[string]string{"name": "test-pod"}),
 		metric: &metricInfo{
 			spec:                metric1,
 			levels:              []int64{86000}, // We are higher than the HighWatermark
@@ -308,8 +316,11 @@ func TestReplicaCalcDisjointResourcesMetrics(t *testing.T) {
 	tc.runTest(t)
 }
 
-func makeScale(currentReplicas int32, labelsMap map[string]string) *autoscalingv1.Scale {
+func makeScale(_ string, currentReplicas int32, labelsMap map[string]string) *autoscalingv1.Scale {
 	return &autoscalingv1.Scale{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testDeploymentName,
+		},
 		Status: autoscalingv1.ScaleStatus{
 			Selector: labels.FormatLabels(labelsMap),
 			Replicas: currentReplicas,
@@ -331,7 +342,7 @@ func TestReplicaCalcAbsoluteScaleUp(t *testing.T) {
 
 	tc := replicaCalcTestCase{
 		expectedReplicas: 21,
-		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -362,7 +373,7 @@ func TestReplicaCalcAbsoluteScaleDown(t *testing.T) {
 
 	tc := replicaCalcTestCase{
 		expectedReplicas: 1,
-		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -393,7 +404,7 @@ func TestReplicaCalcAbsoluteScaleDownLessScale(t *testing.T) {
 
 	tc := replicaCalcTestCase{
 		expectedReplicas: 2,
-		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -423,8 +434,8 @@ func TestReplicaCalcAbsoluteScaleUpPendingLessScale(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		expectedReplicas: 9,
-		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		expectedReplicas: 6,
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				// With the absolute algorithm, we will have a utilization of 120k compared to a HWM of 48k (inc. tolerance)
@@ -458,8 +469,8 @@ func TestReplicaCalcAbsoluteScaleUpPendingLessScaleExtraReplica(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		expectedReplicas: 10,
-		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		expectedReplicas: 7,
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -491,7 +502,7 @@ func TestReplicaCalcAbsoluteScaleUpPendingNoScale(t *testing.T) {
 
 	tc := replicaCalcTestCase{
 		expectedReplicas: 3,
-		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -523,7 +534,7 @@ func TestReplicaCalcAbsoluteScaleUpPendingNoScaleStretchTolerance(t *testing.T) 
 
 	tc := replicaCalcTestCase{
 		expectedReplicas: 3,
-		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -554,8 +565,8 @@ func TestReplicaCalcAbsoluteScaleUpFailedLessScale(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		expectedReplicas: 9,
-		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		expectedReplicas: 6,
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -587,7 +598,7 @@ func TestReplicaCalcAbsoluteScaleUpUnreadyLessScale(t *testing.T) {
 
 	tc := replicaCalcTestCase{
 		expectedReplicas: 16,
-		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm:             "absolute",
@@ -633,7 +644,7 @@ func TestReplicaCalcAverageScaleUp(t *testing.T) {
 
 	tc := replicaCalcTestCase{
 		expectedReplicas: 7,
-		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "average",
@@ -664,7 +675,7 @@ func TestReplicaCalcAverageScaleDown(t *testing.T) {
 
 	tc := replicaCalcTestCase{
 		expectedReplicas: 1,
-		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "average",
@@ -695,7 +706,7 @@ func TestReplicaCalcAverageScaleDownLessScale(t *testing.T) {
 
 	tc := replicaCalcTestCase{
 		expectedReplicas: 2,
-		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "average",
@@ -725,8 +736,8 @@ func TestReplicaCalcAverageScaleUpPendingLessScale(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
-		expectedReplicas: 5,
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+		expectedReplicas: 3,
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "average",
@@ -758,7 +769,7 @@ func TestReplicaCalcAverageScaleUpPendingNoScale(t *testing.T) {
 
 	tc := replicaCalcTestCase{
 		expectedReplicas: 3,
-		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "average",
@@ -790,7 +801,7 @@ func TestReplicaCalcAverageScaleUpPendingNoScaleStretchTolerance(t *testing.T) {
 
 	tc := replicaCalcTestCase{
 		expectedReplicas: 3,
-		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "average",
@@ -821,8 +832,8 @@ func TestReplicaCalcAverageScaleUpFailedLessScale(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		expectedReplicas: 5,
-		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		expectedReplicas: 3,
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "average",
@@ -855,7 +866,7 @@ func TestReplicaCalcAverageScaleUpUnreadyLessScale(t *testing.T) {
 
 	tc := replicaCalcTestCase{
 		expectedReplicas: 6,
-		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm:             "average",
@@ -908,7 +919,7 @@ func TestReplicaCalcAboveAbsoluteExternal_Upscale1(t *testing.T) {
 	}
 	tc := replicaCalcTestCase{
 		expectedReplicas: 9,
-		scale:            makeScale(4, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 4, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -939,7 +950,7 @@ func TestReplicaCalcAboveAbsoluteExternal_Upscale2(t *testing.T) {
 	}
 	tc := replicaCalcTestCase{
 		expectedReplicas: 20,
-		scale:            makeScale(9, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 9, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -971,7 +982,7 @@ func TestReplicaCalcAboveAbsoluteExternal_Upscale3(t *testing.T) {
 	}
 	tc := replicaCalcTestCase{
 		expectedReplicas: 2,
-		scale:            makeScale(20, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 20, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -1003,7 +1014,7 @@ func TestReplicaCalcWithinAbsoluteExternal(t *testing.T) {
 	}
 	tc := replicaCalcTestCase{
 		expectedReplicas: 9,
-		scale:            makeScale(9, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 9, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -1039,7 +1050,7 @@ func TestReplicaCalcBelowAverageExternal_Downscale1(t *testing.T) {
 	}
 	tc := replicaCalcTestCase{
 		expectedReplicas: 4,
-		scale:            makeScale(5, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 5, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "average",
@@ -1071,7 +1082,7 @@ func TestReplicaCalcBelowAverageExternal_Downscale2(t *testing.T) {
 	}
 	tc := replicaCalcTestCase{
 		expectedReplicas: 3,
-		scale:            makeScale(4, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 4, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "average",
@@ -1103,7 +1114,7 @@ func TestReplicaCalcBelowAverageExternal_Downscale3(t *testing.T) {
 	}
 	tc := replicaCalcTestCase{
 		expectedReplicas: 3,
-		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "average",
@@ -1135,7 +1146,7 @@ func TestPendingtExpiredScale(t *testing.T) {
 	}
 	tc := replicaCalcTestCase{
 		expectedReplicas: 1,
-		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -1170,8 +1181,8 @@ func TestPendingtNotExpiredScale(t *testing.T) {
 	withinDuration := metav1.Unix(startTime.Unix()+readinessDelay/2, 0)
 	expired := metav1.Unix(startTime.Unix()+2*readinessDelay, 0)
 	tc := replicaCalcTestCase{
-		expectedReplicas: 2,
-		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		expectedReplicas: 1,
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm:             "absolute",
@@ -1201,7 +1212,116 @@ func TestPendingtNotExpiredScale(t *testing.T) {
 		podStartTime: []metav1.Time{startTime, startTime, startTime},
 		metric: &metricInfo{
 			spec:                metric1,
-			levels:              []int64{80000}, // We are well under the low watermarks
+			levels:              []int64{70000}, // We are under the low watermarks
+			expectedUtilization: 70000,
+		},
+	}
+	tc.runTest(t)
+}
+
+// We have pods that are expired and only one is above the HWM so we end up downscaling.
+func TestPendingtExpiredHigherWatermarkDownscale(t *testing.T) {
+	logf.SetLogger(logf.ZapLogger(true))
+
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ExternalMetricSourceType,
+		External: &v1alpha1.ExternalMetricSource{
+			MetricName:     "loadbalancer.request.per.seconds",
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"foo": "bar"}},
+			HighWatermark:  resource.NewMilliQuantity(85000, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(75000, resource.DecimalSI),
+		},
+	}
+	startTime := metav1.Unix(metav1.Now().Unix()-120, 0)
+	expired := metav1.Unix(startTime.Unix()+2*readinessDelay, 0)
+	tc := replicaCalcTestCase{
+		expectedReplicas: 2,
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				Algorithm:             "absolute",
+				Tolerance:             0.01,
+				ReadinessDelaySeconds: readinessDelay,
+				Metrics:               []v1alpha1.MetricSpec{metric1},
+			},
+		},
+		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodRunning},
+
+		podCondition: []corev1.PodCondition{
+			{
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: expired,
+			},
+			{
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: expired,
+			},
+			{
+				Status:             corev1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+			},
+		},
+
+		// faking the start of the pod so that it appears to have been pending for less than readinessDelay.
+		podStartTime: []metav1.Time{startTime, startTime, startTime},
+		metric: &metricInfo{
+			spec:                metric1,
+			levels:              []int64{90000}, // We are within the watermarks
+			expectedUtilization: 90000,
+		},
+	}
+	tc.runTest(t)
+}
+
+// We have pods that are pending and one is within an acceptable window.
+func TestPendingtNotExpiredWithinBoundsNoScale(t *testing.T) {
+	logf.SetLogger(logf.ZapLogger(true))
+
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ExternalMetricSourceType,
+		External: &v1alpha1.ExternalMetricSource{
+			MetricName:     "loadbalancer.request.per.seconds",
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"foo": "bar"}},
+			HighWatermark:  resource.NewMilliQuantity(85000, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(75000, resource.DecimalSI),
+		},
+	}
+	startTime := metav1.Unix(metav1.Now().Unix()-120, 0)
+	withinDuration := metav1.Unix(startTime.Unix()+readinessDelay/2, 0)
+	expired := metav1.Unix(startTime.Unix()+2*readinessDelay, 0)
+	tc := replicaCalcTestCase{
+		expectedReplicas: 3,
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				Algorithm:             "absolute",
+				Tolerance:             0.01,
+				ReadinessDelaySeconds: readinessDelay,
+				Metrics:               []v1alpha1.MetricSpec{metric1},
+			},
+		},
+		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodRunning},
+
+		podCondition: []corev1.PodCondition{
+			{
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: expired,
+			},
+			{
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: withinDuration,
+			},
+			{
+				Status:             corev1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+			},
+		},
+
+		// faking the start of the pod so that it appears to have been pending for less than readinessDelay.
+		podStartTime: []metav1.Time{startTime, startTime, startTime},
+		metric: &metricInfo{
+			spec:                metric1,
+			levels:              []int64{80000}, // We are within the watermarks
 			expectedUtilization: 80000,
 		},
 	}
@@ -1226,7 +1346,7 @@ func TestPendingtNotOverlyScaling(t *testing.T) {
 	expired := metav1.Unix(startTime.Unix()+2*readinessDelay, 0)
 	tc := replicaCalcTestCase{
 		expectedReplicas: 19,
-		scale:            makeScale(7, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 7, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm:             "absolute",
@@ -1272,7 +1392,7 @@ func TestPendingtNotOverlyScaling(t *testing.T) {
 		podStartTime: []metav1.Time{startTime, startTime, startTime, startTime, startTime, startTime, startTime},
 		metric: &metricInfo{
 			spec:                metric1,
-			levels:              []int64{800000}, // We are well under the low watermarks
+			levels:              []int64{800000},
 			expectedUtilization: 800000,
 		},
 	}
@@ -1297,7 +1417,7 @@ func TestPendingtUnprotectedOverlyScaling(t *testing.T) {
 	expired := metav1.Unix(startTime.Unix()+2*readinessDelay, 0)
 	tc := replicaCalcTestCase{
 		expectedReplicas: 66,
-		scale:            makeScale(7, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 7, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "absolute",
@@ -1344,7 +1464,7 @@ func TestPendingtUnprotectedOverlyScaling(t *testing.T) {
 		podStartTime: []metav1.Time{startTime, startTime, startTime, startTime, startTime, startTime, startTime},
 		metric: &metricInfo{
 			spec:                metric1,
-			levels:              []int64{800000}, // We are well under the low watermarks
+			levels:              []int64{800000},
 			expectedUtilization: 800000,
 		},
 	}
@@ -1366,7 +1486,7 @@ func TestReplicaCalcBelowAverageExternal_Downscale4(t *testing.T) {
 	}
 	tc := replicaCalcTestCase{
 		expectedReplicas: 5,
-		scale:            makeScale(3, map[string]string{"name": "test-pod"}),
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm: "average",
@@ -1878,7 +1998,7 @@ func TestGetReadyPodsCount(t *testing.T) {
 				podCondition: f.conditions,
 				podPhase:     f.phases,
 				podStartTime: f.startTimes,
-				scale:        makeScale(3, f.selector),
+				scale:        makeScale(testDeploymentName, 3, f.selector),
 				namespace:    testNamespace,
 			}
 			fakeClient := tc.prepareTestClientSet() // check what this does
@@ -1894,7 +2014,7 @@ func TestGetReadyPodsCount(t *testing.T) {
 			if !cache.WaitForNamedCacheSync("HPA", stop, informer.Informer().HasSynced) {
 				return
 			}
-			val, err := replicaCalculator.getReadyPodsCount(tc.namespace, labels.SelectorFromSet(f.selector), readinessDelay*time.Second)
+			val, err := replicaCalculator.getReadyPodsCount(tc.scale, labels.SelectorFromSet(f.selector), readinessDelay*time.Second)
 			assert.Equal(t, f.expected, val)
 			if f.errorExpected != nil {
 				assert.EqualError(t, f.errorExpected, err.Error())

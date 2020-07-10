@@ -137,7 +137,7 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 		value.Delete(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: string(resourceName)})
 		return ReplicaCalculation{0, 0, time.Time{}}, fmt.Errorf("unable to get resource metric %s/%s/%+v: %s", wpa.Namespace, resourceName, selector, err)
 	}
-	logger.V(4).Info("Metrics from the Resource Client", "metrics", metrics)
+	logger.Info("Metrics from the Resource Client", "metrics", metrics)
 
 	lbl, err := labels.Parse(target.Status.Selector)
 	if err != nil {
@@ -244,6 +244,7 @@ func (c *ReplicaCalculator) getReadyPodsCount(target *autoscalingv1.Scale, selec
 	return int32(toleratedAsReadyPodCount), nil
 }
 func checkOwnerRef(ownerRef []metav1.OwnerReference, target *autoscalingv1.Scale) bool {
+	log.Info("Owner ref", "OwnerRef", ownerRef, "target", target.Name)
 	for _, o := range ownerRef {
 		if o.Kind != "ReplicaSet" {
 			continue
@@ -260,6 +261,10 @@ func groupPods(logger logr.Logger, podList []*corev1.Pod, metrics metricsclient.
 	ignoredPods = sets.NewString()
 	missing := sets.NewString()
 	for _, pod := range podList {
+		// TODO
+		//if ok := checkOwnerRef(pod.OwnerReferences, target); !ok {
+		//	continue
+		//}
 		// Failed pods shouldn't produce metrics, but add to ignoredPods to be safe
 		if pod.Status.Phase == corev1.PodFailed {
 			ignoredPods.Insert(pod.Name)
