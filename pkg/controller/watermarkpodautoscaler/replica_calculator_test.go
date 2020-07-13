@@ -64,6 +64,7 @@ type replicaCalcTestCase struct {
 
 const (
 	testReplicaSetName  = "foo-bar-123-345"
+	replicaSetKind      = "ReplicaSet"
 	testDeploymentName  = "foo-bar-123"
 	testNamespace       = "test-namespace"
 	podNamePrefix       = "test-pod"
@@ -202,7 +203,7 @@ func (tc *replicaCalcTestCase) prepareTestClientSet() *fake.Clientset {
 					},
 					OwnerReferences: []metav1.OwnerReference{
 						{
-							Kind: "ReplicaSet",
+							Kind: replicaSetKind,
 							Name: testReplicaSetName,
 						},
 					},
@@ -1508,6 +1509,7 @@ func TestGroupPods(t *testing.T) {
 
 	tests := []struct {
 		name                string
+		targetName          string
 		pods                []*corev1.Pod
 		metrics             metrics.PodMetricsInfo
 		resource            corev1.ResourceName
@@ -1516,6 +1518,7 @@ func TestGroupPods(t *testing.T) {
 	}{
 		{
 			"void",
+			"",
 			[]*corev1.Pod{},
 			metrics.PodMetricsInfo{},
 			corev1.ResourceCPU,
@@ -1524,10 +1527,15 @@ func TestGroupPods(t *testing.T) {
 		},
 		{
 			"count in a ready pod - memory",
+			testDeploymentName,
 			[]*corev1.Pod{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "bentham",
+						OwnerReferences: []metav1.OwnerReference{{
+							Name: testReplicaSetName,
+							Kind: replicaSetKind,
+						}},
 					},
 					Status: corev1.PodStatus{
 						Phase: corev1.PodSucceeded,
@@ -1543,10 +1551,15 @@ func TestGroupPods(t *testing.T) {
 		},
 		{
 			"ignore a pod without ready condition - CPU",
+			testDeploymentName,
 			[]*corev1.Pod{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "lucretius",
+						OwnerReferences: []metav1.OwnerReference{{
+							Name: testReplicaSetName,
+							Kind: replicaSetKind,
+						}},
 					},
 					Status: corev1.PodStatus{
 						Phase: corev1.PodSucceeded,
@@ -1565,10 +1578,15 @@ func TestGroupPods(t *testing.T) {
 		},
 		{
 			"count in a ready pod with fresh metrics during initialization period - CPU",
+			testDeploymentName,
 			[]*corev1.Pod{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "bentham",
+						OwnerReferences: []metav1.OwnerReference{{
+							Name: testReplicaSetName,
+							Kind: replicaSetKind,
+						}},
 					},
 					Status: corev1.PodStatus{
 						Phase: corev1.PodSucceeded,
@@ -1594,10 +1612,15 @@ func TestGroupPods(t *testing.T) {
 		},
 		{
 			"ignore an unready pod during initialization period - CPU",
+			testDeploymentName,
 			[]*corev1.Pod{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "lucretius",
+						OwnerReferences: []metav1.OwnerReference{{
+							Name: testReplicaSetName,
+							Kind: replicaSetKind,
+						}},
 					},
 					Status: corev1.PodStatus{
 						Phase: corev1.PodSucceeded,
@@ -1623,10 +1646,15 @@ func TestGroupPods(t *testing.T) {
 		},
 		{
 			"count in a ready pod without fresh metrics after initialization period - CPU",
+			testDeploymentName,
 			[]*corev1.Pod{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "bentham",
+						OwnerReferences: []metav1.OwnerReference{{
+							Name: testReplicaSetName,
+							Kind: replicaSetKind,
+						}},
 					},
 					Status: corev1.PodStatus{
 						Phase: corev1.PodSucceeded,
@@ -1653,10 +1681,15 @@ func TestGroupPods(t *testing.T) {
 
 		{
 			"count in an unready pod that was ready after initialization period - CPU",
+			testDeploymentName,
 			[]*corev1.Pod{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "lucretius",
+						OwnerReferences: []metav1.OwnerReference{{
+							Name: testReplicaSetName,
+							Kind: replicaSetKind,
+						}},
 					},
 					Status: corev1.PodStatus{
 						Phase: corev1.PodSucceeded,
@@ -1682,10 +1715,15 @@ func TestGroupPods(t *testing.T) {
 		},
 		{
 			"ignore pod that has never been ready after initialization period - CPU",
+			testDeploymentName,
 			[]*corev1.Pod{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "lucretius",
+						OwnerReferences: []metav1.OwnerReference{{
+							Name: testReplicaSetName,
+							Kind: replicaSetKind,
+						}},
 					},
 					Status: corev1.PodStatus{
 						Phase: corev1.PodSucceeded,
@@ -1711,10 +1749,15 @@ func TestGroupPods(t *testing.T) {
 		},
 		{
 			"a missing pod",
+			testDeploymentName,
 			[]*corev1.Pod{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "epicurus",
+						OwnerReferences: []metav1.OwnerReference{{
+							Name: testReplicaSetName,
+							Kind: replicaSetKind,
+						}},
 					},
 					Status: corev1.PodStatus{
 						Phase: corev1.PodSucceeded,
@@ -1731,10 +1774,15 @@ func TestGroupPods(t *testing.T) {
 		},
 		{
 			"several pods",
+			testDeploymentName,
 			[]*corev1.Pod{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "lucretius",
+						OwnerReferences: []metav1.OwnerReference{{
+							Name: testReplicaSetName,
+							Kind: replicaSetKind,
+						}},
 					},
 					Status: corev1.PodStatus{
 						Phase: corev1.PodSucceeded,
@@ -1746,6 +1794,10 @@ func TestGroupPods(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "niccolo",
+						OwnerReferences: []metav1.OwnerReference{{
+							Name: testReplicaSetName,
+							Kind: replicaSetKind,
+						}},
 					},
 					Status: corev1.PodStatus{
 						Phase: corev1.PodSucceeded,
@@ -1764,6 +1816,10 @@ func TestGroupPods(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "epicurus",
+						OwnerReferences: []metav1.OwnerReference{{
+							Name: testReplicaSetName,
+							Kind: replicaSetKind,
+						}},
 					},
 					Status: corev1.PodStatus{
 						Phase: corev1.PodSucceeded,
@@ -1782,11 +1838,88 @@ func TestGroupPods(t *testing.T) {
 			sets.NewString("lucretius"),
 		},
 		{
+			"too many pods in scope with labels",
+			testDeploymentName,
+			[]*corev1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "lucretius",
+						OwnerReferences: []metav1.OwnerReference{{
+							Name: "not-the-right-replicaset",
+							Kind: replicaSetKind,
+						}},
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodSucceeded,
+						StartTime: &metav1.Time{
+							Time: time.Now(),
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "niccolo",
+						OwnerReferences: []metav1.OwnerReference{{
+							Name: "not-the-right-replicaset",
+							Kind: replicaSetKind,
+						}},
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodSucceeded,
+						StartTime: &metav1.Time{
+							Time: time.Now().Add(-3 * time.Minute),
+						},
+						Conditions: []corev1.PodCondition{
+							{
+								Type:               corev1.PodReady,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-3 * time.Minute)},
+								Status:             corev1.ConditionTrue,
+							},
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "epicurus",
+						OwnerReferences: []metav1.OwnerReference{{
+							Name: testReplicaSetName,
+							Kind: replicaSetKind,
+						}},
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodSucceeded,
+						StartTime: &metav1.Time{
+							Time: time.Now(),
+						},
+						Conditions: []corev1.PodCondition{
+							{
+								Type:               corev1.PodReady,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-3 * time.Minute)},
+								Status:             corev1.ConditionTrue,
+							},
+						},
+					},
+				},
+			},
+			metrics.PodMetricsInfo{
+				"epicurus":  metrics.PodMetric{Value: 1},
+				"lucretius": metrics.PodMetric{Value: 1},
+				"niccolo":   metrics.PodMetric{Value: 1},
+			},
+			corev1.ResourceCPU,
+			1,
+			sets.NewString(),
+		},
+		{
 			name: "pending pods are ignored",
 			pods: []*corev1.Pod{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "unscheduled",
+						OwnerReferences: []metav1.OwnerReference{{
+							Name: testReplicaSetName,
+							Kind: replicaSetKind,
+						}},
 					},
 					Status: corev1.PodStatus{
 						Phase: corev1.PodPending,
@@ -1801,10 +1934,10 @@ func TestGroupPods(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			readyPods, ignoredPods := groupPods(logf.Log, tc.pods, tc.metrics, tc.resource, time.Duration(readinessDelay)*time.Second)
+			readyPods, ignoredPods := groupPods(logf.Log, tc.pods, tc.targetName, tc.metrics, tc.resource, time.Duration(readinessDelay)*time.Second)
 			readyPodCount := len(readyPods)
-			assert.Equal(t, readyPodCount, tc.expectReadyPodCount, "%s got readyPodCount %d, expected %d", tc.name, readyPodCount, tc.expectReadyPodCount)
-			assert.EqualValues(t, ignoredPods, tc.expectIgnoredPods, "%s got unreadyPods %v, expected %v", tc.name, ignoredPods, tc.expectIgnoredPods)
+			assert.Equal(t, tc.expectReadyPodCount, readyPodCount, "%s got readyPodCount %d, expected %d", tc.name, readyPodCount, tc.expectReadyPodCount)
+			assert.EqualValues(t, tc.expectIgnoredPods, ignoredPods, "%s got unreadyPods %v, expected %v", tc.name, ignoredPods, tc.expectIgnoredPods)
 		})
 	}
 }

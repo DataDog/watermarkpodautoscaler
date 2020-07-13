@@ -152,8 +152,8 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 	if len(podList) == 0 {
 		return ReplicaCalculation{0, 0, time.Time{}}, fmt.Errorf("no pods returned by selector while calculating replica count")
 	}
-
-	readyPods, ignoredPods := groupPods(logger, podList, metrics, resourceName, time.Duration(wpa.Spec.ReadinessDelaySeconds)*time.Second)
+	readiness := time.Duration(wpa.Spec.ReadinessDelaySeconds) * time.Second
+	readyPods, ignoredPods := groupPods(logger, podList, target.Name, metrics, resourceName, readiness)
 	readyPodCount := len(readyPods)
 
 	removeMetricsForPods(metrics, ignoredPods)
@@ -184,21 +184,19 @@ func getReplicaCount(logger logr.Logger, currentReplicas, currentAvailReplicas i
 	labelsWithReason := prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reasonPromLabel: "within_bounds"}
 	labelsWithMetricName := prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, metricNamePromLabel: name}
 
-	logger.Info("getReplicaCount", "currentReplicas", currentReplicas, "adjustedUsage", adjustedUsage, "adjustedHM", adjustedHM, "adjustedLM", adjustedLM, "utilizationQuantity", utilizationQuantity)
-
 	switch {
 	case adjustedUsage > adjustedHM:
 		replicaCount = int32(math.Ceil(float64(currentAvailReplicas) * adjustedUsage / (float64(highMark.MilliValue()))))
-		logger.Info("Value is above highMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount)
+		logger.Info("Value is above highMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount, "currentAvailReplicas", currentAvailReplicas)
 	case adjustedUsage < adjustedLM:
 		replicaCount = int32(math.Floor(float64(currentAvailReplicas) * adjustedUsage / (float64(lowMark.MilliValue()))))
 		// Keep a minimum of 1 replica
 		replicaCount = int32(math.Max(float64(replicaCount), 1))
-		logger.Info("Value is below lowMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount, "currentReplicas", currentReplicas)
+		logger.Info("Value is below lowMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount, "currentAvailReplicas", currentAvailReplicas)
 	default:
 		restrictedScaling.With(labelsWithReason).Set(1)
 		value.With(labelsWithMetricName).Set(adjustedUsage)
-		logger.Info("Within bounds of the watermarks", "value", utilizationQuantity.String(), "lwm", lowMark.String(), "hwm", highMark.String(), "tolerance", wpa.Spec.Tolerance)
+		logger.Info("Within bounds of the watermarks", "value", utilizationQuantity.String(), "low watermark", lowMark.String(), "high watermark", highMark.String(), "tolerance", wpa.Spec.Tolerance)
 		// returning the currentReplicas instead of the count of healthy ones to be consistent with the upstream behavior.
 		return currentReplicas, utilizationQuantity.MilliValue()
 	}
@@ -214,20 +212,21 @@ func (c *ReplicaCalculator) getReadyPodsCount(target *autoscalingv1.Scale, selec
 	if err != nil {
 		return 0, fmt.Errorf("unable to get pods while calculating replica count: %v", err)
 	}
-	log.Info("podlist details", "len", len(podList), "selector", selector)
 	if len(podList) == 0 {
 		return 0, fmt.Errorf("no pods returned by selector while calculating replica count")
 	}
 
 	toleratedAsReadyPodCount := 0
-
+	var incorrectTargetPods int
 	for _, pod := range podList {
-		if ok := checkOwnerRef(pod.OwnerReferences, target); !ok {
+		// matchLabel might be too broad, use the OwnerRef to scope over the actual target
+		if ok := checkOwnerRef(pod.OwnerReferences, target.Name); !ok {
+			incorrectTargetPods++
 			continue
 		}
 		_, condition := getPodCondition(&pod.Status, corev1.PodReady)
 		if condition == nil || pod.Status.StartTime == nil {
-			log.V(4).Info("Pod unready", "namespace", pod.Namespace, "name", pod.Name)
+			log.Info("Pod unready", "namespace", pod.Namespace, "name", pod.Name)
 			continue
 		}
 		if pod.Status.Phase == corev1.PodRunning && condition.Status == corev1.ConditionTrue ||
@@ -238,33 +237,35 @@ func (c *ReplicaCalculator) getReadyPodsCount(target *autoscalingv1.Scale, selec
 			toleratedAsReadyPodCount++
 		}
 	}
+	log.Info("getReadyPodsCount", "full podList length", len(podList), "toleratedAsReadyPodCount", toleratedAsReadyPodCount, "incorrect target", incorrectTargetPods)
 	if toleratedAsReadyPodCount == 0 {
 		return 0, fmt.Errorf("among the %d pods, none is ready. Skipping recommendation", len(podList))
 	}
 	return int32(toleratedAsReadyPodCount), nil
 }
-func checkOwnerRef(ownerRef []metav1.OwnerReference, target *autoscalingv1.Scale) bool {
-	log.Info("Owner ref", "OwnerRef", ownerRef, "target", target.Name)
+func checkOwnerRef(ownerRef []metav1.OwnerReference, targetName string) bool {
 	for _, o := range ownerRef {
 		if o.Kind != "ReplicaSet" {
 			continue
 		}
-		if strings.HasPrefix(o.Name, target.Name) {
+		if strings.HasPrefix(o.Name, targetName) {
 			return true
 		}
 	}
 	return false
 }
 
-func groupPods(logger logr.Logger, podList []*corev1.Pod, metrics metricsclient.PodMetricsInfo, resource corev1.ResourceName, delayOfInitialReadinessStatus time.Duration) (readyPods, ignoredPods sets.String) {
+func groupPods(logger logr.Logger, podList []*corev1.Pod, targetName string, metrics metricsclient.PodMetricsInfo, resource corev1.ResourceName, delayOfInitialReadinessStatus time.Duration) (readyPods, ignoredPods sets.String) {
 	readyPods = sets.NewString()
 	ignoredPods = sets.NewString()
 	missing := sets.NewString()
+	var incorrectTargetPods int
 	for _, pod := range podList {
-		// TODO
-		//if ok := checkOwnerRef(pod.OwnerReferences, target); !ok {
-		//	continue
-		//}
+		// matchLabel might be too broad, use the OwnerRef to scope over the actual target
+		if ok := checkOwnerRef(pod.OwnerReferences, targetName); !ok {
+			incorrectTargetPods++
+			continue
+		}
 		// Failed pods shouldn't produce metrics, but add to ignoredPods to be safe
 		if pod.Status.Phase == corev1.PodFailed {
 			ignoredPods.Insert(pod.Name)
@@ -300,7 +301,7 @@ func groupPods(logger logr.Logger, podList []*corev1.Pod, metrics metricsclient.
 		}
 		readyPods.Insert(pod.Name)
 	}
-	logger.V(2).Info("GroupPods", "Ready", len(readyPods), "Missing", len(missing), "Ignored", len(ignoredPods))
+	logger.Info("groupPods", "ready", len(readyPods), "missing", len(missing), "ignored", len(ignoredPods), "incorrect target", incorrectTargetPods)
 	return readyPods, ignoredPods
 }
 
