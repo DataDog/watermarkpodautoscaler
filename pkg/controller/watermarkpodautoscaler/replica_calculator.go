@@ -176,7 +176,7 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp}, nil
 }
 
-func getReplicaCount(logger logr.Logger, currentReplicas, currentAvailReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, name string, adjustedUsage float64, lowMark, highMark *resource.Quantity) (replicaCount int32, utilization int64) {
+func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, name string, adjustedUsage float64, lowMark, highMark *resource.Quantity) (replicaCount int32, utilization int64) {
 	utilizationQuantity := resource.NewMilliQuantity(int64(adjustedUsage), resource.DecimalSI)
 	adjustedHM := float64(highMark.MilliValue()) + wpa.Spec.Tolerance*float64(highMark.MilliValue())
 	adjustedLM := float64(lowMark.MilliValue()) - wpa.Spec.Tolerance*float64(lowMark.MilliValue())
@@ -186,13 +186,13 @@ func getReplicaCount(logger logr.Logger, currentReplicas, currentAvailReplicas i
 
 	switch {
 	case adjustedUsage > adjustedHM:
-		replicaCount = int32(math.Ceil(float64(currentAvailReplicas) * adjustedUsage / (float64(highMark.MilliValue()))))
-		logger.Info("Value is above highMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount, "currentAvailReplicas", currentAvailReplicas)
+		replicaCount = int32(math.Ceil(float64(currentReadyReplicas) * adjustedUsage / (float64(highMark.MilliValue()))))
+		logger.Info("Value is above highMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas)
 	case adjustedUsage < adjustedLM:
-		replicaCount = int32(math.Floor(float64(currentAvailReplicas) * adjustedUsage / (float64(lowMark.MilliValue()))))
+		replicaCount = int32(math.Floor(float64(currentReadyReplicas) * adjustedUsage / (float64(lowMark.MilliValue()))))
 		// Keep a minimum of 1 replica
 		replicaCount = int32(math.Max(float64(replicaCount), 1))
-		logger.Info("Value is below lowMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount, "currentAvailReplicas", currentAvailReplicas)
+		logger.Info("Value is below lowMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas)
 	default:
 		restrictedScaling.With(labelsWithReason).Set(1)
 		value.With(labelsWithMetricName).Set(adjustedUsage)
@@ -217,11 +217,11 @@ func (c *ReplicaCalculator) getReadyPodsCount(target *autoscalingv1.Scale, selec
 	}
 
 	toleratedAsReadyPodCount := 0
-	var incorrectTargetPods int
+	var incorrectTargetPodsCount int
 	for _, pod := range podList {
 		// matchLabel might be too broad, use the OwnerRef to scope over the actual target
 		if ok := checkOwnerRef(pod.OwnerReferences, target.Name); !ok {
-			incorrectTargetPods++
+			incorrectTargetPodsCount++
 			continue
 		}
 		_, condition := getPodCondition(&pod.Status, corev1.PodReady)
@@ -237,7 +237,7 @@ func (c *ReplicaCalculator) getReadyPodsCount(target *autoscalingv1.Scale, selec
 			toleratedAsReadyPodCount++
 		}
 	}
-	log.Info("getReadyPodsCount", "full podList length", len(podList), "toleratedAsReadyPodCount", toleratedAsReadyPodCount, "incorrect target", incorrectTargetPods)
+	log.Info("getReadyPodsCount", "full podList length", len(podList), "toleratedAsReadyPodCount", toleratedAsReadyPodCount, "incorrectly targeted pods", incorrectTargetPodsCount)
 	if toleratedAsReadyPodCount == 0 {
 		return 0, fmt.Errorf("among the %d pods, none is ready. Skipping recommendation", len(podList))
 	}
@@ -259,11 +259,11 @@ func groupPods(logger logr.Logger, podList []*corev1.Pod, targetName string, met
 	readyPods = sets.NewString()
 	ignoredPods = sets.NewString()
 	missing := sets.NewString()
-	var incorrectTargetPods int
+	var incorrectTargetPodsCount int
 	for _, pod := range podList {
 		// matchLabel might be too broad, use the OwnerRef to scope over the actual target
 		if ok := checkOwnerRef(pod.OwnerReferences, targetName); !ok {
-			incorrectTargetPods++
+			incorrectTargetPodsCount++
 			continue
 		}
 		// Failed pods shouldn't produce metrics, but add to ignoredPods to be safe
@@ -301,7 +301,7 @@ func groupPods(logger logr.Logger, podList []*corev1.Pod, targetName string, met
 		}
 		readyPods.Insert(pod.Name)
 	}
-	logger.Info("groupPods", "ready", len(readyPods), "missing", len(missing), "ignored", len(ignoredPods), "incorrect target", incorrectTargetPods)
+	logger.Info("groupPods", "ready", len(readyPods), "missing", len(missing), "ignored", len(ignoredPods), "incorrect target", incorrectTargetPodsCount)
 	return readyPods, ignoredPods
 }
 
