@@ -104,7 +104,6 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 	// if the average algorithm is used, the metrics retrieved has to be divided by the number of available replicas.
 	adjustedUsage := float64(sum) / averaged
 	replicaCount, utilizationQuantity := getReplicaCount(logger, target.Status.Replicas, currentReadyReplicas, wpa, metricName, adjustedUsage, metric.External.LowWatermark, metric.External.HighWatermark)
-	log.Info("getRep", "currentReplicas", target.Status.Replicas, "currentReadyReplicas", currentReadyReplicas, "replicaCount", replicaCount)
 	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp}, nil
 }
 
@@ -245,7 +244,7 @@ func (c *ReplicaCalculator) getReadyPodsCount(target *autoscalingv1.Scale, selec
 }
 func checkOwnerRef(ownerRef []metav1.OwnerReference, targetName string) bool {
 	for _, o := range ownerRef {
-		if o.Kind != "ReplicaSet" {
+		if o.Kind != "ReplicaSet" && o.Kind != "StatefulSet" {
 			continue
 		}
 		if strings.HasPrefix(o.Name, targetName) {
