@@ -8,6 +8,7 @@ package watermarkpodautoscaler
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
@@ -60,7 +61,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 	if err != nil {
 		log.Error(err, "Could not parse the labels of the target")
 	}
-	currentReadyReplicas, err := c.getReadyPodsCount(metav1.NamespaceAll, lbl, time.Duration(wpa.Spec.ReadinessDelaySeconds)*time.Second)
+	currentReadyReplicas, err := c.getReadyPodsCount(target, lbl, time.Duration(wpa.Spec.ReadinessDelaySeconds)*time.Second)
 	if err != nil {
 		return ReplicaCalculation{}, fmt.Errorf("unable to get the number of ready pods across all namespaces for %v: %s", lbl, err.Error())
 	}
@@ -93,7 +94,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 		value.Delete(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: metricName})
 		return ReplicaCalculation{0, 0, time.Time{}}, fmt.Errorf("unable to get external metric %s/%s/%+v: %s", wpa.Namespace, metricName, selector, err)
 	}
-	logger.V(4).Info("Metrics from the External Metrics Provider", "metrics", metrics)
+	logger.Info("Metrics from the External Metrics Provider", "metrics", metrics)
 
 	var sum int64
 	for _, val := range metrics {
@@ -102,7 +103,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 
 	// if the average algorithm is used, the metrics retrieved has to be divided by the number of available replicas.
 	adjustedUsage := float64(sum) / averaged
-	replicaCount, utilizationQuantity := getReplicaCount(logger, currentReadyReplicas, wpa, metricName, adjustedUsage, metric.External.LowWatermark, metric.External.HighWatermark)
+	replicaCount, utilizationQuantity := getReplicaCount(logger, target.Status.Replicas, currentReadyReplicas, wpa, metricName, adjustedUsage, metric.External.LowWatermark, metric.External.HighWatermark)
 	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp}, nil
 }
 
@@ -135,7 +136,7 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 		value.Delete(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: string(resourceName)})
 		return ReplicaCalculation{0, 0, time.Time{}}, fmt.Errorf("unable to get resource metric %s/%s/%+v: %s", wpa.Namespace, resourceName, selector, err)
 	}
-	logger.V(4).Info("Metrics from the Resource Client", "metrics", metrics)
+	logger.Info("Metrics from the Resource Client", "metrics", metrics)
 
 	lbl, err := labels.Parse(target.Status.Selector)
 	if err != nil {
@@ -150,8 +151,8 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 	if len(podList) == 0 {
 		return ReplicaCalculation{0, 0, time.Time{}}, fmt.Errorf("no pods returned by selector while calculating replica count")
 	}
-
-	readyPods, ignoredPods := groupPods(logger, podList, metrics, resourceName, time.Duration(wpa.Spec.ReadinessDelaySeconds)*time.Second)
+	readiness := time.Duration(wpa.Spec.ReadinessDelaySeconds) * time.Second
+	readyPods, ignoredPods := groupPods(logger, podList, target.Name, metrics, resourceName, readiness)
 	readyPodCount := len(readyPods)
 
 	removeMetricsForPods(metrics, ignoredPods)
@@ -170,13 +171,12 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 	}
 	adjustedUsage := float64(sum) / averaged
 
-	replicaCount, utilizationQuantity := getReplicaCount(logger, target.Status.Replicas, wpa, string(resourceName), adjustedUsage, metric.Resource.LowWatermark, metric.Resource.HighWatermark)
+	replicaCount, utilizationQuantity := getReplicaCount(logger, target.Status.Replicas, int32(readyPodCount), wpa, string(resourceName), adjustedUsage, metric.Resource.LowWatermark, metric.Resource.HighWatermark)
 	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp}, nil
 }
 
-func getReplicaCount(logger logr.Logger, currentReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, name string, adjustedUsage float64, lowMark, highMark *resource.Quantity) (replicaCount int32, utilization int64) {
+func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, name string, adjustedUsage float64, lowMark, highMark *resource.Quantity) (replicaCount int32, utilization int64) {
 	utilizationQuantity := resource.NewMilliQuantity(int64(adjustedUsage), resource.DecimalSI)
-
 	adjustedHM := float64(highMark.MilliValue()) + wpa.Spec.Tolerance*float64(highMark.MilliValue())
 	adjustedLM := float64(lowMark.MilliValue()) - wpa.Spec.Tolerance*float64(lowMark.MilliValue())
 
@@ -185,17 +185,17 @@ func getReplicaCount(logger logr.Logger, currentReplicas int32, wpa *v1alpha1.Wa
 
 	switch {
 	case adjustedUsage > adjustedHM:
-		replicaCount = int32(math.Ceil(float64(currentReplicas) * adjustedUsage / (float64(highMark.MilliValue()))))
-		logger.Info("Value is above highMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount)
+		replicaCount = int32(math.Ceil(float64(currentReadyReplicas) * adjustedUsage / (float64(highMark.MilliValue()))))
+		logger.Info("Value is above highMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas)
 	case adjustedUsage < adjustedLM:
-		replicaCount = int32(math.Floor(float64(currentReplicas) * adjustedUsage / (float64(lowMark.MilliValue()))))
+		replicaCount = int32(math.Floor(float64(currentReadyReplicas) * adjustedUsage / (float64(lowMark.MilliValue()))))
 		// Keep a minimum of 1 replica
 		replicaCount = int32(math.Max(float64(replicaCount), 1))
-		logger.Info("Value is below lowMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount)
+		logger.Info("Value is below lowMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas)
 	default:
 		restrictedScaling.With(labelsWithReason).Set(1)
 		value.With(labelsWithMetricName).Set(adjustedUsage)
-		logger.Info("Within bounds of the watermarks", "value", utilizationQuantity.String(), "lwm", lowMark.String(), "hwm", highMark.String(), "tolerance", wpa.Spec.Tolerance)
+		logger.Info("Within bounds of the watermarks", "value", utilizationQuantity.String(), "low watermark", lowMark.String(), "high watermark", highMark.String(), "tolerance", wpa.Spec.Tolerance)
 		// returning the currentReplicas instead of the count of healthy ones to be consistent with the upstream behavior.
 		return currentReplicas, utilizationQuantity.MilliValue()
 	}
@@ -206,22 +206,26 @@ func getReplicaCount(logger logr.Logger, currentReplicas int32, wpa *v1alpha1.Wa
 	return replicaCount, utilizationQuantity.MilliValue()
 }
 
-func (c *ReplicaCalculator) getReadyPodsCount(namespace string, selector labels.Selector, readinessDelay time.Duration) (int32, error) {
-	podList, err := c.podLister.Pods(namespace).List(selector)
+func (c *ReplicaCalculator) getReadyPodsCount(target *autoscalingv1.Scale, selector labels.Selector, readinessDelay time.Duration) (int32, error) {
+	podList, err := c.podLister.Pods(target.Namespace).List(selector)
 	if err != nil {
 		return 0, fmt.Errorf("unable to get pods while calculating replica count: %v", err)
 	}
-
 	if len(podList) == 0 {
 		return 0, fmt.Errorf("no pods returned by selector while calculating replica count")
 	}
 
 	toleratedAsReadyPodCount := 0
-
+	var incorrectTargetPodsCount int
 	for _, pod := range podList {
+		// matchLabel might be too broad, use the OwnerRef to scope over the actual target
+		if ok := checkOwnerRef(pod.OwnerReferences, target.Name); !ok {
+			incorrectTargetPodsCount++
+			continue
+		}
 		_, condition := getPodCondition(&pod.Status, corev1.PodReady)
 		if condition == nil || pod.Status.StartTime == nil {
-			log.V(4).Info("Pod unready", "namespace", pod.Namespace, "name", pod.Name)
+			log.Info("Pod unready", "namespace", pod.Namespace, "name", pod.Name)
 			continue
 		}
 		if pod.Status.Phase == corev1.PodRunning && condition.Status == corev1.ConditionTrue ||
@@ -232,17 +236,35 @@ func (c *ReplicaCalculator) getReadyPodsCount(namespace string, selector labels.
 			toleratedAsReadyPodCount++
 		}
 	}
+	log.Info("getReadyPodsCount", "full podList length", len(podList), "toleratedAsReadyPodCount", toleratedAsReadyPodCount, "incorrectly targeted pods", incorrectTargetPodsCount)
 	if toleratedAsReadyPodCount == 0 {
 		return 0, fmt.Errorf("among the %d pods, none is ready. Skipping recommendation", len(podList))
 	}
 	return int32(toleratedAsReadyPodCount), nil
 }
+func checkOwnerRef(ownerRef []metav1.OwnerReference, targetName string) bool {
+	for _, o := range ownerRef {
+		if o.Kind != "ReplicaSet" && o.Kind != "StatefulSet" {
+			continue
+		}
+		if strings.HasPrefix(o.Name, targetName) {
+			return true
+		}
+	}
+	return false
+}
 
-func groupPods(logger logr.Logger, podList []*corev1.Pod, metrics metricsclient.PodMetricsInfo, resource corev1.ResourceName, delayOfInitialReadinessStatus time.Duration) (readyPods, ignoredPods sets.String) {
+func groupPods(logger logr.Logger, podList []*corev1.Pod, targetName string, metrics metricsclient.PodMetricsInfo, resource corev1.ResourceName, delayOfInitialReadinessStatus time.Duration) (readyPods, ignoredPods sets.String) {
 	readyPods = sets.NewString()
 	ignoredPods = sets.NewString()
 	missing := sets.NewString()
+	var incorrectTargetPodsCount int
 	for _, pod := range podList {
+		// matchLabel might be too broad, use the OwnerRef to scope over the actual target
+		if ok := checkOwnerRef(pod.OwnerReferences, targetName); !ok {
+			incorrectTargetPodsCount++
+			continue
+		}
 		// Failed pods shouldn't produce metrics, but add to ignoredPods to be safe
 		if pod.Status.Phase == corev1.PodFailed {
 			ignoredPods.Insert(pod.Name)
@@ -278,7 +300,7 @@ func groupPods(logger logr.Logger, podList []*corev1.Pod, metrics metricsclient.
 		}
 		readyPods.Insert(pod.Name)
 	}
-	logger.V(2).Info("GroupPods", "Ready", len(readyPods), "Missing", len(missing), "Ignored", len(ignoredPods))
+	logger.Info("groupPods", "ready", len(readyPods), "missing", len(missing), "ignored", len(ignoredPods), "incorrect target", incorrectTargetPodsCount)
 	return readyPods, ignoredPods
 }
 
