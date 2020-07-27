@@ -15,6 +15,5 @@
     ```
 - Push it:
     ```console
-    $ git push origin master
     $ git push origin vX.Y.Z
     ```
