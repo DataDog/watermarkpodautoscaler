@@ -6,6 +6,7 @@ require (
 	github.com/go-logr/logr v0.1.0
 	github.com/go-openapi/spec v0.19.2
 	github.com/magiconair/properties v1.8.1
+	github.com/mikefarah/yq/v3 v3.0.0-20200615114226-086f0ec6b9aa // indirect
 	github.com/operator-framework/operator-sdk v0.13.0
 	github.com/prometheus/client_golang v1.1.0
 	github.com/prometheus/common v0.6.0

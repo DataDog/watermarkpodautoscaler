@@ -351,6 +351,10 @@ Then, to install some tooling dependencies, run `make install-tools`.
 * `make container`: Build the controller Docker image using the operator SDK.
 * `make container-ci`: Build the controller Docker image with the multi-stage Dockerfile.
 
+### Releasing
+
+The release process documentation is available [here](RELEASING.md).
+
 ## Acknowledgements
 
 Some of the features were inspired by the [Configurable HPA](https://github.com/postmates/configurable-hpa) or CHPA.
