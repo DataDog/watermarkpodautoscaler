@@ -30,7 +30,7 @@ const (
 )
 
 // Labels to add to an info metric and join on (with wpaNamePromLabel) in the Datadog prometheus check
-var extraPromLabels = strings.Split(os.Getenv("DD_LABELS_AS_TAGS"), " ")
+var extraPromLabels = strings.Fields(os.Getenv("DD_LABELS_AS_TAGS"))
 
 var (
 	value = prometheus.NewGaugeVec(
