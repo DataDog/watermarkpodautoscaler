@@ -13,6 +13,8 @@ spec:
         ad.datadoghq.com/watermarkpodautoscaler.check_names: '["prometheus"]'
         ad.datadoghq.com/watermarkpodautoscaler.init_configs: '[{}]'
         ad.datadoghq.com/watermarkpodautoscaler.instances: '[{"prometheus_url": "http://%%host%%:8383/metrics","namespace":"watermarkpodautoscaler","metrics": ["wpa","wpa_controller*"]}]'
+        # sample configuration for label joins (see DD_LABELS_AS_TAGS)
+        # ad.datadoghq.com/watermarkpodautoscaler.instances: '[{"prometheus_url": "http://%%host%%:8383/metrics","namespace":"watermarkpodautoscaler","metrics": ["wpa","wpa_controller*"],"label_joins": {"wpa_controller_labels_info": {"label_to_match":"wpa_name","labels_to_get": ["label1","label2"]}}}]'
       labels:
         name: watermarkpodautoscaler
     spec:
@@ -35,3 +37,6 @@ spec:
                   fieldPath: metadata.name
             - name: OPERATOR_NAME
               value: "watermarkpodautoscaler"
+            # Additional labels to include as tags (requires label joins configuration for prometheus check)
+            # - name: DD_LABELS_AS_TAGS
+            #   value: "label1 label2"
