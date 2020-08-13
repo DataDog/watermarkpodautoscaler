@@ -11,11 +11,8 @@ SOURCEDIR = "."
 SOURCES := $(shell find $(SOURCEDIR) ! -name "*_test.go" -name '*.go')
 
 BUILDINFOPKG=github.com/DataDog/${PROJECT_NAME}/version
-GIT_TAG?=$(shell git tag -l --contains HEAD | tail -1)
-LAST_TAG=$(or $(shell git tag | tail -1),v0.0.0)
-TAG?=${GIT_TAG}
-TAG_HASH=${LAST_TAG}_$(shell git rev-parse --short HEAD)
-VERSION?=$(if $(GIT_TAG),$(GIT_TAG),$(TAG_HASH))
+VERSION?=$(shell git describe --tags --dirty)
+TAG?=${VERSION}
 GIT_COMMIT?=$(shell git rev-parse HEAD)
 DATE=$(shell date +%Y-%m-%d/%H:%M:%S )
 GOMOD?="-mod=vendor"
@@ -32,13 +29,13 @@ tidy:
 build: ${ARTIFACT}
 
 bin/wwhrd:
-	./hack/install-wwhrd.sh
+	hack/install-wwhrd.sh
 
 license: bin/wwhrd
-	./hack/license.sh
+	hack/license.sh
 
 verify-license:
-	./hack/verify-license.sh
+	hack/verify-license.sh
 
 ${ARTIFACT}: ${SOURCES}
 	CGO_ENABLED=0 go build ${GOMOD} -i -installsuffix cgo ${LDFLAGS} -o ${ARTIFACT} ./cmd/manager/main.go
@@ -55,7 +52,7 @@ container-ci:
 test:
 	./go.test.sh
 
-e2e:	
+e2e:
 	operator-sdk test local  --verbose ./test/e2e --image $(PREFIX):$(TAG)
 
 push: container
@@ -66,13 +63,19 @@ clean:
 	rm -rf ./bin
 
 validate:
-	./bin/golangci-lint run ./...
+	bin/golangci-lint run ./...
 
 generate: bin/operator-sdk bin/openapi-gen
-	./bin/operator-sdk generate k8s
-	./bin/operator-sdk generate crds
-	./bin/openapi-gen --logtostderr=true -o "" -i ./pkg/apis/datadoghq/v1alpha1 -O zz_generated.openapi -p ./pkg/apis/datadoghq/v1alpha1 -h ./hack/boilerplate.go.txt -r "-"
-	./hack/update-codegen.sh
+	bin/operator-sdk generate k8s
+	bin/operator-sdk generate crds
+	bin/openapi-gen --logtostderr=true -o "" -i ./pkg/apis/datadoghq/v1alpha1 -O zz_generated.openapi -p ./pkg/apis/datadoghq/v1alpha1 -h ./hack/boilerplate.go.txt -r "-"
+	hack/update-codegen.sh
+
+generate-olm: bin/operator-sdk
+	bin/operator-sdk generate csv --csv-version $(VERSION:v%=%) --update-crds
+
+pre-release: bin/yq
+	hack/pre-release.sh $(VERSION)
 
 CRDS = $(wildcard deploy/crds/*_crd.yaml)
 local-load: $(CRDS)
@@ -83,15 +86,18 @@ local-load: $(CRDS)
 $(filter %.yaml,$(files)): %.yaml: %yaml
 	kubectl apply -f $@
 
-install-tools: bin/golangci-lint bin/operator-sdk
+install-tools: bin/yq bin/golangci-lint bin/operator-sdk
 
 bin/golangci-lint:
-	./hack/golangci-lint.sh v1.18.0
+	hack/golangci-lint.sh v1.18.0
 
 bin/operator-sdk:
-	./hack/install-operator-sdk.sh
+	hack/install-operator-sdk.sh
 
 bin/openapi-gen:
-	go build -o ./bin/openapi-gen k8s.io/kube-openapi/cmd/openapi-gen
+	go build -o bin/openapi-gen k8s.io/kube-openapi/cmd/openapi-gen
 
-.PHONY: vendor build push clean test e2e validate local-load install-tools verify-license list
+bin/yq:
+	go build -o bin/yq ./vendor/github.com/mikefarah/yq/v3
+
+.PHONY: vendor build push clean test e2e validate local-load install-tools verify-license list pre-release generate-olm

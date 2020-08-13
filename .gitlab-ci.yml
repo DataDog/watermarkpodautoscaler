@@ -45,6 +45,8 @@ build_image:
   stage: image
   tags: [ "runner:docker", "size:large" ]
   image: 486234852809.dkr.ecr.us-east-1.amazonaws.com/docker-notary:0.6.1
+  inherit:
+    default: false
   script:
     - IMAGE_NAME=$DOCKER_REGISTRY/$PROJECTNAME:$TARGET_TAG
     - docker build -t $IMAGE_NAME -f Dockerfile .
@@ -59,6 +61,7 @@ test_e2e:
     - ./hack/install_golang.sh
     - ./hack/install_kube.sh
     - apt-get update && apt-get install -y mercurial jq
+    - export PATH=$PATH:/usr/local/go/bin
     - make install-tools
   script:
     - export PATH=$PATH:/usr/local/go/bin:$(pwd)/bin
