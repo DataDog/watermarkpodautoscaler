@@ -6,6 +6,9 @@
 package watermarkpodautoscaler
 
 import (
+	"os"
+	"strings"
+
 	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -25,6 +28,9 @@ const (
 	downscaleCappingPromLabel  = "downscale_capping"
 	upscaleCappingPromLabel    = "upscale_capping"
 )
+
+// Labels to add to an info metric and join on (with wpaNamePromLabel) in the Datadog prometheus check
+var extraPromLabels = strings.Fields(os.Getenv("DD_LABELS_AS_TAGS"))
 
 var (
 	value = prometheus.NewGaugeVec(
@@ -166,6 +172,14 @@ var (
 			resourceNamePromLabel,
 			resourceKindPromLabel,
 		})
+	labelsInfo = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "labels_info",
+			Help:      "Info metric for additional labels to associate to metrics as tags",
+		},
+		append(extraPromLabels, wpaNamePromLabel),
+	)
 )
 
 func init() {
@@ -180,6 +194,7 @@ func init() {
 	sigmetrics.Registry.MustRegister(transitionCountdown)
 	sigmetrics.Registry.MustRegister(replicaMin)
 	sigmetrics.Registry.MustRegister(replicaMax)
+	sigmetrics.Registry.MustRegister(labelsInfo)
 }
 
 func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onlyMetricsSpecific bool) {
@@ -206,6 +221,13 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 		transitionCountdown.Delete(promLabelsForWpa)
 		promLabelsForWpa[transitionPromLabel] = "upscale"
 		transitionCountdown.Delete(promLabelsForWpa)
+
+		promLabelsInfo := prometheus.Labels{wpaNamePromLabel: wpa.Name}
+		for _, eLabel := range extraPromLabels {
+			eLabelValue := wpa.Labels[eLabel]
+			promLabelsInfo[eLabel] = eLabelValue
+		}
+		labelsInfo.Delete(promLabelsInfo)
 	}
 
 	for _, metricSpec := range wpa.Spec.Metrics {
