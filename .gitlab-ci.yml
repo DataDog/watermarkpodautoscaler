@@ -78,6 +78,7 @@ push_release_tag:
   only:
     - tags
   stage: release
+  before_script: []
   tags: [ "runner:docker", "size:large" ]
   image: 486234852809.dkr.ecr.us-east-1.amazonaws.com/docker-notary:0.6.1
   script:
