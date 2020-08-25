@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	subsystem                  = "wpa_controller"
+	subsystem = "wpa_controller"
+	// Label keys
 	wpaNamePromLabel           = "wpa_name"
 	resourceNamePromLabel      = "resource_name"
 	resourceKindPromLabel      = "resource_kind"
@@ -25,9 +26,14 @@ const (
 	metricNamePromLabel        = "metric_name"
 	reasonPromLabel            = "reason"
 	transitionPromLabel        = "transition"
-	downscaleCappingPromLabel  = "downscale_capping"
-	upscaleCappingPromLabel    = "upscale_capping"
+	// Label values
+	downscaleCappingPromLabelVal = "downscale_capping"
+	upscaleCappingPromLabelVal   = "upscale_capping"
+	withinBoundsPromLabelVal     = "within_bounds"
 )
+
+// reasonValues contains the 3 possible values of the 'reason' label
+var reasonValues = []string{downscaleCappingPromLabelVal, upscaleCappingPromLabelVal, withinBoundsPromLabelVal}
 
 // Labels to add to an info metric and join on (with wpaNamePromLabel) in the Datadog prometheus check
 var extraPromLabels = strings.Fields(os.Getenv("DD_LABELS_AS_TAGS"))
@@ -211,16 +217,17 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 		replicaMin.Delete(promLabelsForWpa)
 		replicaMax.Delete(promLabelsForWpa)
 
-		promLabelsForWpa[reasonPromLabel] = downscaleCappingPromLabel
-		restrictedScaling.Delete(promLabelsForWpa)
-		promLabelsForWpa[reasonPromLabel] = upscaleCappingPromLabel
-		restrictedScaling.With(promLabelsForWpa)
+		for _, reason := range reasonValues {
+			promLabelsForWpa[reasonPromLabel] = reason
+			restrictedScaling.Delete(promLabelsForWpa)
+		}
 		delete(promLabelsForWpa, reasonPromLabel)
 
 		promLabelsForWpa[transitionPromLabel] = "downscale"
 		transitionCountdown.Delete(promLabelsForWpa)
 		promLabelsForWpa[transitionPromLabel] = "upscale"
 		transitionCountdown.Delete(promLabelsForWpa)
+		delete(promLabelsForWpa, transitionPromLabel)
 
 		promLabelsInfo := prometheus.Labels{wpaNamePromLabel: wpa.Name}
 		for _, eLabel := range extraPromLabels {
