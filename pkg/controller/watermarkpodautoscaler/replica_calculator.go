@@ -85,11 +85,11 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 			resourceNamespacePromLabel: wpa.Namespace,
 			resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
 			resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
-			reasonPromLabel:            upscaleCappingPromLabel}
+			reasonPromLabel:            upscaleCappingPromLabelVal}
 		restrictedScaling.Delete(labelsWithReason)
-		labelsWithReason[reasonPromLabel] = downscaleCappingPromLabel
+		labelsWithReason[reasonPromLabel] = downscaleCappingPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
-		labelsWithReason[reasonPromLabel] = "within_bounds"
+		labelsWithReason[reasonPromLabel] = withinBoundsPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
 		value.Delete(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: metricName})
 		return ReplicaCalculation{0, 0, time.Time{}}, fmt.Errorf("unable to get external metric %s/%s/%+v: %s", wpa.Namespace, metricName, selector, err)
@@ -127,11 +127,11 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 			resourceNamespacePromLabel: wpa.Namespace,
 			resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
 			resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
-			reasonPromLabel:            upscaleCappingPromLabel}
+			reasonPromLabel:            upscaleCappingPromLabelVal}
 		restrictedScaling.Delete(labelsWithReason)
-		labelsWithReason[reasonPromLabel] = downscaleCappingPromLabel
+		labelsWithReason[reasonPromLabel] = downscaleCappingPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
-		labelsWithReason[reasonPromLabel] = "within_bounds"
+		labelsWithReason[reasonPromLabel] = withinBoundsPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
 		value.Delete(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: string(resourceName)})
 		return ReplicaCalculation{0, 0, time.Time{}}, fmt.Errorf("unable to get resource metric %s/%s/%+v: %s", wpa.Namespace, resourceName, selector, err)
@@ -180,7 +180,7 @@ func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas i
 	adjustedHM := float64(highMark.MilliValue()) + wpa.Spec.Tolerance*float64(highMark.MilliValue())
 	adjustedLM := float64(lowMark.MilliValue()) - wpa.Spec.Tolerance*float64(lowMark.MilliValue())
 
-	labelsWithReason := prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reasonPromLabel: "within_bounds"}
+	labelsWithReason := prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reasonPromLabel: withinBoundsPromLabelVal}
 	labelsWithMetricName := prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, metricNamePromLabel: name}
 
 	switch {
