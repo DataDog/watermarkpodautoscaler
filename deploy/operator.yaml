@@ -21,9 +21,9 @@ spec:
       serviceAccountName: watermarkpodautoscaler
       containers:
         - name: watermarkpodautoscaler
-          image: datadog/watermarkpodautoscaler:v0.0.1
+          image: datadog/watermarkpodautoscaler:v0.2.0
           command:
-          - watermarkpodautoscaler
+            - watermarkpodautoscaler
           imagePullPolicy: IfNotPresent
           env:
             # Watch every ns. Comment if you want to watch all namespaces
@@ -37,6 +37,6 @@ spec:
                   fieldPath: metadata.name
             - name: OPERATOR_NAME
               value: "watermarkpodautoscaler"
-            # Additional labels to include as tags (requires label joins configuration for prometheus check)
-            # - name: DD_LABELS_AS_TAGS
-            #   value: "label1 label2"
+          # Additional labels to include as tags (requires label joins configuration for prometheus check)
+          # - name: DD_LABELS_AS_TAGS
+          #   value: "label1 label2"
