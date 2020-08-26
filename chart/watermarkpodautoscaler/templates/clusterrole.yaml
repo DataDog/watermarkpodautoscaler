@@ -47,4 +47,12 @@ rules:
   - list
   - get
   - watch
+- apiGroups:
+  - metrics.k8s.io
+  resources:
+  - '*'
+  verbs:
+  - list
+  - get
+  - watch
 {{- end -}}
