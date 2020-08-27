@@ -1330,10 +1330,10 @@ func TestPendingtNotExpiredWithinBoundsNoScale(t *testing.T) {
 }
 
 // We have pods that are pending and one is within an acceptable window.
-func TestPendingtNotOverlyScaling(t *testing.T) {
+func TestPendingNotOverlyScaling(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
-
-	metric1 := v1alpha1.MetricSpec{
+	now := metav1.Now()
+	wpaMetricSpec := v1alpha1.MetricSpec{
 		Type: v1alpha1.ExternalMetricSourceType,
 		External: &v1alpha1.ExternalMetricSource{
 			MetricName:     "loadbalancer.request.per.seconds",
@@ -1342,9 +1342,9 @@ func TestPendingtNotOverlyScaling(t *testing.T) {
 			LowWatermark:   resource.NewMilliQuantity(75000, resource.DecimalSI),
 		},
 	}
-	startTime := metav1.Unix(metav1.Now().Unix()-120, 0)
-	withinDuration := metav1.Unix(startTime.Unix()+readinessDelay/2, 0)
-	expired := metav1.Unix(startTime.Unix()+2*readinessDelay, 0)
+	startTime := metav1.Unix(now.Unix()-120, 0)
+	withinDuration := metav1.Unix(now.Unix()-readinessDelay/2, 0)
+	expired := metav1.Unix(now.Unix()-2*readinessDelay, 0)
 	tc := replicaCalcTestCase{
 		expectedReplicas: 19,
 		scale:            makeScale(testDeploymentName, 7, map[string]string{"name": "test-pod"}),
@@ -1353,7 +1353,7 @@ func TestPendingtNotOverlyScaling(t *testing.T) {
 				Algorithm:             "absolute",
 				Tolerance:             0.01,
 				ReadinessDelaySeconds: readinessDelay,
-				Metrics:               []v1alpha1.MetricSpec{metric1},
+				Metrics:               []v1alpha1.MetricSpec{wpaMetricSpec},
 			},
 		},
 		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodRunning},
@@ -1392,7 +1392,7 @@ func TestPendingtNotOverlyScaling(t *testing.T) {
 		// faking the start of the pod so that it appears to have been pending for less than readinessDelay.
 		podStartTime: []metav1.Time{startTime, startTime, startTime, startTime, startTime, startTime, startTime},
 		metric: &metricInfo{
-			spec:                metric1,
+			spec:                wpaMetricSpec,
 			levels:              []int64{800000},
 			expectedUtilization: 800000,
 		},
