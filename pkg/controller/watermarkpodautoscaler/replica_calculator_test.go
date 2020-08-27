@@ -1166,7 +1166,7 @@ func TestPendingtExpiredScale(t *testing.T) {
 }
 
 // We have pods that are pending and one is within an acceptable window.
-func TestPendingtNotExpiredScale(t *testing.T) {
+func TestPendingNotExpiredScale(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
 
 	metric1 := v1alpha1.MetricSpec{
@@ -1178,9 +1178,10 @@ func TestPendingtNotExpiredScale(t *testing.T) {
 			LowWatermark:   resource.NewMilliQuantity(75000, resource.DecimalSI),
 		},
 	}
-	startTime := metav1.Unix(metav1.Now().Unix()-120, 0)
-	withinDuration := metav1.Unix(startTime.Unix()+readinessDelay/2, 0)
-	expired := metav1.Unix(startTime.Unix()+2*readinessDelay, 0)
+	now := metav1.Now()
+	startTime := metav1.Unix(now.Unix()-120, 0)
+	withinDuration := metav1.Unix(now.Unix()-readinessDelay/2, 0)
+	expired := metav1.Unix(now.Unix()-2*readinessDelay, 0)
 	tc := replicaCalcTestCase{
 		expectedReplicas: 1,
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
@@ -1221,7 +1222,7 @@ func TestPendingtNotExpiredScale(t *testing.T) {
 }
 
 // We have pods that are expired and only one is above the HWM so we end up downscaling.
-func TestPendingtExpiredHigherWatermarkDownscale(t *testing.T) {
+func TestPendingExpiredHigherWatermarkDownscale(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
 
 	metric1 := v1alpha1.MetricSpec{
@@ -1233,8 +1234,9 @@ func TestPendingtExpiredHigherWatermarkDownscale(t *testing.T) {
 			LowWatermark:   resource.NewMilliQuantity(75000, resource.DecimalSI),
 		},
 	}
-	startTime := metav1.Unix(metav1.Now().Unix()-120, 0)
-	expired := metav1.Unix(startTime.Unix()+2*readinessDelay, 0)
+	now := metav1.Now()
+	startTime := metav1.Unix(now.Unix()-120, 0)
+	expired := metav1.Unix(now.Unix()-2*readinessDelay, 0)
 	tc := replicaCalcTestCase{
 		expectedReplicas: 2,
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
@@ -1275,7 +1277,7 @@ func TestPendingtExpiredHigherWatermarkDownscale(t *testing.T) {
 }
 
 // We have pods that are pending and one is within an acceptable window.
-func TestPendingtNotExpiredWithinBoundsNoScale(t *testing.T) {
+func TestPendingNotExpiredWithinBoundsNoScale(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
 
 	metric1 := v1alpha1.MetricSpec{
@@ -1287,9 +1289,10 @@ func TestPendingtNotExpiredWithinBoundsNoScale(t *testing.T) {
 			LowWatermark:   resource.NewMilliQuantity(75000, resource.DecimalSI),
 		},
 	}
-	startTime := metav1.Unix(metav1.Now().Unix()-120, 0)
-	withinDuration := metav1.Unix(startTime.Unix()+readinessDelay/2, 0)
-	expired := metav1.Unix(startTime.Unix()+2*readinessDelay, 0)
+	now := metav1.Now()
+	startTime := metav1.Unix(now.Unix()-120, 0)
+	withinDuration := metav1.Unix(now.Unix()-readinessDelay/2, 0)
+	expired := metav1.Unix(now.Unix()-2*readinessDelay, 0)
 	tc := replicaCalcTestCase{
 		expectedReplicas: 3,
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
@@ -1332,7 +1335,6 @@ func TestPendingtNotExpiredWithinBoundsNoScale(t *testing.T) {
 // We have pods that are pending and one is within an acceptable window.
 func TestPendingNotOverlyScaling(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
-	now := metav1.Now()
 	wpaMetricSpec := v1alpha1.MetricSpec{
 		Type: v1alpha1.ExternalMetricSourceType,
 		External: &v1alpha1.ExternalMetricSource{
@@ -1342,6 +1344,7 @@ func TestPendingNotOverlyScaling(t *testing.T) {
 			LowWatermark:   resource.NewMilliQuantity(75000, resource.DecimalSI),
 		},
 	}
+	now := metav1.Now()
 	startTime := metav1.Unix(now.Unix()-120, 0)
 	withinDuration := metav1.Unix(now.Unix()-readinessDelay/2, 0)
 	expired := metav1.Unix(now.Unix()-2*readinessDelay, 0)
@@ -1401,7 +1404,7 @@ func TestPendingNotOverlyScaling(t *testing.T) {
 }
 
 // We have pods that are pending and one is within an acceptable window.
-func TestPendingtUnprotectedOverlyScaling(t *testing.T) {
+func TestPendingUnprotectedOverlyScaling(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
 
 	metric1 := v1alpha1.MetricSpec{
@@ -1413,9 +1416,10 @@ func TestPendingtUnprotectedOverlyScaling(t *testing.T) {
 			LowWatermark:   resource.NewMilliQuantity(75000, resource.DecimalSI),
 		},
 	}
-	startTime := metav1.Unix(metav1.Now().Unix()-120, 0)
-	withinDuration := metav1.Unix(startTime.Unix()+readinessDelay/2, 0)
-	expired := metav1.Unix(startTime.Unix()+2*readinessDelay, 0)
+	now := metav1.Now()
+	startTime := metav1.Unix(now.Unix()-120, 0)
+	withinDuration := metav1.Unix(now.Unix()-readinessDelay/2, 0)
+	expired := metav1.Unix(now.Unix()-2*readinessDelay, 0)
 	tc := replicaCalcTestCase{
 		expectedReplicas: 66,
 		scale:            makeScale(testDeploymentName, 7, map[string]string{"name": "test-pod"}),
