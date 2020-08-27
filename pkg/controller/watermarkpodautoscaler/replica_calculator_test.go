@@ -2000,9 +2000,10 @@ func TestRemoveMetricsForPods(t *testing.T) {
 func TestGetReadyPodsCount(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
 
-	startTime := metav1.Unix(metav1.Now().Unix()-120, 0)
-	readyTolerated := metav1.Unix(startTime.Unix()+readinessDelay/2, 0)
-	expired := metav1.Unix(startTime.Unix()+2*readinessDelay, 0)
+	now := metav1.Now()
+	startTime := metav1.Unix(now.Unix()-120, 0)
+	readyTolerated := metav1.Unix(now.Unix()-readinessDelay/2, 0)
+	expired := metav1.Unix(now.Unix()-2*readinessDelay, 0)
 
 	tests := []struct {
 		name          string
@@ -2023,11 +2024,11 @@ func TestGetReadyPodsCount(t *testing.T) {
 				},
 				{
 					Status:             corev1.ConditionTrue,
-					LastTransitionTime: readyTolerated,
+					LastTransitionTime: expired, // Since the pod is already ready we do not look at the LastTransitionTime
 				},
 				{
 					Status:             corev1.ConditionTrue,
-					LastTransitionTime: metav1.Now(),
+					LastTransitionTime: now,
 				},
 			},
 			startTimes:    []metav1.Time{startTime, startTime, startTime},
@@ -2049,7 +2050,7 @@ func TestGetReadyPodsCount(t *testing.T) {
 				},
 				{
 					Status:             corev1.ConditionTrue,
-					LastTransitionTime: metav1.Now(),
+					LastTransitionTime: now,
 				},
 			},
 			startTimes:    []metav1.Time{startTime, startTime, startTime},
@@ -2071,29 +2072,29 @@ func TestGetReadyPodsCount(t *testing.T) {
 				},
 				{
 					Status:             corev1.ConditionTrue,
-					LastTransitionTime: metav1.Now(),
+					LastTransitionTime: now,
 				},
 			},
 			startTimes:    []metav1.Time{startTime, startTime, startTime},
 			phases:        []corev1.PodPhase{corev1.PodFailed, corev1.PodFailed, corev1.PodFailed},
 			expected:      0,
-			errorExpected: nil,
+			errorExpected: fmt.Errorf("among the %d pods, none is ready. Skipping recommendation", 3),
 		},
 		{
-			name:     "No mathing pods",
+			name:     "No matching pods",
 			selector: labels.Set{"name": "wrong"},
 			conditions: []corev1.PodCondition{
 				{
 					Status:             corev1.ConditionTrue,
-					LastTransitionTime: metav1.Now(),
+					LastTransitionTime: now, // LastTransitionTime does not matter.
 				},
 				{
 					Status:             corev1.ConditionTrue,
-					LastTransitionTime: metav1.Now(),
+					LastTransitionTime: now,
 				},
 				{
 					Status:             corev1.ConditionTrue,
-					LastTransitionTime: metav1.Now(),
+					LastTransitionTime: now,
 				},
 			},
 			startTimes:    []metav1.Time{startTime, startTime, startTime},
@@ -2106,22 +2107,44 @@ func TestGetReadyPodsCount(t *testing.T) {
 			selector: labels.Set{"name": "test-pod"},
 			conditions: []corev1.PodCondition{
 				{
-					Status:             corev1.ConditionTrue,
-					LastTransitionTime: metav1.Now(),
+					Status:             corev1.ConditionFalse,
+					LastTransitionTime: startTime,
 				},
 				{
-					Status:             corev1.ConditionTrue,
-					LastTransitionTime: metav1.Now(),
+					Status:             corev1.ConditionFalse,
+					LastTransitionTime: startTime,
 				},
 				{
-					Status:             corev1.ConditionTrue,
-					LastTransitionTime: metav1.Now(),
+					Status:             corev1.ConditionFalse,
+					LastTransitionTime: startTime,
 				},
 			},
 			startTimes:    []metav1.Time{startTime, startTime, startTime},
 			phases:        []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodPending},
 			expected:      0,
 			errorExpected: fmt.Errorf("among the 3 pods, none is ready. Skipping recommendation"),
+		},
+		{
+			name:     "pod stuck in pending and containerCreating",
+			selector: labels.Set{"name": "test-pod"},
+			conditions: []corev1.PodCondition{
+				{
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: startTime,
+				},
+				{
+					Status:             corev1.ConditionFalse,
+					LastTransitionTime: readyTolerated, // Pending but tolerated
+				},
+				{
+					Status:             corev1.ConditionFalse, // This would be stuck in containerCreating
+					LastTransitionTime: startTime,
+				},
+			},
+			startTimes:    []metav1.Time{startTime, startTime, startTime},
+			phases:        []corev1.PodPhase{corev1.PodRunning, corev1.PodPending, corev1.PodPending},
+			expected:      2,
+			errorExpected: nil,
 		},
 	}
 
@@ -2134,7 +2157,7 @@ func TestGetReadyPodsCount(t *testing.T) {
 				scale:        makeScale(testDeploymentName, 3, f.selector),
 				namespace:    testNamespace,
 			}
-			fakeClient := tc.prepareTestClientSet() // check what this does
+			fakeClient := tc.prepareTestClientSet()
 
 			informerFactory := informers.NewSharedInformerFactory(fakeClient, 0)
 			informer := informerFactory.Core().V1().Pods()

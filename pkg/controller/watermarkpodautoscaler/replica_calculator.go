@@ -224,15 +224,16 @@ func (c *ReplicaCalculator) getReadyPodsCount(target *autoscalingv1.Scale, selec
 			continue
 		}
 		_, condition := getPodCondition(&pod.Status, corev1.PodReady)
+		// We can't distinguish pods that are past the Readiness in the lifecycle but have not reached it
+		// and pods that are still Unschedulable but we don't need this level of granularity.
 		if condition == nil || pod.Status.StartTime == nil {
 			log.Info("Pod unready", "namespace", pod.Namespace, "name", pod.Name)
 			continue
 		}
 		if pod.Status.Phase == corev1.PodRunning && condition.Status == corev1.ConditionTrue ||
-			// We only care about the time after start as a warm up. If a pod becomes unresponsive it will not elect for a readinessDelay tolerance.
-			// We do not use v1.ConditionFalse, because we only tolerate the Pending state stuck in the same condition for more than readinessDelay.
 			// Pending includes the time spent pulling images onto the host.
-			pod.Status.Phase == corev1.PodPending && condition.LastTransitionTime.Sub(pod.Status.StartTime.Time) < readinessDelay {
+			// If the pod is stuck in a ContainerCreating state for more than readinessDelay we want to discard it.
+			pod.Status.Phase == corev1.PodPending && metav1.Now().Sub((condition.LastTransitionTime).Time) < readinessDelay {
 			toleratedAsReadyPodCount++
 		}
 	}
