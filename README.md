@@ -199,6 +199,8 @@ The Cluster Agent doesn't run the WPA listener by default. To enable WPA in the 
 [...]
 ```
 
+Note: To enable WPA in the Cluster Agent using the [datadog helm chart](https://github.com/DataDog/helm-charts/tree/master/charts/datadog), set `clusterAgent.metricsProvider.wpaController` to `true`. The ClusterRole will be updated automatically.
+
 Once you have applied those changes and created a WPA object, if you exec in the Datadog Cluster Agent pod and run `agent status` you will be able to see more specific details about the spec of the autoscalers that were parsed (whether it's a horizontal or a watermark pod autoscaler).
 
 ```yaml
