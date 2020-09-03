@@ -24,6 +24,13 @@ rules:
   - create
   - patch
 - apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - list
+  - watch
+- apiGroups:
   - apps
   - extensions
   resourceNames:
