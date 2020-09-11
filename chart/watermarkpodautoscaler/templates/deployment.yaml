@@ -21,6 +21,15 @@ spec:
             "prometheus_url": "http://%%host%%:8383/metrics",
             "namespace":"watermarkpodautoscaler",
             "metrics": ["wpa","wpa_controller*"]
+            {{- if .Values.labelsAsTags -}}
+            ,
+            "label_joins": {
+              "wpa_controller_labels_info": {
+                "label_to_match":"wpa_name",
+                 "labels_to_get": ["{{ join "\",\"" .Values.labelsAsTags }}"]
+                }
+              }
+              {{- end }}
           }]
     spec:
     {{- with .Values.imagePullSecrets }}
@@ -55,6 +64,10 @@ spec:
                   fieldPath: metadata.name
             - name: OPERATOR_NAME
               value: "watermarkpodautoscaler"
+            {{- if .Values.labelsAsTags }}
+            - name: DD_LABELS_AS_TAGS
+              value: {{ join " " .Values.labelsAsTags | quote }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /metrics
