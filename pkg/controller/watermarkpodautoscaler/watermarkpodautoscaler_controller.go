@@ -381,7 +381,7 @@ func (r *ReconcileWatermarkPodAutoscaler) reconcileWPA(logger logr.Logger, wpa *
 	replicaEffective.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(float64(desiredReplicas))
 
 	// add additional labels to info metric
-	promLabels := prometheus.Labels{wpaNamePromLabel: wpa.Name}
+	promLabels := prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace}
 	for _, eLabel := range extraPromLabels {
 		eLabelValue := wpa.Labels[eLabel]
 		promLabels[eLabel] = eLabelValue

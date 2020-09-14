@@ -184,7 +184,7 @@ var (
 			Name:      "labels_info",
 			Help:      "Info metric for additional labels to associate to metrics as tags",
 		},
-		append(extraPromLabels, wpaNamePromLabel),
+		append(extraPromLabels, wpaNamePromLabel, resourceNamespacePromLabel),
 	)
 )
 
@@ -229,7 +229,7 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 		transitionCountdown.Delete(promLabelsForWpa)
 		delete(promLabelsForWpa, transitionPromLabel)
 
-		promLabelsInfo := prometheus.Labels{wpaNamePromLabel: wpa.Name}
+		promLabelsInfo := prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace}
 		for _, eLabel := range extraPromLabels {
 			eLabelValue := wpa.Labels[eLabel]
 			promLabelsInfo[eLabel] = eLabelValue
