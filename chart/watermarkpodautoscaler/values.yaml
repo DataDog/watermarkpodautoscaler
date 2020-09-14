@@ -24,6 +24,8 @@ rbac:
   create: true
 # Configure the controller to watch all namespaces
 watchAllNamespaces: true
+# Labels to be included as metric tags
+labelsAsTags: []
 podSecurityContext: {}
 # fsGroup: 2000
 
