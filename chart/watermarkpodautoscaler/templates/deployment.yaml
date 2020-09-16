@@ -25,8 +25,8 @@ spec:
             ,
             "label_joins": {
               "wpa_controller_labels_info": {
-                "label_to_match":"wpa_name",
-                 "labels_to_get": ["{{ join "\",\"" .Values.labelsAsTags }}"]
+                "labels_to_match": ["wpa_name","resource_namespace"],
+                "labels_to_get": ["{{ join "\",\"" .Values.labelsAsTags }}"]
                 }
               }
               {{- end }}
