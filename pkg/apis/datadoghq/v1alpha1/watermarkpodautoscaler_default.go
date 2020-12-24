@@ -5,10 +5,14 @@
 
 package v1alpha1
 
-import "fmt"
+import (
+	"fmt"
+
+	"k8s.io/apimachinery/pkg/api/resource"
+)
 
 const (
-	defaultTolerance                       = 0.1
+	defaultTolerance                       = 100 // used as a milliQuantity, this represents a default value of 10%
 	defaultDownscaleForbiddenWindowSeconds = 300
 	defaultUpscaleForbiddenWindowSeconds   = 60
 	defaultScaleDownLimitFactor            = 20
@@ -28,15 +32,14 @@ func DefaultWatermarkPodAutoscaler(wpa *WatermarkPodAutoscaler) *WatermarkPodAut
 	if wpa.Spec.Algorithm == "" {
 		defaultWPA.Spec.Algorithm = defaultAlgorithm
 	}
-	// TODO set defaults for high and low watermark
-	if wpa.Spec.Tolerance == 0 {
-		defaultWPA.Spec.Tolerance = defaultTolerance
+	if wpa.Spec.Tolerance.MilliValue() == 0 {
+		defaultWPA.Spec.Tolerance = *resource.NewMilliQuantity(defaultTolerance, resource.DecimalSI)
 	}
-	if wpa.Spec.ScaleUpLimitFactor == 0 {
-		defaultWPA.Spec.ScaleUpLimitFactor = defaultScaleUpLimitFactor
+	if wpa.Spec.ScaleUpLimitFactor.MilliValue() == 0 {
+		defaultWPA.Spec.ScaleUpLimitFactor = *resource.NewQuantity(defaultScaleUpLimitFactor, resource.DecimalSI)
 	}
-	if wpa.Spec.ScaleDownLimitFactor == 0 {
-		defaultWPA.Spec.ScaleDownLimitFactor = defaultScaleDownLimitFactor
+	if wpa.Spec.ScaleDownLimitFactor.MilliValue() == 0 {
+		defaultWPA.Spec.ScaleDownLimitFactor = *resource.NewQuantity(defaultScaleDownLimitFactor, resource.DecimalSI)
 	}
 	if wpa.Spec.DownscaleForbiddenWindowSeconds == 0 {
 		defaultWPA.Spec.DownscaleForbiddenWindowSeconds = defaultDownscaleForbiddenWindowSeconds
@@ -47,7 +50,7 @@ func DefaultWatermarkPodAutoscaler(wpa *WatermarkPodAutoscaler) *WatermarkPodAut
 	return defaultWPA
 }
 
-// IsDefaultWatermarkPodAutoscaler used to know if a WatermarkPodAutoscaler has default values
+// IsDefaultWatermarkPodAutoscaler is used to know if a WatermarkPodAutoscaler has default values
 func IsDefaultWatermarkPodAutoscaler(wpa *WatermarkPodAutoscaler) bool {
 
 	if wpa.Spec.MinReplicas == nil {
@@ -56,13 +59,13 @@ func IsDefaultWatermarkPodAutoscaler(wpa *WatermarkPodAutoscaler) bool {
 	if wpa.Spec.Algorithm == "" {
 		return false
 	}
-	if wpa.Spec.Tolerance == 0 {
+	if wpa.Spec.Tolerance.MilliValue() == 0 {
 		return false
 	}
-	if wpa.Spec.ScaleUpLimitFactor == 0 {
+	if wpa.Spec.ScaleUpLimitFactor.MilliValue() == 0 {
 		return false
 	}
-	if wpa.Spec.ScaleDownLimitFactor == 0 {
+	if wpa.Spec.ScaleDownLimitFactor.MilliValue() == 0 {
 		return false
 	}
 	if wpa.Spec.DownscaleForbiddenWindowSeconds == 0 {
@@ -84,6 +87,15 @@ func CheckWPAValidity(wpa *WatermarkPodAutoscaler) error {
 	if wpa.Spec.MinReplicas == nil || wpa.Spec.MaxReplicas < *wpa.Spec.MinReplicas {
 		msg := fmt.Sprintf("watermark pod autoscaler requires the minimum number of replicas to be configured and inferior to the maximum")
 		return fmt.Errorf(msg)
+	}
+	if wpa.Spec.Tolerance.MilliValue() > 1000 || wpa.Spec.Tolerance.MilliValue() < 0 {
+		return fmt.Errorf("tolerance should be set as a quantity between 0 and 1, currently set to : %v, which is %.0f%%", wpa.Spec.Tolerance.String(), float64(wpa.Spec.Tolerance.MilliValue())/10)
+	}
+	if wpa.Spec.ScaleUpLimitFactor.MilliValue() > 100000 || wpa.Spec.ScaleUpLimitFactor.MilliValue() < 0 {
+		return fmt.Errorf("scaleuplimitfactor should be set as a quantity between 0 and 100, currently set to : %v, which could yield a %.0f%% growth", wpa.Spec.ScaleUpLimitFactor.String(), float64(wpa.Spec.ScaleUpLimitFactor.MilliValue())/1000)
+	}
+	if wpa.Spec.ScaleDownLimitFactor.MilliValue() >= 100000 || wpa.Spec.ScaleDownLimitFactor.MilliValue() < 0 {
+		return fmt.Errorf("scaledownlimitfactor should be set as a quantity between 0 and 100 (exc.), currently set to : %v, which could yield a %.0f%% decrease", wpa.Spec.ScaleDownLimitFactor.String(), float64(wpa.Spec.ScaleDownLimitFactor.MilliValue())/1000)
 	}
 	return checkWPAMetricsValidity(wpa)
 }
