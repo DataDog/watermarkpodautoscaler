@@ -1,3 +1,5 @@
+# Do not index vendors
+vendor
 # Temporary Build Files
 build/_output
 build/_test
