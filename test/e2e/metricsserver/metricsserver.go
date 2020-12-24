@@ -44,7 +44,7 @@ const (
 )
 
 // InitMetricsServer used to initialize the fake-custom-metrics-server
-func InitMetricsServer(t *testing.T, ctx *framework.TestCtx, deployDir, namespace string) {
+func InitMetricsServer(t *testing.T, ctx *framework.Context, deployDir, namespace string) {
 	// register apiregistration kind to the decoder and sdk
 	APIService := &apiregistrationv1.APIService{}
 	APIService.SetResourceVersion("apiregistration.k8s.io/v1")
@@ -150,15 +150,14 @@ func InitMetricsServer(t *testing.T, ctx *framework.TestCtx, deployDir, namespac
 
 	// get global framework variables
 	f := framework.Global
-
 	// first create the Namespace for the custom-metrics server
 	namespaceObj := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}}
-	_, err = f.KubeClient.CoreV1().Namespaces().Create(namespaceObj)
+	_, err = f.KubeClient.CoreV1().Namespaces().Create(goctx.TODO(), namespaceObj, metav1.CreateOptions{})
 	if err != nil && !apierrors.IsAlreadyExists(err) {
 		t.Fatal(err)
 	}
 	ctx.AddCleanupFn(func() error {
-		return f.KubeClient.CoreV1().Namespaces().Delete(namespace, metav1.NewDeleteOptions(0))
+		return f.KubeClient.CoreV1().Namespaces().Delete(goctx.TODO(), namespace, *metav1.NewDeleteOptions(0))
 	})
 
 	for _, obj := range objs {

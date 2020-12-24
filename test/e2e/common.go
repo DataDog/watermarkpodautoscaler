@@ -10,16 +10,26 @@ import (
 	"time"
 
 	"github.com/DataDog/watermarkpodautoscaler/test/e2e/utils"
-
 	framework "github.com/operator-framework/operator-sdk/pkg/test"
 	"github.com/operator-framework/operator-sdk/pkg/test/e2eutil"
 )
 
-func initTestFwkResources(t *testing.T, deploymentName string) (string, *framework.TestCtx, *framework.Framework) {
-	ctx := framework.NewTestCtx(t)
+var (
+	retryInterval        = time.Second * 5
+	timeout              = time.Second * 60
+	cleanupRetryInterval = time.Second * 10
+	cleanupTimeout       = time.Second * 240
+)
+
+const (
+	deployDirPath = "deploy"
+)
+
+func initTestFwkResources(t *testing.T, deploymentName string) (string, *framework.Context, *framework.Framework) {
+	ctx := framework.NewContext(t)
 
 	t.Log("Initialized cluster resources")
-	namespace, err := ctx.GetNamespace()
+	namespace, err := ctx.GetOperatorNamespace()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,14 +54,3 @@ func initTestFwkResources(t *testing.T, deploymentName string) (string, *framewo
 	}
 	return namespace, ctx, f
 }
-
-var (
-	retryInterval        = time.Second * 5
-	timeout              = time.Second * 60
-	cleanupRetryInterval = time.Second * 10
-	cleanupTimeout       = time.Second * 240
-)
-
-const (
-	deployDirPath = "deploy"
-)

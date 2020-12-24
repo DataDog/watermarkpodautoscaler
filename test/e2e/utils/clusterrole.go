@@ -24,7 +24,7 @@ import (
 
 // GenerateClusterRoleManifest creates a temporary manifest yaml
 // by combining all standard namespaced resource manifests in deployDir.
-func GenerateClusterRoleManifest(t *testing.T, ctx *framework.TestCtx, namespace, id, deployDir string, options GenerateClusterRoleManifestOptions) error {
+func GenerateClusterRoleManifest(t *testing.T, ctx *framework.Context, namespace, id, deployDir string, options GenerateClusterRoleManifestOptions) error {
 	saByte, err := ioutil.ReadFile(filepath.Join(deployDir, serviceAccountYamlFile))
 	if err != nil {
 		log.Warnf("Could not find the serviceaccount manifest: (%v)", err)

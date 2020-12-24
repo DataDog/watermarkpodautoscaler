@@ -35,7 +35,7 @@ func TestWPA(t *testing.T) {
 	}
 
 	// create the fake custom metrics server
-	testCtx := framework.NewTestCtx(t)
+	testCtx := framework.NewContext(t)
 	defer testCtx.Cleanup()
 	metricsserver.InitMetricsServer(t, testCtx, "./test/e2e/metricsserver/deploy", "custom-metrics")
 
