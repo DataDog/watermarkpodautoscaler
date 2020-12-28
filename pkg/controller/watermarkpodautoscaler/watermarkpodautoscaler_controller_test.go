@@ -15,8 +15,8 @@ import (
 	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1/test"
 
-	logr "github.com/go-logr/logr"
-	"github.com/magiconair/properties/assert"
+	"github.com/go-logr/logr"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
@@ -347,6 +347,8 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 
 	s.AddKnownTypes(appsv1.SchemeGroupVersion, &appsv1.Deployment{})
 	s.AddKnownTypes(v1alpha1.SchemeGroupVersion, &v1alpha1.WatermarkPodAutoscaler{})
+	emptyGetOpts := metav1.GetOptions{}
+	emptyUpdateOpts := metav1.UpdateOptions{}
 	type fields struct {
 		client        client.Client
 		scaleclient   scale.ScalesGetter
@@ -400,7 +402,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				}),
 				scale: newScaleForDeployment(3, 3),
 				loadFunc: func(c client.Client, scaleClient scale.ScalesGetter, wpa *v1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) {
-					_, _ = scaleClient.Scales(testingNamespace).Update(testDeploymentGroup, scale)
+					_, _ = scaleClient.Scales(testingNamespace).Update(context.TODO(), testDeploymentGroup, scale, emptyUpdateOpts)
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
 					_ = c.Create(context.TODO(), wpa)
@@ -408,7 +410,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			},
 			wantErr: false,
 			wantFunc: func(c client.Client, scaleClient scale.ScalesGetter, wpa *v1alpha1.WatermarkPodAutoscaler) error {
-				scale, err := scaleClient.Scales(testingNamespace).Get(testDeploymentGroup, testingDeployName)
+				scale, err := scaleClient.Scales(testingNamespace).Get(context.TODO(), testDeploymentGroup, testingDeployName, emptyGetOpts)
 				if err != nil {
 					return err
 				}
@@ -433,7 +435,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				wpa:   test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, nil),
 				scale: newScaleForDeployment(0, 0),
 				loadFunc: func(c client.Client, scaleClient scale.ScalesGetter, wpa *v1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) {
-					_, _ = scaleClient.Scales(testingNamespace).Update(testDeploymentGroup, scale)
+					_, _ = scaleClient.Scales(testingNamespace).Update(context.TODO(), testDeploymentGroup, scale, emptyUpdateOpts)
 
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
@@ -443,7 +445,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			},
 			wantErr: false,
 			wantFunc: func(c client.Client, scaleClient scale.ScalesGetter, wpa *v1alpha1.WatermarkPodAutoscaler) error {
-				scale, err := scaleClient.Scales(testingNamespace).Get(testDeploymentGroup, testingDeployName)
+				scale, err := scaleClient.Scales(testingNamespace).Get(context.TODO(), testDeploymentGroup, testingDeployName, emptyGetOpts)
 				if err != nil {
 					return err
 				}
@@ -476,7 +478,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				}),
 				scale: newScaleForDeployment(18, 18),
 				loadFunc: func(c client.Client, scaleClient scale.ScalesGetter, wpa *v1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) {
-					_, _ = scaleClient.Scales(testingNamespace).Update(testDeploymentGroup, scale)
+					_, _ = scaleClient.Scales(testingNamespace).Update(context.TODO(), testDeploymentGroup, scale, emptyUpdateOpts)
 
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
@@ -486,7 +488,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			},
 			wantErr: false,
 			wantFunc: func(c client.Client, scaleClient scale.ScalesGetter, wpa *v1alpha1.WatermarkPodAutoscaler) error {
-				scale, err := scaleClient.Scales(testingNamespace).Get(testDeploymentGroup, testingDeployName)
+				scale, err := scaleClient.Scales(testingNamespace).Get(context.TODO(), testDeploymentGroup, testingDeployName, emptyGetOpts)
 				if err != nil {
 					return err
 				}
@@ -519,7 +521,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				scale: newScaleForDeployment(6, 6),
 
 				loadFunc: func(c client.Client, scaleClient scale.ScalesGetter, wpa *v1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) {
-					_, _ = scaleClient.Scales(testingNamespace).Update(testDeploymentGroup, scale)
+					_, _ = scaleClient.Scales(testingNamespace).Update(context.TODO(), testDeploymentGroup, scale, emptyUpdateOpts)
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
 
@@ -528,7 +530,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			},
 			wantErr: false,
 			wantFunc: func(c client.Client, scaleClient scale.ScalesGetter, wpa *v1alpha1.WatermarkPodAutoscaler) error {
-				scale, err := scaleClient.Scales(testingNamespace).Get(testDeploymentGroup, testingDeployName)
+				scale, err := scaleClient.Scales(testingNamespace).Get(context.TODO(), testDeploymentGroup, testingDeployName, emptyGetOpts)
 				if err != nil {
 					return err
 				}
@@ -560,7 +562,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				}),
 				scale: newScaleForDeployment(8, 0),
 				loadFunc: func(c client.Client, scaleClient scale.ScalesGetter, wpa *v1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) {
-					_, _ = scaleClient.Scales(testingNamespace).Update(testDeploymentGroup, scale)
+					_, _ = scaleClient.Scales(testingNamespace).Update(context.TODO(), testDeploymentGroup, scale, emptyUpdateOpts)
 
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
@@ -570,7 +572,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			},
 			wantErr: false,
 			wantFunc: func(c client.Client, scaleClient scale.ScalesGetter, wpa *v1alpha1.WatermarkPodAutoscaler) error {
-				scale, err := scaleClient.Scales(testingNamespace).Get(testDeploymentGroup, testingDeployName)
+				scale, err := scaleClient.Scales(testingNamespace).Get(context.TODO(), testDeploymentGroup, testingDeployName, emptyGetOpts)
 				if err != nil {
 					return err
 				}
@@ -815,6 +817,120 @@ func (f *fakeReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *
 	return ReplicaCalculation{0, 0, time.Time{}}, nil
 }
 
+func TestDefaultWatermarkPodAutoscaler(t *testing.T) {
+	logf.SetLogger(logf.ZapLogger(true))
+	tests := []struct {
+		name    string
+		wpaName string
+		wpaNs   string
+		err     error
+		spec    *v1alpha1.WatermarkPodAutoscalerSpec
+	}{
+		{
+			name:    "missing scaleTarget",
+			wpaName: "test-1",
+			wpaNs:   "default",
+			spec:    &v1alpha1.WatermarkPodAutoscalerSpec{},
+			err:     fmt.Errorf("the Spec.ScaleTargetRef should be populated, currently Kind: and/or Name: are not set properly"),
+		},
+		{
+			name:    "number of MinReplicas is missing",
+			wpaName: "test-1",
+			wpaNs:   "default",
+			spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+				ScaleTargetRef: testCrossVersionObjectRef,
+			},
+			err: fmt.Errorf("watermark pod autoscaler requires the minimum number of replicas to be configured and inferior to the maximum"),
+		},
+		{
+			name:    "number of MinReplicas is incorrect",
+			wpaName: "test-1",
+			wpaNs:   "default",
+			spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+				ScaleTargetRef: testCrossVersionObjectRef,
+				MinReplicas:    getReplicas(4),
+				MaxReplicas:    3,
+			},
+			err: fmt.Errorf("watermark pod autoscaler requires the minimum number of replicas to be configured and inferior to the maximum"),
+		},
+		{
+			name:    "tolerance is out of bounds",
+			wpaName: "test-1",
+			wpaNs:   "default",
+			spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+				ScaleTargetRef: testCrossVersionObjectRef,
+				MinReplicas:    getReplicas(4),
+				MaxReplicas:    7,
+				Tolerance:      *resource.NewMilliQuantity(5000, resource.DecimalSI),
+			},
+			err: fmt.Errorf("tolerance should be set as a quantity between 0 and 1, currently set to : 5, which is 500%%"),
+		},
+		{
+			name:    "scaleuplimitfactor is out of bounds",
+			wpaName: "test-1",
+			wpaNs:   "default",
+			spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+				ScaleTargetRef:     testCrossVersionObjectRef,
+				MinReplicas:        getReplicas(4),
+				MaxReplicas:        7,
+				ScaleUpLimitFactor: *resource.NewQuantity(101, resource.DecimalSI),
+				Tolerance:          *resource.NewMilliQuantity(50, resource.DecimalSI),
+			},
+			err: fmt.Errorf("scaleuplimitfactor should be set as a quantity between 0 and 100, currently set to : 101, which could yield a 101%% growth"),
+		},
+		{
+			name:    "scaledownlimitfactor is out of bounds",
+			wpaName: "test-1",
+			wpaNs:   "default",
+			spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+				ScaleTargetRef:       testCrossVersionObjectRef,
+				MinReplicas:          getReplicas(4),
+				MaxReplicas:          7,
+				ScaleUpLimitFactor:   *resource.NewQuantity(34, resource.DecimalSI),
+				ScaleDownLimitFactor: *resource.NewQuantity(134, resource.DecimalSI),
+				Tolerance:            *resource.NewMilliQuantity(50, resource.DecimalSI),
+			},
+			err: fmt.Errorf("scaledownlimitfactor should be set as a quantity between 0 and 100 (exc.), currently set to : 134, which could yield a 134%% decrease"),
+		},
+		{
+			// If Tolerance is unset, it will be considered to be 0 but it is not invalid.
+			// As we call the defaulting methods prior in the controller, the value will be defaulted to the defined `defaultTolerance`/
+			name:    "tolerance is not set, spec is valid",
+			wpaName: "test-1",
+			wpaNs:   "default",
+			spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+				ScaleTargetRef: testCrossVersionObjectRef,
+				MinReplicas:    getReplicas(4),
+				MaxReplicas:    7,
+			},
+			err: nil,
+		},
+		{
+			name:    "correct case",
+			wpaName: "test-1",
+			wpaNs:   "default",
+			spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+				ScaleTargetRef: testCrossVersionObjectRef,
+				MinReplicas:    getReplicas(4),
+				MaxReplicas:    7,
+				Tolerance:      *resource.NewMilliQuantity(500, resource.DecimalSI),
+			},
+			err: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wpa := test.NewWatermarkPodAutoscaler(tt.wpaName, tt.wpaNs, &test.NewWatermarkPodAutoscalerOptions{Spec: tt.spec})
+			err := v1alpha1.CheckWPAValidity(wpa)
+			if err != nil {
+				assert.Equal(t, err.Error(), tt.err.Error())
+			} else {
+				assert.Nil(t, tt.err)
+			}
+		})
+	}
+}
+
 func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 	logf.SetLogger(logf.ZapLogger(true))
 
@@ -973,7 +1089,7 @@ func TestCalculateScaleUpLimit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := calculateScaleUpLimit(tt.wpa, tt.currentReplicas)
-			assert.Equal(t, tt.cappedUpscale, c)
+			assert.Equal(t, c, tt.cappedUpscale)
 		})
 	}
 }
@@ -1021,18 +1137,18 @@ func TestCalculateScaleDownLimit(t *testing.T) {
 	}
 }
 
-func makeWPASpec(wpaMinReplicas, wpaMaxReplicas int32, scaleUpLimit, scaleDownLimit float64) *v1alpha1.WatermarkPodAutoscaler {
+func makeWPASpec(wpaMinReplicas, wpaMaxReplicas, scaleUpLimit, scaleDownLimit int32) *v1alpha1.WatermarkPodAutoscaler {
 	wpa := makeWPAScaleFactor(scaleUpLimit, scaleDownLimit)
 	wpa.Spec.MinReplicas = &wpaMinReplicas
 	wpa.Spec.MaxReplicas = wpaMaxReplicas
 	return wpa
 }
 
-func makeWPAScaleFactor(scaleUpLimit, scaleDownLimit float64) *v1alpha1.WatermarkPodAutoscaler {
+func makeWPAScaleFactor(scaleUpLimit, scaleDownLimit int32) *v1alpha1.WatermarkPodAutoscaler {
 	return &v1alpha1.WatermarkPodAutoscaler{
 		Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-			ScaleDownLimitFactor: scaleDownLimit,
-			ScaleUpLimitFactor:   scaleUpLimit,
+			ScaleDownLimitFactor: *resource.NewQuantity(int64(scaleDownLimit), resource.DecimalSI),
+			ScaleUpLimitFactor:   *resource.NewQuantity(int64(scaleUpLimit), resource.DecimalSI),
 		},
 	}
 }

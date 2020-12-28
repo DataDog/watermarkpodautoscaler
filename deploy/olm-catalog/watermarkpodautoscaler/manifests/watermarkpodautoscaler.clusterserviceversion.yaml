@@ -39,7 +39,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-  name: watermarkpodautoscaler.v0.1.0
+  name: watermarkpodautoscaler.v0.2.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -119,7 +119,7 @@ spec:
           - get
           - watch
         - apiGroups:
-          - pods.metrics.k8s.io
+          - metrics.k8s.io
           resources:
           - '*'
           verbs:
@@ -160,7 +160,7 @@ spec:
                       fieldPath: metadata.name
                 - name: OPERATOR_NAME
                   value: watermarkpodautoscaler
-                image: datadog/watermarkpodautoscaler:v0.1.0
+                image: datadog/watermarkpodautoscaler:v0.2.0
                 imagePullPolicy: IfNotPresent
                 name: watermarkpodautoscaler
                 resources: {}
@@ -242,4 +242,5 @@ spec:
   maturity: alpha
   provider:
     name: Datadog
-  version: 0.1.0
+  replaces: watermarkpodautoscaler.v0.1.0
+  version: 0.2.0

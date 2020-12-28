@@ -8,6 +8,7 @@
 package v1alpha1
 
 import (
+	"context"
 	time "time"
 
 	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
@@ -50,13 +51,13 @@ func NewFilteredWatermarkPodAutoscalerInformer(client versioned.Interface, names
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.DatadoghqV1alpha1().WatermarkPodAutoscalers(namespace).List(options)
+				return client.DatadoghqV1alpha1().WatermarkPodAutoscalers(namespace).List(context.TODO(), options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.DatadoghqV1alpha1().WatermarkPodAutoscalers(namespace).Watch(options)
+				return client.DatadoghqV1alpha1().WatermarkPodAutoscalers(namespace).Watch(context.TODO(), options)
 			},
 		},
 		&datadoghqv1alpha1.WatermarkPodAutoscaler{},

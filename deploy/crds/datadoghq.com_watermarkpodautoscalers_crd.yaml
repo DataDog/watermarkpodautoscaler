@@ -87,9 +87,15 @@ spec:
                       running outside of cluster).
                     properties:
                       highWatermark:
-                        type: string
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                       lowWatermark:
-                        type: string
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                       metricName:
                         description: metricName is the name of the metric in question.
                         type: string
@@ -151,9 +157,15 @@ spec:
                       using the "pods" source.
                     properties:
                       highWatermark:
-                        type: string
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                       lowWatermark:
-                        type: string
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                       metricSelector:
                         description: metricSelector is used to identify a specific
                           time series within a given metric.
@@ -224,8 +236,13 @@ spec:
               minimum: 1
               type: integer
             scaleDownLimitFactor:
-              description: Percentage of replicas that can be added in an upscale
-                event. Max value will set the limit at the Maximum number of Replicas.
+              anyOf:
+              - type: integer
+              - type: string
+              description: Percentage of replicas that can be removed in an downscale
+                event. Parameter used to be a float, in order to support the transition
+                seamlessly, we validate that it is ]0;100[ in the code.
+              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
             scaleTargetRef:
               description: 'part of HorizontalPodAutoscalerSpec, see comments in the
                 k8s-1.10.8 repo: staging/src/k8s.io/api/autoscaling/v1/types.go reference
@@ -247,9 +264,20 @@ spec:
               - name
               type: object
             scaleUpLimitFactor:
+              anyOf:
+              - type: integer
+              - type: string
               description: Percentage of replicas that can be added in an upscale
-                event. Max value will set the limit at the Maximum number of Replicas.
-            tolerance: {}
+                event. Parameter used to be a float, in order to support the transition
+                seamlessly, we validate that it is ]0;100] in the code.
+              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+            tolerance:
+              anyOf:
+              - type: integer
+              - type: string
+              description: Parameter used to be a float, in order to support the transition
+                seamlessly, we validate that it is ]0;1[ in the code.
+              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
             upscaleForbiddenWindowSeconds:
               format: int32
               minimum: 1
@@ -303,13 +331,19 @@ spec:
                       running outside of cluster).
                     properties:
                       currentAverageValue:
+                        anyOf:
+                        - type: integer
+                        - type: string
                         description: currentAverageValue is the current value of metric
                           averaged over autoscaled pods.
-                        type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                       currentValue:
+                        anyOf:
+                        - type: integer
+                        - type: string
                         description: currentValue is the current value of the metric
                           (as a quantity)
-                        type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                       metricName:
                         description: metricName is the name of a metric used for autoscaling
                           in metric system.
@@ -369,13 +403,19 @@ spec:
                       object (for example, hits-per-second on an Ingress object).
                     properties:
                       averageValue:
+                        anyOf:
+                        - type: integer
+                        - type: string
                         description: averageValue is the current value of the average
                           of the metric across all relevant pods (as a quantity)
-                        type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                       currentValue:
+                        anyOf:
+                        - type: integer
+                        - type: string
                         description: currentValue is the current value of the metric
                           (as a quantity).
-                        type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                       metricName:
                         description: metricName is the name of the metric in question.
                         type: string
@@ -457,9 +497,12 @@ spec:
                       target value.
                     properties:
                       currentAverageValue:
+                        anyOf:
+                        - type: integer
+                        - type: string
                         description: currentAverageValue is the current value of the
                           average of the metric across all relevant pods (as a quantity)
-                        type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                       metricName:
                         description: metricName is the name of the metric in question
                         type: string
@@ -534,12 +577,15 @@ spec:
                         format: int32
                         type: integer
                       currentAverageValue:
+                        anyOf:
+                        - type: integer
+                        - type: string
                         description: currentAverageValue is the current value of the
                           average of the resource metric across all relevant pods,
                           as a raw value (instead of as a percentage of the request),
                           similar to the "pods" metric source type. It will always
                           be set, regardless of the corresponding metric specification.
-                        type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                       name:
                         description: name is the name of the resource in question.
                         type: string
