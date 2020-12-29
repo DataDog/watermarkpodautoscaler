@@ -6,10 +6,11 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"os"
+
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -19,7 +20,6 @@ import (
 	"github.com/DataDog/watermarkpodautoscaler/version"
 
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
-	"github.com/operator-framework/operator-sdk/pkg/leader"
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"
 	"github.com/spf13/pflag"
 
@@ -32,11 +32,13 @@ import (
 
 // Change below variables to serve metrics on different host or port.
 var (
-	metricsHost       = "0.0.0.0"
+	host              = "0.0.0.0"
 	metricsPort int32 = 8383
+	healthPort  int32 = 9440
 )
 var log = logf.Log.WithName("cmd")
 var printVersionArg bool
+var enableLeaderElection bool
 
 func main() {
 	// Add the zap logger flag set to the CLI. The flag set must
@@ -47,7 +49,8 @@ func main() {
 	// controller-runtime)
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.BoolVarP(&printVersionArg, "version", "v", printVersionArg, "print version")
-
+	pflag.BoolVar(&enableLeaderElection, "enable-leader-election", true, "Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.")
+	pflag.Int32Var(&healthPort, "health-port", healthPort, "Port to use for the health probe")
 	pflag.Parse()
 
 	// Use a zap logr.Logger implementation. If none of the zap
@@ -80,20 +83,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx := context.TODO()
-
-	// Become the leader before proceeding
-	err = leader.Become(ctx, "watermarkpodautoscaler-lock")
-	if err != nil {
-		log.Error(err, "")
-		os.Exit(1)
-	}
-
 	// Create a new Cmd to provide shared dependencies and start components
 	mgr, err := manager.New(cfg, manager.Options{
-		Namespace:          namespace,
-		MapperProvider:     apiutil.NewDiscoveryRESTMapper,
-		MetricsBindAddress: fmt.Sprintf("%s:%d", metricsHost, metricsPort),
+		Namespace:              namespace,
+		MapperProvider:         apiutil.NewDiscoveryRESTMapper,
+		MetricsBindAddress:     fmt.Sprintf("%s:%d", host, metricsPort),
+		LeaderElectionID:       "watermarkpodautoscaler-lock",
+		LeaderElection:         enableLeaderElection,
+		HealthProbeBindAddress: fmt.Sprintf("%s:%d", host, healthPort),
 	})
 	if err != nil {
 		log.Error(err, "")
@@ -101,7 +98,6 @@ func main() {
 	}
 
 	log.Info("Registering Components.")
-
 	// Setup Scheme for all resources
 	if err = apis.AddToScheme(mgr.GetScheme()); err != nil {
 		log.Error(err, "")
@@ -114,8 +110,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Info("Starting the Cmd.")
+	// Add health check
+	if err := mgr.AddHealthzCheck("health-probe", healthz.Ping); err != nil {
+		log.Error(err, "Unable add liveness check")
+		os.Exit(1)
+	}
 
+	log.Info("Starting the Cmd.")
 	// Start the Cmd
 	if err := mgr.Start(signals.SetupSignalHandler()); err != nil {
 		log.Error(err, "Manager exited non-zero")
