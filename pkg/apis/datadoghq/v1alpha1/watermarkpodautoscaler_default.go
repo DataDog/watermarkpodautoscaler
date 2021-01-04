@@ -91,6 +91,9 @@ func CheckWPAValidity(wpa *WatermarkPodAutoscaler) error {
 	if wpa.Spec.Tolerance.MilliValue() > 1000 || wpa.Spec.Tolerance.MilliValue() < 0 {
 		return fmt.Errorf("tolerance should be set as a quantity between 0 and 1, currently set to : %v, which is %.0f%%", wpa.Spec.Tolerance.String(), float64(wpa.Spec.Tolerance.MilliValue())/10)
 	}
+	if wpa.Spec.ScaleUpLimitFactor == nil || wpa.Spec.ScaleDownLimitFactor == nil {
+		return fmt.Errorf("scaleuplimitfactor and scaledownlimitfactor can't be nil, make sure the WPA spec is defaulted")
+	}
 	if wpa.Spec.ScaleUpLimitFactor.MilliValue() > 100000 || wpa.Spec.ScaleUpLimitFactor.MilliValue() < 0 {
 		return fmt.Errorf("scaleuplimitfactor should be set as a quantity between 0 and 100, currently set to : %v, which could yield a %.0f%% growth", wpa.Spec.ScaleUpLimitFactor.String(), float64(wpa.Spec.ScaleUpLimitFactor.MilliValue())/1000)
 	}
