@@ -35,11 +35,11 @@ func DefaultWatermarkPodAutoscaler(wpa *WatermarkPodAutoscaler) *WatermarkPodAut
 	if wpa.Spec.Tolerance.MilliValue() == 0 {
 		defaultWPA.Spec.Tolerance = *resource.NewMilliQuantity(defaultTolerance, resource.DecimalSI)
 	}
-	if wpa.Spec.ScaleUpLimitFactor.MilliValue() == 0 {
-		defaultWPA.Spec.ScaleUpLimitFactor = *resource.NewQuantity(defaultScaleUpLimitFactor, resource.DecimalSI)
+	if wpa.Spec.ScaleUpLimitFactor == nil {
+		defaultWPA.Spec.ScaleUpLimitFactor = resource.NewQuantity(defaultScaleUpLimitFactor, resource.DecimalSI)
 	}
-	if wpa.Spec.ScaleDownLimitFactor.MilliValue() == 0 {
-		defaultWPA.Spec.ScaleDownLimitFactor = *resource.NewQuantity(defaultScaleDownLimitFactor, resource.DecimalSI)
+	if wpa.Spec.ScaleDownLimitFactor == nil {
+		defaultWPA.Spec.ScaleDownLimitFactor = resource.NewQuantity(defaultScaleDownLimitFactor, resource.DecimalSI)
 	}
 	if wpa.Spec.DownscaleForbiddenWindowSeconds == 0 {
 		defaultWPA.Spec.DownscaleForbiddenWindowSeconds = defaultDownscaleForbiddenWindowSeconds
@@ -62,10 +62,10 @@ func IsDefaultWatermarkPodAutoscaler(wpa *WatermarkPodAutoscaler) bool {
 	if wpa.Spec.Tolerance.MilliValue() == 0 {
 		return false
 	}
-	if wpa.Spec.ScaleUpLimitFactor.MilliValue() == 0 {
+	if wpa.Spec.ScaleUpLimitFactor == nil {
 		return false
 	}
-	if wpa.Spec.ScaleDownLimitFactor.MilliValue() == 0 {
+	if wpa.Spec.ScaleDownLimitFactor == nil {
 		return false
 	}
 	if wpa.Spec.DownscaleForbiddenWindowSeconds == 0 {

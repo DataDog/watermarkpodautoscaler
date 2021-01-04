@@ -295,13 +295,13 @@ func schema_pkg_apis_datadoghq_v1alpha1_WatermarkPodAutoscalerSpec(ref common.Re
 					},
 					"scaleUpLimitFactor": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Percentage of replicas that can be added in an upscale event. Parameter used to be a float, in order to support the transition seamlessly, we validate that it is ]0;100] in the code.",
+							Description: "Percentage of replicas that can be added in an upscale event. Parameter used to be a float, in order to support the transition seamlessly, we validate that it is [0;100] in the code. ScaleUpLimitFactor == 0 means that upscaling will not be allowed for the target.",
 							Ref:         ref("k8s.io/apimachinery/pkg/api/resource.Quantity"),
 						},
 					},
 					"scaleDownLimitFactor": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Percentage of replicas that can be removed in an downscale event. Parameter used to be a float, in order to support the transition seamlessly, we validate that it is ]0;100[ in the code.",
+							Description: "Percentage of replicas that can be removed in an downscale event. Parameter used to be a float, in order to support the transition seamlessly, we validate that it is [0;100[ in the code. ScaleDownLimitFactor == 0 means that downscaling will not be allowed for the target.",
 							Ref:         ref("k8s.io/apimachinery/pkg/api/resource.Quantity"),
 						},
 					},
