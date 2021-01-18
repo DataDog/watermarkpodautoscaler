@@ -5,7 +5,6 @@ go 1.13
 require (
 	github.com/go-logr/logr v0.1.0
 	github.com/go-openapi/spec v0.19.3
-	github.com/magiconair/properties v1.8.1 // indirect
 	github.com/mikefarah/yq/v3 v3.0.0-20200615114226-086f0ec6b9aa
 	github.com/operator-framework/operator-sdk v0.19.0
 	github.com/prometheus/client_golang v1.5.1
