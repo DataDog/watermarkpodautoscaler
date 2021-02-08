@@ -1,5 +1,0 @@
-channels:
-- currentCSV: watermarkpodautoscaler.v0.2.0
-  name: alpha
-defaultChannel: alpha
-packageName: watermarkpodautoscaler
