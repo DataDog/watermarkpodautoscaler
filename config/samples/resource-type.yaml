@@ -1,0 +1,22 @@
+apiVersion: datadoghq.com/v1alpha1
+kind: WatermarkPodAutoscaler
+metadata:
+  name: example-resource-watermarkpodautoscaler
+spec:
+  maxReplicas: 10
+  minReplicas: 2
+  tolerance: 0.01
+  readinessDelay: 10
+  scaleTargetRef:
+    kind: Deployment
+    apiVersion: apps/v1
+    name: nginx
+  metrics:
+  - type: Resource
+    resource:
+      highWatermark: "300Mi"
+      lowWatermark: "50Mi"
+      name: memory
+      metricSelector:
+        matchLabels:
+          app: nginx # Match the targeted nginx pods using the pod label app=nginx

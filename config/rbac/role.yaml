@@ -1,0 +1,55 @@
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: manager
+rules:
+- resources:
+  - configmaps
+  verbs:
+  - create
+- resourceNames:
+  - watermarkpodautoscaler-lock
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - update
+- resources:
+  - events
+  verbs:
+  - create
+  - patch
+- resources:
+  - pods
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - apps
+  - extensions
+  resourceNames:
+  - watermarkpodautoscalers
+  resources:
+  - deployments/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - apps
+  - extensions
+  resources:
+  - deployments/scale
+  - replicasets/scale
+  - statefulsets/scale
+  verbs:
+  - get
+  - update
+- apiGroups:
+  - datadoghq.com
+  resources:
+  - watermarkpodautoscalers
+  - watermarkpodautoscalers/status
+  verbs:
+  - '*'

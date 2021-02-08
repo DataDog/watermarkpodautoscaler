@@ -1,0 +1,23 @@
+apiVersion: datadoghq.com/v1alpha1
+kind: WatermarkPodAutoscaler
+metadata:
+  name: example-external-watermarkpodautoscaler
+spec:
+  downscaleForbiddenWindowSeconds: 60
+  upscaleForbiddenWindowSeconds: 30
+  scaleDownLimitFactor: 30
+  scaleUpLimitFactor: 50
+  minReplicas: 4
+  maxReplicas: 9
+  metrics:
+  - external:
+      highWatermark: 400m
+      lowWatermark: 150m
+      metricName: custom.request_duration.max
+      metricSelector:
+        matchLabels:
+          kubernetes_cluster: mycluster
+          service: billing
+          short_image: billing-app
+    type: External
+  tolerance: 0.01

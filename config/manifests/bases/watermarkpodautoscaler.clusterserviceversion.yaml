@@ -1,0 +1,189 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: |-
+      [
+        {
+          "apiVersion": "datadoghq.com/v1alpha1",
+          "kind": "WatermarkPodAutoscaler",
+          "metadata": {
+            "name": "example-watermarkpodautoscaler"
+          },
+          "spec": {
+            "maxReplicas": 3,
+            "metrics": [
+              {
+                "external": {
+                  "highWatermark": "12000",
+                  "lowWatermark": "8000",
+                  "metricName": "sinus",
+                  "metricSelector": {
+                    "matchLabels": {
+                      "foo": "bar"
+                    }
+                  }
+                },
+                "type": "External"
+              }
+            ],
+            "minReplicas": 1,
+            "readinessDelay": 10,
+            "scaleTargetRef": {
+              "apiVersion": "apps/v1",
+              "kind": "Deployment",
+              "name": "alpine"
+            },
+            "tolerance": 0.01
+          }
+        }
+      ]
+    capabilities: Basic Install
+    operators.operatorframework.io/builder: operator-sdk-v1.0.0
+    operators.operatorframework.io/project_layout: go.kubebuilder.io/v2
+  name: watermarkpodautoscaler.v0.2.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+      - description: WatermarkPodAutoscaler is the Schema for the watermarkpodautoscalers API
+        displayName: Watermark Pod Autoscaler
+        kind: WatermarkPodAutoscaler
+        name: watermarkpodautoscalers.datadoghq.com
+        version: v1alpha1
+  description: Custom controller that extends the Horizontal Pod Autoscaler
+  displayName: watermarkpodautoscaler
+  icon:
+    - base64data: ""
+      mediatype: ""
+  install:
+    spec:
+      deployments:
+        - name: watermarkpodautoscaler-controller-manager
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                control-plane: controller-manager
+            strategy: {}
+            template:
+              metadata:
+                annotations:
+                  ad.datadoghq.com/watermarkpodautoscaler.check_names: '["prometheus"]'
+                  ad.datadoghq.com/watermarkpodautoscaler.init_configs: '[{}]'
+                  ad.datadoghq.com/watermarkpodautoscaler.instances: '[{"prometheus_url":
+                  "http://%%host%%:8383/metrics","namespace":"watermarkpodautoscaler","metrics":
+                  ["wpa","wpa_controller*"]}]'
+                labels:
+                  control-plane: controller-manager
+              spec:
+                containers:
+                  - command:
+                      - /manager
+                    args:
+                      - --enable-leader-election
+                    ports:
+                      - name: metrics
+                        containerPort: 8383
+                        protocol: TCP
+                    livenessProbe:
+                      httpGet:
+                        path: /healthz/
+                        port: 9440
+                      periodSeconds: 10
+                    env:
+                      - name: WATCH_NAMESPACE
+                        valueFrom:
+                          fieldRef:
+                            fieldPath: metadata.annotations['olm.targetNamespaces']
+                      - name: POD_NAME
+                        valueFrom:
+                          fieldRef:
+                            fieldPath: metadata.name
+                      - name: OPERATOR_NAME
+                        value: watermarkpodautoscaler
+                    image: datadog/watermarkpodautoscaler:v0.2.0
+                    imagePullPolicy: IfNotPresent
+                    name: watermarkpodautoscaler
+                    resources: {}
+                serviceAccountName: watermarkpodautoscaler-controller-manager
+      permissions:
+        - rules:
+            - apiGroups:
+                - ""
+              resources:
+                - configmaps
+              verbs:
+                - create
+            - apiGroups:
+                - ""
+              resourceNames:
+                - watermarkpodautoscaler-lock
+              resources:
+                - configmaps
+              verbs:
+                - update
+                - get
+            - apiGroups:
+                - ""
+              resources:
+                - events
+              verbs:
+                - create
+            - apiGroups:
+                - ""
+              resources:
+                - pods
+              verbs:
+                - get
+            - apiGroups:
+                - apps
+                - extensions
+              resources:
+                - replicasets/scale
+                - deployments/scale
+                - statefulsets/scale
+              verbs:
+                - update
+                - get
+            - apiGroups:
+                - apps
+              resourceNames:
+                - watermarkpodautoscalers
+              resources:
+                - deployments/finalizers
+              verbs:
+                - update
+            - apiGroups:
+                - datadoghq.com
+              resources:
+                - watermarkpodautoscalers
+                - watermarkpodautoscalers/status
+              verbs:
+                - '*'
+          serviceAccountName: watermarkpodautoscaler-controller-manager
+    strategy: deployment
+  installModes:
+    - supported: true
+      type: OwnNamespace
+    - supported: true
+      type: SingleNamespace
+    - supported: false
+      type: MultiNamespace
+    - supported: true
+      type: AllNamespaces
+  keywords:
+    - Datadog
+    - Autoscaling
+    - Monitoring
+  links:
+    - name: Watermarkpodautoscaler
+      url: https://watermarkpodautoscaler.domain
+  maintainers:
+    - email: support@datadoghq.com
+      name: Datadog Inc.
+  maturity: alpha
+  provider:
+    name: Datadog
+  version: 0.2.0
