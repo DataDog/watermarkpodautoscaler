@@ -1,4 +1,4 @@
-image: golang:1.13
+image: golang:1.14
 variables:
   GO111MODULE: "on"
   PROJECTNAME: "watermarkpodautoscaler"
@@ -35,11 +35,18 @@ unit_tests:
   script:
   - make test
 
+generate_code:
+  stage: test
+  tags: [ "runner:main", "size:large" ]
+  script:
+    - make generate manifests
+    - git diff --exit-code
+
 lint_code:
   stage: test
   tags: [ "runner:main", "size:large" ]
   script:
-  - make validate
+  - make lint
 
 build_image:
   stage: image
@@ -48,31 +55,7 @@ build_image:
   inherit:
     default: false
   script:
-    - IMAGE_NAME=$DOCKER_REGISTRY/$PROJECTNAME:$TARGET_TAG
-    - docker build -t $IMAGE_NAME -f Dockerfile .
-    - docker push $IMAGE_NAME
-
-test_e2e:
-  stage: test-e2e
-  tags: [ "runner:docker", "size:large" ]
-  image: 486234852809.dkr.ecr.us-east-1.amazonaws.com/docker-notary:0.6.1
-  before_script:
-    - mkdir -p .cache
-    - ./hack/install_golang.sh
-    - ./hack/install_kube.sh
-    - apt-get update && apt-get install -y mercurial jq
-    - export PATH=$PATH:/usr/local/go/bin
-    - make install-tools
-  script:
-    - export PATH=$PATH:/usr/local/go/bin:$(pwd)/bin
-    - export KUBECONFIG="$(kind get kubeconfig-path)"
-    - MASTER_IP=$(docker network inspect bridge | jq -r '.[].Containers[] | select( .Name | contains("kind-control-plane")).IPv4Address' | cut -d'/' -f1)
-    - sed -i "s/127.0.0.1:32001/$MASTER_IP:6443/" $KUBECONFIG
-    - kubectl cluster-info
-    - IMAGE_NAME=$DOCKER_REGISTRY/$PROJECTNAME:$TARGET_TAG
-    - docker pull $IMAGE_NAME
-    - kind load docker-image $IMAGE_NAME
-    - make TAG=$TARGET_TAG PREFIX=$DOCKER_REGISTRY/$PROJECTNAME e2e
+    - IMG=$DOCKER_REGISTRY/$PROJECTNAME:$TARGET_TAG make docker-build-ci docker-push
 
 push_release_tag:
   only:

@@ -1,0 +1,41 @@
+name: validation
+on: [push, pull_request]
+env:
+  GO111MODULE: "on"
+  PROJECTNAME: "watermarkpodautoscaler"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v1
+        with:
+          go-version: 1.13
+        id: go
+      - name: Install required packages
+        uses: mstksg/get-package@v1
+        with:
+          apt-get: mercurial jq build-essential
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v1
+      - name: Install tools
+        run: |
+          make install-tools
+      - name: Run build
+        run: |
+          make manager
+      - name: Run unit/control plane tests (fake cluster)
+        run: |
+          make test
+      - name: Setup kind for e2e
+        uses: engineerd/setup-kind@v0.5.0
+        with:
+          version: "v0.9.0"
+          config: test/cluster-kind.yaml
+          name: wpa-e2e-test
+      - name: Run e2e tests (kind cluster)
+        run: |
+          export PATH=$PATH:$(pwd)/bin
+          kubectl cluster-info --context kind-wpa-e2e-test
+          kubectl get pods -n kube-system
+          make e2e
