@@ -8,5 +8,5 @@ roleRef:
   kind: Role
   name: extension-apiserver-authentication-reader
 subjects:
-- kind: ServiceAccount
-  name: custom-metrics-apiserver
+  - kind: ServiceAccount
+    name: custom-metrics-apiserver

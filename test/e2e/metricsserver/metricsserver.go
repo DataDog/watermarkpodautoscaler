@@ -1,62 +1,29 @@
 // Unless explicitly stated otherwise all files in this repository are licensed
 // under the Apache License Version 2.0.
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
-// Copyright 2016-2019 Datadog, Inc.
+// Copyright 2016-2020 Datadog, Inc.
 
 package metricsserver
 
 import (
-	goctx "context"
+	"fmt"
+	"io"
 	"io/ioutil"
 	"path/filepath"
-	"testing"
-	"time"
-
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	apiregistrationv1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
-
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
-
-	framework "github.com/operator-framework/operator-sdk/pkg/test"
-	"github.com/operator-framework/operator-sdk/pkg/test/e2eutil"
+	apiregistrationv1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 )
 
-var (
-	retryInterval        = time.Second * 10
-	timeout              = time.Second * 120
-	cleanupRetryInterval = time.Second * 5
-	cleanupTimeout       = time.Second * 240
-)
-
-const (
-	// customMetricsNamespace used for the fake custom-metrics server
-	customMetricsNamespace = "custom-metrics"
-	// customMetricsName used for the fake custom-metrics server
-	customMetricsName = "custom-metrics-apiserver"
-	// ConfigMapName used to configure the fake custom-metrics server
-	ConfigMapName = "fake-custom-metrics-server"
-)
-
-// InitMetricsServer used to initialize the fake-custom-metrics-server
-func InitMetricsServer(t *testing.T, ctx *framework.Context, deployDir, namespace string) {
-	// register apiregistration kind to the decoder and sdk
-	APIService := &apiregistrationv1.APIService{}
-	APIService.SetResourceVersion("apiregistration.k8s.io/v1")
-	APIService.Kind = "APIService"
-	err := framework.AddToFrameworkScheme(apiregistrationv1.AddToScheme, APIService)
-	if err != nil {
-		t.Fatalf("failed to add custom resource scheme to framework: %v", err)
-	}
-
+// InitMetricsServerFiles used to initialize the fake-custom-metrics-server
+func InitMetricsServerFiles(r io.Writer, deployDir, namespace string) ([]runtime.Object, error) {
 	files, err := ioutil.ReadDir(deployDir)
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 
 	var serviceAccountList []runtime.Object
@@ -72,21 +39,21 @@ func InitMetricsServer(t *testing.T, ctx *framework.Context, deployDir, namespac
 		if file.IsDir() {
 			continue
 		}
-		t.Logf("metrics-server resource: %s", file.Name())
+		fmt.Fprintf(r, "metrics-server resource: %s", file.Name())
 
 		var bytes []byte
 		bytes, err = ioutil.ReadFile(filepath.Join(deployDir, file.Name()))
 		if err != nil {
-			t.Fatalf("Could not read file %s: (%v)", file.Name(), err)
+			return nil, err
 		}
 		decode := scheme.Codecs.UniversalDeserializer().Decode
 		err = apiregistrationv1.AddToScheme(scheme.Scheme)
 		if err != nil {
-			t.Fatalf("could not register  apiregistrationv1, error: (%v)", err)
+			return nil, err
 		}
 		obj, _, err2 := decode(bytes, nil, nil)
 		if err2 != nil {
-			t.Errorf("decode error: %v", err2)
+			return nil, err
 		}
 		switch o := obj.(type) {
 		case *corev1.Service:
@@ -134,10 +101,9 @@ func InitMetricsServer(t *testing.T, ctx *framework.Context, deployDir, namespac
 			}
 			apiServiceList = append(apiServiceList, o)
 		default:
-			t.Errorf("unknow resource: %v", o)
+			fmt.Fprintf(r, "unknow resource: %v", o)
 		}
 	}
-	cleanupOption := &framework.CleanupOptions{TestContext: ctx, Timeout: cleanupTimeout, RetryInterval: cleanupRetryInterval}
 	var objs []runtime.Object
 	objs = append(objs, serviceAccountList...)
 	objs = append(objs, roleList...)
@@ -147,32 +113,5 @@ func InitMetricsServer(t *testing.T, ctx *framework.Context, deployDir, namespac
 	objs = append(objs, deploymentList...)
 	objs = append(objs, serviceList...)
 	objs = append(objs, apiServiceList...)
-
-	// get global framework variables
-	f := framework.Global
-	// first create the Namespace for the custom-metrics server
-	namespaceObj := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}}
-	_, err = f.KubeClient.CoreV1().Namespaces().Create(goctx.TODO(), namespaceObj, metav1.CreateOptions{})
-	if err != nil && !apierrors.IsAlreadyExists(err) {
-		t.Fatal(err)
-	}
-	ctx.AddCleanupFn(func() error {
-		return f.KubeClient.CoreV1().Namespaces().Delete(goctx.TODO(), namespace, *metav1.NewDeleteOptions(0))
-	})
-
-	for _, obj := range objs {
-		if err = framework.Global.Client.Create(goctx.TODO(), obj, cleanupOption); err != nil {
-			if !apierrors.IsAlreadyExists(err) {
-				t.Fatalf("unable to create resource, err: %v", err)
-			}
-			if err = framework.Global.Client.Update(goctx.TODO(), obj); err != nil {
-				t.Fatalf("unable to update resource, err: %v", err)
-			}
-		}
-	}
-
-	err = e2eutil.WaitForDeployment(t, f.KubeClient, customMetricsNamespace, customMetricsName, 1, retryInterval, timeout)
-	if err != nil {
-		t.Fatal(err)
-	}
+	return objs, nil
 }

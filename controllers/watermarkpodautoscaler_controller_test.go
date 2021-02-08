@@ -1,9 +1,9 @@
 // Unless explicitly stated otherwise all files in this repository are licensed
 // under the Apache License Version 2.0.
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
-// Copyright 2016-2019 Datadog, Inc.
+// Copyright 2016-2020 Datadog, Inc.
 
-package watermarkpodautoscaler
+package controllers
 
 import (
 	"context"
@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
-	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1/test"
+	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
+	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1/test"
 
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
@@ -58,7 +58,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 	eventRecorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "TestReconcileWatermarkPodAutoscaler"})
 
 	logf.SetLogger(logf.ZapLogger(true))
-	log = logf.Log.WithName("TestReconcileWatermarkPodAutoscaler_Reconcile")
+	log := logf.Log.WithName("TestReconcileWatermarkPodAutoscaler_Reconcile")
 	s := scheme.Scheme
 	s.AddKnownTypes(v1alpha1.SchemeGroupVersion, &v1alpha1.WatermarkPodAutoscaler{})
 	type fields struct {
@@ -269,15 +269,16 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &ReconcileWatermarkPodAutoscaler{
+			r := &WatermarkPodAutoscalerReconciler{
 				scaleClient:   tt.fields.scaleclient,
-				client:        tt.fields.client,
-				scheme:        tt.fields.scheme,
+				Client:        tt.fields.client,
+				Scheme:        tt.fields.scheme,
+				Log:           log,
 				eventRecorder: tt.fields.eventRecorder,
 			}
 			log.Info(fmt.Sprintf("Reconciliating %v", tt.args.request))
 			if tt.args.loadFunc != nil {
-				tt.args.loadFunc(r.client)
+				tt.args.loadFunc(r.Client)
 			}
 			got, err := r.Reconcile(tt.args.request)
 			if (err != nil) != tt.wantErr {
@@ -288,7 +289,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				t.Errorf("ReconcileWatermarkPodAutoscaler.Reconcile() = %v, want %v", got, tt.want)
 			}
 			if tt.wantFunc != nil {
-				if err := tt.wantFunc(r.client); err != nil {
+				if err := tt.wantFunc(r.Client); err != nil {
 					t.Errorf("ReconcileWatermarkPodAutoscaler.Reconcile() wantFunc validation error: %v", err)
 				}
 			}
@@ -495,7 +496,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				if scale.Spec.Replicas != wpa.Status.DesiredReplicas {
 					return fmt.Errorf("Spec of the target deployment is not updated")
 				}
-				if wpa.Status.Conditions[0].Reason == v1alpha1.ConditionReasonSucceededRescale && wpa.Status.Conditions[0].Message != fmt.Sprintf("the HPA controller was able to update the target scale to %d", wpa.Status.DesiredReplicas) {
+				if wpa.Status.Conditions[0].Reason == v1alpha1.ConditionReasonSuccessfulScale && wpa.Status.Conditions[0].Message != fmt.Sprintf("the HPA controller was able to update the target scale to %d", wpa.Status.DesiredReplicas) {
 					return fmt.Errorf("scaling should occur as we are above the MaxReplicas")
 				}
 				return nil
@@ -537,7 +538,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				if scale.Spec.Replicas != wpa.Status.DesiredReplicas {
 					return fmt.Errorf("Spec of the target deployment is not updated")
 				}
-				if wpa.Status.Conditions[0].Reason == v1alpha1.ConditionReasonSucceededRescale && wpa.Status.Conditions[0].Message != fmt.Sprintf("the HPA controller was able to update the target scale to %d", wpa.Status.DesiredReplicas) {
+				if wpa.Status.Conditions[0].Reason == v1alpha1.ConditionReasonSuccessfulScale && wpa.Status.Conditions[0].Message != fmt.Sprintf("the HPA controller was able to update the target scale to %d", wpa.Status.DesiredReplicas) {
 					return fmt.Errorf("scaling should occur as we are above the MaxReplicas")
 				}
 				return nil
@@ -579,7 +580,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				if scale.Spec.Replicas != wpa.Status.DesiredReplicas {
 					return fmt.Errorf("Spec of the target deployment is not updated")
 				}
-				if wpa.Status.Conditions[0].Reason == v1alpha1.ConditionReasonSucceededRescale && wpa.Status.Conditions[0].Message != fmt.Sprintf("the HPA controller was able to update the target scale to %d", wpa.Status.DesiredReplicas) {
+				if wpa.Status.Conditions[0].Reason == v1alpha1.ConditionReasonSuccessfulScale && wpa.Status.Conditions[0].Message != fmt.Sprintf("the HPA controller was able to update the target scale to %d", wpa.Status.DesiredReplicas) {
 					return fmt.Errorf("scaling should occur as we are above the MaxReplicas")
 				}
 				return nil
@@ -588,11 +589,11 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &ReconcileWatermarkPodAutoscaler{
-				client:        tt.fields.client,
+			r := &WatermarkPodAutoscalerReconciler{
+				Client:        tt.fields.client,
 				scaleClient:   tt.fields.scaleclient,
 				restMapper:    tt.fields.restmapper,
-				scheme:        tt.fields.scheme,
+				Scheme:        tt.fields.scheme,
 				eventRecorder: tt.fields.eventRecorder,
 			}
 			mClient := fakeMetricsClient{
@@ -603,10 +604,10 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 
 			r.replicaCalc = NewReplicaCalculator(mClient, nil)
 			if tt.args.loadFunc != nil {
-				tt.args.loadFunc(r.client, r.scaleClient, tt.args.wpa, tt.args.scale)
+				tt.args.loadFunc(r.Client, r.scaleClient, tt.args.wpa, tt.args.scale)
 			}
 			wpa := &v1alpha1.WatermarkPodAutoscaler{}
-			if err := r.client.Get(context.TODO(), types.NamespacedName{Name: tt.args.wpa.Name, Namespace: tt.args.wpa.Namespace}, wpa); err != nil {
+			if err := r.Client.Get(context.TODO(), types.NamespacedName{Name: tt.args.wpa.Name, Namespace: tt.args.wpa.Namespace}, wpa); err != nil {
 				t.Errorf("unable to get wpa, err: %v", err)
 			}
 			err := r.reconcileWPA(logf.Log.WithName(tt.name), wpa)
@@ -615,7 +616,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				return
 			}
 			if tt.wantFunc != nil {
-				if err := tt.wantFunc(r.client, r.scaleClient, wpa); err != nil {
+				if err := tt.wantFunc(r.Client, r.scaleClient, wpa); err != nil {
 					t.Errorf("ReconcileWatermarkPodAutoscaler.Reconcile() wantFunc validation error: %v", err)
 				}
 			}
@@ -775,7 +776,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 			cl := &fakeReplicaCalculator{
 				replicasFunc: tt.wantFunc,
 			}
-			r := &ReconcileWatermarkPodAutoscaler{
+			r := &WatermarkPodAutoscalerReconciler{
 				eventRecorder: tt.fields.eventRecorder,
 				replicaCalc:   cl,
 			}

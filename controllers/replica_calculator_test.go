@@ -1,16 +1,16 @@
 // Unless explicitly stated otherwise all files in this repository are licensed
 // under the Apache License Version 2.0.
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
-// Copyright 2016-2019 Datadog, Inc.
+// Copyright 2016-2020 Datadog, Inc.
 
-package watermarkpodautoscaler
+package controllers
 
 import (
 	"fmt"
 	"testing"
 	"time"
 
-	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
+	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -2174,7 +2174,7 @@ func TestGetReadyPodsCount(t *testing.T) {
 			if !cache.WaitForNamedCacheSync("HPA", stop, informer.Informer().HasSynced) {
 				return
 			}
-			val, err := replicaCalculator.getReadyPodsCount(tc.scale, labels.SelectorFromSet(f.selector), readinessDelay*time.Second)
+			val, err := replicaCalculator.getReadyPodsCount(logf.Log, tc.scale, labels.SelectorFromSet(f.selector), readinessDelay*time.Second)
 			assert.Equal(t, f.expected, val)
 			if f.errorExpected != nil {
 				assert.EqualError(t, f.errorExpected, err.Error())
