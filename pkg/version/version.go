@@ -1,7 +1,7 @@
 // Unless explicitly stated otherwise all files in this repository are licensed
 // under the Apache License Version 2.0.
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
-// Copyright 2016-2019 Datadog, Inc.
+// Copyright 2016-2020 Datadog, Inc.
 
 package version
 
@@ -10,14 +10,12 @@ import (
 	"io"
 	"runtime"
 
-	sdkVersion "github.com/operator-framework/operator-sdk/version"
-
 	"github.com/go-logr/logr"
 )
 
 var (
 	// Version binary version
-	Version = "0.0.1"
+	Version = "0.0.0"
 	// BuildTime binary build time
 	BuildTime = ""
 	// Commit current git commit
@@ -49,7 +47,6 @@ func printVersionSlice() []string {
 		fmt.Sprintf("Git Commit: %v", Commit),
 		fmt.Sprintf("Go Version: %s", runtime.Version()),
 		fmt.Sprintf("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH),
-		fmt.Sprintf("Version of operator-sdk: %v", sdkVersion.Version),
 	}
 	return output
 }

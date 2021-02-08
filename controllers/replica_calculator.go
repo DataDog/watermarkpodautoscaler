@@ -1,9 +1,9 @@
 // Unless explicitly stated otherwise all files in this repository are licensed
 // under the Apache License Version 2.0.
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
-// Copyright 2016-2019 Datadog, Inc.
+// Copyright 2016-2020 Datadog, Inc.
 
-package watermarkpodautoscaler
+package controllers
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DataDog/watermarkpodautoscaler/pkg/apis/datadoghq/v1alpha1"
+	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
 
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
@@ -47,6 +47,7 @@ type ReplicaCalculator struct {
 
 // NewReplicaCalculator returns a ReplicaCalculator object reference
 func NewReplicaCalculator(metricsClient metricsclient.MetricsClient, podLister corelisters.PodLister) *ReplicaCalculator {
+
 	return &ReplicaCalculator{
 		metricsClient: metricsClient,
 		podLister:     podLister,
@@ -59,9 +60,9 @@ func NewReplicaCalculator(metricsClient metricsclient.MetricsClient, podLister c
 func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target *autoscalingv1.Scale, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (ReplicaCalculation, error) {
 	lbl, err := labels.Parse(target.Status.Selector)
 	if err != nil {
-		log.Error(err, "Could not parse the labels of the target")
+		logger.Error(err, "Could not parse the labels of the target")
 	}
-	currentReadyReplicas, err := c.getReadyPodsCount(target, lbl, time.Duration(wpa.Spec.ReadinessDelaySeconds)*time.Second)
+	currentReadyReplicas, err := c.getReadyPodsCount(logger, target, lbl, time.Duration(wpa.Spec.ReadinessDelaySeconds)*time.Second)
 	if err != nil {
 		return ReplicaCalculation{}, fmt.Errorf("unable to get the number of ready pods across all namespaces for %v: %s", lbl, err.Error())
 	}
@@ -207,7 +208,7 @@ func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas i
 	return replicaCount, utilizationQuantity.MilliValue()
 }
 
-func (c *ReplicaCalculator) getReadyPodsCount(target *autoscalingv1.Scale, selector labels.Selector, readinessDelay time.Duration) (int32, error) {
+func (c *ReplicaCalculator) getReadyPodsCount(log logr.Logger, target *autoscalingv1.Scale, selector labels.Selector, readinessDelay time.Duration) (int32, error) {
 	podList, err := c.podLister.Pods(target.Namespace).List(selector)
 	if err != nil {
 		return 0, fmt.Errorf("unable to get pods while calculating replica count: %v", err)
