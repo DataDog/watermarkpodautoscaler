@@ -1,23 +1,37 @@
-ARG TAG=0.2.0
-FROM golang:1.13 as build-env
-ARG TAG
-WORKDIR /src
+# Build the manager binary
+FROM golang:1.14 as builder
 
-COPY . .
-RUN make TAG=$TAG GOARGS="-mod=vendor" build
+WORKDIR /workspace
+# Copy the Go Modules manifests
+COPY go.mod go.mod
+COPY go.sum go.sum
+# cache deps before building and copying source so that we don't need to re-download as much
+# and so that source changes don't invalidate our downloaded layer
+RUN go mod download
 
-FROM registry.access.redhat.com/ubi7/ubi-minimal:latest AS final
+# Copy the go source
+COPY main.go main.go
+COPY api/ api/
+COPY controllers/ controllers/
+COPY pkg/ pkg/
 
-ENV OPERATOR=/usr/local/bin/watermarkpodautoscaler \
-    USER_UID=1001 \
-    USER_NAME=watermarkpodautoscaler
+# Build
+ARG LDFLAGS
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -ldflags "${LDFLAGS}" -o manager main.go
 
-# install operator binary
-COPY --from=build-env /src/controller ${OPERATOR}
+FROM registry.access.redhat.com/ubi8/ubi-minimal:latest
 
-COPY --from=build-env /src/build/bin /usr/local/bin
-RUN  /usr/local/bin/user_setup
+LABEL name="datadog/watermarkpodautoscaler"
+LABEL vendor="Datadog Inc."
+LABEL summary="The Watermarkpodautoscaler helps you autoscale resources"
 
-ENTRYPOINT ["/usr/local/bin/entrypoint"]
+WORKDIR /
+COPY --from=builder /workspace/manager .
 
-USER ${USER_UID}
+RUN mkdir -p /licences
+COPY ./LICENSE ./LICENSE-3rdparty.csv /licenses/
+RUN chmod -R 755 /licences
+
+USER 1001
+
+ENTRYPOINT ["/manager"]
