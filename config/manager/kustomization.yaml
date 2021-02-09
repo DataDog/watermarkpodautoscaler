@@ -1,0 +1,8 @@
+resources:
+- manager.yaml
+images:
+- name: watermarkpodautoscaler
+  newName: datadog/watermarkpodautoscaler
+  newTag: latest
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization

@@ -1,0 +1,20 @@
+# permissions for end users to view watermarkpodautoscalers.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: watermarkpodautoscaler-viewer-role
+rules:
+- apiGroups:
+  - datadoghq.com
+  resources:
+  - watermarkpodautoscalers
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - datadoghq.com
+  resources:
+  - watermarkpodautoscalers/status
+  verbs:
+  - get
