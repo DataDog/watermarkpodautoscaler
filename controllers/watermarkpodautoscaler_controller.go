@@ -417,13 +417,6 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 	replicaMin.With(labels).Set(minReplicas)
 	replicaMax.With(labels).Set(float64(wpa.Spec.MaxReplicas))
 
-	promLabelsForWpa := prometheus.Labels{
-		wpaNamePromLabel:           wpa.Name,
-		resourceNamespacePromLabel: wpa.Namespace,
-		resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
-		resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
-	}
-
 	for i, metricSpec := range wpa.Spec.Metrics {
 		if metricSpec.External == nil && metricSpec.Resource == nil {
 			continue
@@ -448,7 +441,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 
 				replicaCalculation, errMetricsServer := r.replicaCalc.GetExternalMetricReplicas(logger, scale, metricSpec, wpa)
 				if errMetricsServer != nil {
-					replicaProposal.Delete(promLabelsForWpa)
+					replicaProposal.Delete(promLabelsForWpaWithMetricName)
 					r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedGetExternalMetrics, errMetricsServer.Error())
 					setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedGetExternalMetrics, "the HPA was unable to compute the replica count: %v", errMetricsServer)
 					return 0, "", nil, time.Time{}, fmt.Errorf("failed to get external metric %s: %v", metricSpec.External.MetricName, errMetricsServer)
@@ -461,7 +454,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 				lowwmV2.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.External.LowWatermark.MilliValue()))
 				highwm.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.External.HighWatermark.MilliValue()))
 				highwmV2.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.External.HighWatermark.MilliValue()))
-				replicaProposal.With(promLabelsForWpa).Set(float64(replicaCountProposal))
+				replicaProposal.With(promLabelsForWpaWithMetricName).Set(float64(replicaCountProposal))
 
 				statuses[i] = autoscalingv2.MetricStatus{
 					Type: autoscalingv2.ExternalMetricSourceType,
@@ -490,7 +483,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 
 				replicaCalculation, errMetricsServer := r.replicaCalc.GetResourceReplicas(logger, scale, metricSpec, wpa)
 				if errMetricsServer != nil {
-					replicaProposal.Delete(promLabelsForWpa)
+					replicaProposal.Delete(promLabelsForWpaWithMetricName)
 					r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedGetResourceMetric, errMetricsServer.Error())
 					setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedGetResourceMetric, "the WPA was unable to compute the replica count: %v", errMetricsServer)
 					return 0, "", nil, time.Time{}, fmt.Errorf("failed to get resource metric %s: %v", metricSpec.Resource.Name, errMetricsServer)
@@ -503,7 +496,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 				lowwmV2.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.Resource.LowWatermark.MilliValue()))
 				highwm.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.Resource.HighWatermark.MilliValue()))
 				highwmV2.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.Resource.HighWatermark.MilliValue()))
-				replicaProposal.With(promLabelsForWpa).Set(float64(replicaCountProposal))
+				replicaProposal.With(promLabelsForWpaWithMetricName).Set(float64(replicaCountProposal))
 
 				statuses[i] = autoscalingv2.MetricStatus{
 					Type: autoscalingv2.ResourceMetricSourceType,

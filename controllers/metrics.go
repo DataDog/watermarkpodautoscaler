@@ -128,6 +128,7 @@ var (
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
 			resourceKindPromLabel,
+			metricNamePromLabel,
 		})
 	replicaEffective = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -212,7 +213,6 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 	}
 
 	if !onlyMetricsSpecific {
-		replicaProposal.Delete(promLabelsForWpa)
 		replicaEffective.Delete(promLabelsForWpa)
 		replicaMin.Delete(promLabelsForWpa)
 		replicaMax.Delete(promLabelsForWpa)
@@ -246,6 +246,7 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 
 		lowwm.Delete(promLabelsForWpa)
 		lowwmV2.Delete(promLabelsForWpa)
+		replicaProposal.Delete(promLabelsForWpa)
 		highwm.Delete(promLabelsForWpa)
 		highwmV2.Delete(promLabelsForWpa)
 		value.Delete(promLabelsForWpa)
