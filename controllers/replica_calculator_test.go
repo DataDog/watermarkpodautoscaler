@@ -303,9 +303,10 @@ func TestReplicaCalcDisjointResourcesMetrics(t *testing.T) {
 		expectedError: fmt.Errorf("no metrics returned from resource metrics API"),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "absolute",
-				Tolerance: *resource.NewQuantity(20, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewQuantity(20, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		scale: makeScale(testDeploymentName, 1, map[string]string{"name": "test-pod"}),
@@ -347,9 +348,42 @@ func TestReplicaCalcAbsoluteScaleUp(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "absolute",
-				Tolerance: *resource.NewMilliQuantity(25, resource.DecimalSI), // 25m represents 2.5%
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewMilliQuantity(25, resource.DecimalSI), // 25m represents 2.5%
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
+			},
+		},
+		metric: &metricInfo{
+			spec:                metric1,
+			levels:              []int64{90000, 90000, 90000}, // We are higher than the HighWatermark
+			expectedUtilization: 270000,
+		},
+	}
+	tc.runTest(t)
+}
+
+func TestScaleIntervalReplicaCalcAbsoluteScaleUp(t *testing.T) {
+	logf.SetLogger(logf.ZapLogger(true))
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ResourceMetricSourceType,
+		Resource: &v1alpha1.ResourceMetricSource{
+			Name:           corev1.ResourceCPU,
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
+			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
+		},
+	}
+
+	tc := replicaCalcTestCase{
+		expectedReplicas: 25, // 21 should be computed, but we round it up to the nearest interval of 5.
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewMilliQuantity(25, resource.DecimalSI), // 25m represents 2.5%
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(5),
 			},
 		},
 		metric: &metricInfo{
@@ -378,9 +412,42 @@ func TestReplicaCalcAbsoluteScaleDown(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "absolute",
-				Tolerance: *resource.NewMilliQuantity(20, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
+			},
+		},
+		metric: &metricInfo{
+			spec:                metric1,
+			levels:              []int64{4000, 4000, 4000}, // We are below the LowWatermark
+			expectedUtilization: 12000,
+		},
+	}
+	tc.runTest(t)
+}
+
+func TestScaleIntervalReplicaCalcAbsoluteScaleDown(t *testing.T) {
+	logf.SetLogger(logf.ZapLogger(true))
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ResourceMetricSourceType,
+		Resource: &v1alpha1.ResourceMetricSource{
+			Name:           corev1.ResourceCPU,
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
+			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
+		},
+	}
+
+	tc := replicaCalcTestCase{
+		expectedReplicas: 2,
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(2),
 			},
 		},
 		metric: &metricInfo{
@@ -409,9 +476,10 @@ func TestReplicaCalcAbsoluteScaleDownLessScale(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "absolute",
-				Tolerance: *resource.NewMilliQuantity(20, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		metric: &metricInfo{
@@ -443,9 +511,10 @@ func TestReplicaCalcAbsoluteScaleUpPendingLessScale(t *testing.T) {
 				// With the absolute algorithm, we will have a utilization of 120k compared to a HWM of 48k (inc. tolerance)
 				// There are 2 Running replicas.
 				// The resulting amount of replicas is 2 * 120 / 40 -> 6
-				Algorithm: "absolute",
-				Tolerance: *resource.NewMilliQuantity(20, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodRunning, corev1.PodRunning},
@@ -475,9 +544,10 @@ func TestReplicaCalcAbsoluteScaleUpPendingLessScaleExtraReplica(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "absolute",
-				Tolerance: *resource.NewMilliQuantity(20, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodRunning, corev1.PodRunning},
@@ -507,9 +577,10 @@ func TestReplicaCalcAbsoluteScaleUpPendingNoScale(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "absolute",
-				Tolerance: *resource.NewQuantity(20, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewQuantity(20, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodRunning},
@@ -539,9 +610,10 @@ func TestReplicaCalcAbsoluteScaleUpPendingNoScaleStretchTolerance(t *testing.T) 
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "absolute",
-				Tolerance: *resource.NewQuantity(20, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewQuantity(20, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodRunning},
@@ -571,9 +643,10 @@ func TestReplicaCalcAbsoluteScaleUpFailedLessScale(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "absolute",
-				Tolerance: *resource.NewMilliQuantity(20, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		podPhase: []corev1.PodPhase{corev1.PodFailed, corev1.PodRunning, corev1.PodRunning},
@@ -603,10 +676,11 @@ func TestReplicaCalcAbsoluteScaleUpUnreadyLessScale(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm:             "absolute",
-				Tolerance:             *resource.NewMilliQuantity(20, resource.DecimalSI),
-				Metrics:               []v1alpha1.MetricSpec{metric1},
-				ReadinessDelaySeconds: readinessDelay,
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReadinessDelaySeconds:  readinessDelay,
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		podCondition: []corev1.PodCondition{
@@ -649,9 +723,10 @@ func TestReplicaCalcAverageScaleUp(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "average",
-				Tolerance: *resource.NewMilliQuantity(20, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "average",
+				Tolerance:              *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		metric: &metricInfo{
@@ -680,9 +755,10 @@ func TestReplicaCalcAverageScaleDown(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "average",
-				Tolerance: *resource.NewMilliQuantity(20, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "average",
+				Tolerance:              *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		metric: &metricInfo{
@@ -711,9 +787,10 @@ func TestReplicaCalcAverageScaleDownLessScale(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "average",
-				Tolerance: *resource.NewMilliQuantity(20, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "average",
+				Tolerance:              *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		metric: &metricInfo{
@@ -742,9 +819,10 @@ func TestReplicaCalcAverageScaleUpPendingLessScale(t *testing.T) {
 		expectedReplicas: 3,
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "average",
-				Tolerance: *resource.NewMilliQuantity(20, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "average",
+				Tolerance:              *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodRunning, corev1.PodRunning},
@@ -774,9 +852,10 @@ func TestReplicaCalcAverageScaleUpPendingNoScale(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "average",
-				Tolerance: *resource.NewMilliQuantity(20, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "average",
+				Tolerance:              *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodRunning},
@@ -806,9 +885,10 @@ func TestReplicaCalcAverageScaleUpPendingNoScaleStretchTolerance(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "average",
-				Tolerance: *resource.NewMilliQuantity(20, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "average",
+				Tolerance:              *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodRunning},
@@ -838,9 +918,10 @@ func TestReplicaCalcAverageScaleUpFailedLessScale(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "average",
-				Tolerance: *resource.NewMilliQuantity(20, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "average",
+				Tolerance:              *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		podPhase: []corev1.PodPhase{corev1.PodFailed, corev1.PodRunning, corev1.PodRunning},
@@ -871,10 +952,11 @@ func TestReplicaCalcAverageScaleUpUnreadyLessScale(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm:             "average",
-				Tolerance:             *resource.NewMilliQuantity(20, resource.DecimalSI),
-				Metrics:               []v1alpha1.MetricSpec{metric1},
-				ReadinessDelaySeconds: readinessDelay,
+				Algorithm:              "average",
+				Tolerance:              *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReadinessDelaySeconds:  readinessDelay,
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		podCondition: []corev1.PodCondition{
@@ -924,9 +1006,10 @@ func TestReplicaCalcAboveAbsoluteExternal_Upscale1(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 4, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "absolute",
-				Tolerance: *resource.NewMilliQuantity(20, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		metric: &metricInfo{
@@ -955,9 +1038,10 @@ func TestReplicaCalcAboveAbsoluteExternal_Upscale2(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 9, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "absolute",
-				Tolerance: *resource.NewMilliQuantity(20, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		metric: &metricInfo{
@@ -987,9 +1071,10 @@ func TestReplicaCalcAboveAbsoluteExternal_Upscale3(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 20, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "absolute",
-				Tolerance: *resource.NewMilliQuantity(20, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		metric: &metricInfo{
@@ -1019,9 +1104,10 @@ func TestReplicaCalcWithinAbsoluteExternal(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 9, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "absolute",
-				Tolerance: *resource.NewMilliQuantity(200, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewMilliQuantity(200, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		metric: &metricInfo{
@@ -1055,9 +1141,10 @@ func TestReplicaCalcBelowAverageExternal_Downscale1(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 5, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "average",
-				Tolerance: *resource.NewMilliQuantity(10, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "average",
+				Tolerance:              *resource.NewMilliQuantity(10, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		metric: &metricInfo{
@@ -1087,9 +1174,10 @@ func TestReplicaCalcBelowAverageExternal_Downscale2(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 4, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "average",
-				Tolerance: *resource.NewMilliQuantity(10, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "average",
+				Tolerance:              *resource.NewMilliQuantity(10, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		metric: &metricInfo{
@@ -1119,9 +1207,10 @@ func TestReplicaCalcBelowAverageExternal_Downscale3(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "average",
-				Tolerance: *resource.NewMilliQuantity(10, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "average",
+				Tolerance:              *resource.NewMilliQuantity(10, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		metric: &metricInfo{
@@ -1151,9 +1240,10 @@ func TestPendingtExpiredScale(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "absolute",
-				Tolerance: *resource.NewMilliQuantity(10, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewMilliQuantity(10, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodRunning, corev1.PodRunning},
@@ -1188,10 +1278,11 @@ func TestPendingNotExpiredScale(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm:             "absolute",
-				Tolerance:             *resource.NewMilliQuantity(10, resource.DecimalSI),
-				ReadinessDelaySeconds: readinessDelay,
-				Metrics:               []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewMilliQuantity(10, resource.DecimalSI),
+				ReadinessDelaySeconds:  readinessDelay,
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodRunning},
@@ -1243,10 +1334,11 @@ func TestPendingExpiredHigherWatermarkDownscale(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm:             "absolute",
-				Tolerance:             *resource.NewMilliQuantity(10, resource.DecimalSI),
-				ReadinessDelaySeconds: readinessDelay,
-				Metrics:               []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewMilliQuantity(10, resource.DecimalSI),
+				ReadinessDelaySeconds:  readinessDelay,
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodRunning},
@@ -1299,10 +1391,11 @@ func TestPendingNotExpiredWithinBoundsNoScale(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm:             "absolute",
-				Tolerance:             *resource.NewMilliQuantity(10, resource.DecimalSI),
-				ReadinessDelaySeconds: readinessDelay,
-				Metrics:               []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewMilliQuantity(10, resource.DecimalSI),
+				ReadinessDelaySeconds:  readinessDelay,
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodRunning},
@@ -1354,10 +1447,11 @@ func TestPendingNotOverlyScaling(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 7, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm:             "absolute",
-				Tolerance:             *resource.NewMilliQuantity(10, resource.DecimalSI),
-				ReadinessDelaySeconds: readinessDelay,
-				Metrics:               []v1alpha1.MetricSpec{wpaMetricSpec},
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewMilliQuantity(10, resource.DecimalSI),
+				ReadinessDelaySeconds:  readinessDelay,
+				Metrics:                []v1alpha1.MetricSpec{wpaMetricSpec},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodRunning},
@@ -1429,8 +1523,9 @@ func TestPendingUnprotectedOverlyScaling(t *testing.T) {
 				Algorithm: "absolute",
 				Tolerance: *resource.NewMilliQuantity(10, resource.DecimalSI),
 				// High to force the consideration of pending pods as running
-				ReadinessDelaySeconds: 6000,
-				Metrics:               []v1alpha1.MetricSpec{metric1},
+				ReadinessDelaySeconds:  6000,
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		podPhase: []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodRunning},
@@ -1495,9 +1590,10 @@ func TestReplicaCalcBelowAverageExternal_Downscale4(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm: "average",
-				Tolerance: *resource.NewMilliQuantity(10, resource.DecimalSI),
-				Metrics:   []v1alpha1.MetricSpec{metric1},
+				Algorithm:              "average",
+				Tolerance:              *resource.NewMilliQuantity(10, resource.DecimalSI),
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(1),
 			},
 		},
 		metric: &metricInfo{
