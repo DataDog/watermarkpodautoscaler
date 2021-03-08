@@ -18,17 +18,17 @@ import (
 
 func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenAPIDefinition {
 	return map[string]common.OpenAPIDefinition{
-		"./api/v1alpha1.CrossVersionObjectReference":  schema__api_v1alpha1_CrossVersionObjectReference(ref),
-		"./api/v1alpha1.ExternalMetricSource":         schema__api_v1alpha1_ExternalMetricSource(ref),
-		"./api/v1alpha1.MetricSpec":                   schema__api_v1alpha1_MetricSpec(ref),
-		"./api/v1alpha1.ResourceMetricSource":         schema__api_v1alpha1_ResourceMetricSource(ref),
-		"./api/v1alpha1.WatermarkPodAutoscaler":       schema__api_v1alpha1_WatermarkPodAutoscaler(ref),
-		"./api/v1alpha1.WatermarkPodAutoscalerSpec":   schema__api_v1alpha1_WatermarkPodAutoscalerSpec(ref),
-		"./api/v1alpha1.WatermarkPodAutoscalerStatus": schema__api_v1alpha1_WatermarkPodAutoscalerStatus(ref),
+		"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1.CrossVersionObjectReference":  schema_DataDog_watermarkpodautoscaler_api_v1alpha1_CrossVersionObjectReference(ref),
+		"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1.ExternalMetricSource":         schema_DataDog_watermarkpodautoscaler_api_v1alpha1_ExternalMetricSource(ref),
+		"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1.MetricSpec":                   schema_DataDog_watermarkpodautoscaler_api_v1alpha1_MetricSpec(ref),
+		"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1.ResourceMetricSource":         schema_DataDog_watermarkpodautoscaler_api_v1alpha1_ResourceMetricSource(ref),
+		"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1.WatermarkPodAutoscaler":       schema_DataDog_watermarkpodautoscaler_api_v1alpha1_WatermarkPodAutoscaler(ref),
+		"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1.WatermarkPodAutoscalerSpec":   schema_DataDog_watermarkpodautoscaler_api_v1alpha1_WatermarkPodAutoscalerSpec(ref),
+		"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1.WatermarkPodAutoscalerStatus": schema_DataDog_watermarkpodautoscaler_api_v1alpha1_WatermarkPodAutoscalerStatus(ref),
 	}
 }
 
-func schema__api_v1alpha1_CrossVersionObjectReference(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_DataDog_watermarkpodautoscaler_api_v1alpha1_CrossVersionObjectReference(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -65,7 +65,7 @@ func schema__api_v1alpha1_CrossVersionObjectReference(ref common.ReferenceCallba
 	}
 }
 
-func schema__api_v1alpha1_ExternalMetricSource(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_DataDog_watermarkpodautoscaler_api_v1alpha1_ExternalMetricSource(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -105,7 +105,7 @@ func schema__api_v1alpha1_ExternalMetricSource(ref common.ReferenceCallback) com
 	}
 }
 
-func schema__api_v1alpha1_MetricSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_DataDog_watermarkpodautoscaler_api_v1alpha1_MetricSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -123,13 +123,13 @@ func schema__api_v1alpha1_MetricSpec(ref common.ReferenceCallback) common.OpenAP
 					"external": {
 						SchemaProps: spec.SchemaProps{
 							Description: "external refers to a global metric that is not associated with any Kubernetes object. It allows autoscaling based on information coming from components running outside of cluster (for example length of queue in cloud messaging service, or QPS from loadbalancer running outside of cluster).",
-							Ref:         ref("./api/v1alpha1.ExternalMetricSource"),
+							Ref:         ref("github.com/DataDog/watermarkpodautoscaler/api/v1alpha1.ExternalMetricSource"),
 						},
 					},
 					"resource": {
 						SchemaProps: spec.SchemaProps{
 							Description: "resource refers to a resource metric (such as those specified in requests and limits) known to Kubernetes describing each pod in the current scale target (e.g. CPU or memory). Such metrics are built in to Kubernetes, and have special scaling options on top of those available to normal per-pod metrics using the \"pods\" source.",
-							Ref:         ref("./api/v1alpha1.ResourceMetricSource"),
+							Ref:         ref("github.com/DataDog/watermarkpodautoscaler/api/v1alpha1.ResourceMetricSource"),
 						},
 					},
 				},
@@ -137,11 +137,11 @@ func schema__api_v1alpha1_MetricSpec(ref common.ReferenceCallback) common.OpenAP
 			},
 		},
 		Dependencies: []string{
-			"./api/v1alpha1.ExternalMetricSource", "./api/v1alpha1.ResourceMetricSource"},
+			"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1.ExternalMetricSource", "github.com/DataDog/watermarkpodautoscaler/api/v1alpha1.ResourceMetricSource"},
 	}
 }
 
-func schema__api_v1alpha1_ResourceMetricSource(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_DataDog_watermarkpodautoscaler_api_v1alpha1_ResourceMetricSource(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -181,7 +181,7 @@ func schema__api_v1alpha1_ResourceMetricSource(ref common.ReferenceCallback) com
 	}
 }
 
-func schema__api_v1alpha1_WatermarkPodAutoscaler(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_DataDog_watermarkpodautoscaler_api_v1alpha1_WatermarkPodAutoscaler(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -224,11 +224,11 @@ func schema__api_v1alpha1_WatermarkPodAutoscaler(ref common.ReferenceCallback) c
 			},
 		},
 		Dependencies: []string{
-			"./api/v1alpha1.WatermarkPodAutoscalerSpec", "./api/v1alpha1.WatermarkPodAutoscalerStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
+			"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1.WatermarkPodAutoscalerSpec", "github.com/DataDog/watermarkpodautoscaler/api/v1alpha1.WatermarkPodAutoscalerStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
 	}
 }
 
-func schema__api_v1alpha1_WatermarkPodAutoscalerSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_DataDog_watermarkpodautoscaler_api_v1alpha1_WatermarkPodAutoscalerSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -258,6 +258,13 @@ func schema__api_v1alpha1_WatermarkPodAutoscalerSpec(ref common.ReferenceCallbac
 						SchemaProps: spec.SchemaProps{
 							Description: "Percentage of replicas that can be removed in an downscale event. Parameter used to be a float, in order to support the transition seamlessly, we validate that it is [0;100[ in the code. ScaleDownLimitFactor == 0 means that downscaling will not be allowed for the target.",
 							Ref:         ref("k8s.io/apimachinery/pkg/api/resource.Quantity"),
+						},
+					},
+					"replicaScalingInterval": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Number of replicas to scale by at a time. When set, replicas added or removed must be a multiple of this parameter. Allows for special scaling patterns, for instance when an application requires a certain number of pods in multiple",
+							Type:        []string{"integer"},
+							Format:      "int32",
 						},
 					},
 					"tolerance": {
@@ -330,11 +337,11 @@ func schema__api_v1alpha1_WatermarkPodAutoscalerSpec(ref common.ReferenceCallbac
 			},
 		},
 		Dependencies: []string{
-			"./api/v1alpha1.CrossVersionObjectReference", "./api/v1alpha1.MetricSpec", "k8s.io/apimachinery/pkg/api/resource.Quantity"},
+			"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1.CrossVersionObjectReference", "github.com/DataDog/watermarkpodautoscaler/api/v1alpha1.MetricSpec", "k8s.io/apimachinery/pkg/api/resource.Quantity"},
 	}
 }
 
-func schema__api_v1alpha1_WatermarkPodAutoscalerStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_DataDog_watermarkpodautoscaler_api_v1alpha1_WatermarkPodAutoscalerStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
