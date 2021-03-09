@@ -440,7 +440,7 @@ func TestScaleIntervalReplicaCalcAbsoluteScaleDown(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		expectedReplicas: 2,
+		expectedReplicas: 2, // Replica scaling interval is 2, so we can't scale down to 1 replica even though that is our min.
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
