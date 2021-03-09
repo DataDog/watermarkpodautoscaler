@@ -395,6 +395,38 @@ func TestScaleIntervalReplicaCalcAbsoluteScaleUp(t *testing.T) {
 	tc.runTest(t)
 }
 
+func TestScaleIntervalReplicaCalcNoScale(t *testing.T) {
+	logf.SetLogger(logf.ZapLogger(true))
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ResourceMetricSourceType,
+		Resource: &v1alpha1.ResourceMetricSource{
+			Name:           corev1.ResourceCPU,
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
+			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
+		},
+	}
+
+	tc := replicaCalcTestCase{
+		expectedReplicas: 3, // Even though 3 is not divisible by our scaling interval, no scale up was required so we do nothing.
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				Algorithm:              "absolute",
+				Tolerance:              *resource.NewMilliQuantity(25, resource.DecimalSI), // 25m represents 2.5%
+				Metrics:                []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingInterval: v1alpha1.NewInt32(5),
+			},
+		},
+		metric: &metricInfo{
+			spec:                metric1,
+			levels:              []int64{9000, 9000, 9000}, // We are between the high and low watermarks.
+			expectedUtilization: 27000,
+		},
+	}
+	tc.runTest(t)
+}
+
 func TestReplicaCalcAbsoluteScaleDown(t *testing.T) {
 	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
