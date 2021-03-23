@@ -120,7 +120,7 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 	}
 
 	namespace := wpa.Namespace
-	metrics, timestamp, err := c.metricsClient.GetResourceMetric(resourceName, namespace, labelSelector)
+	metrics, timestamp, err := c.metricsClient.GetResourceMetric(resourceName, namespace, labelSelector, "")
 	if err != nil {
 		// When we add official support for several metrics, move this Delete to only occur if no metric is available at all.
 		labelsWithReason := prometheus.Labels{

@@ -174,7 +174,7 @@ vendor:
 	go mod vendor
 
 bin/kubebuilder:
-	./hack/install-kubebuilder.sh 2.3.1
+	./hack/install-kubebuilder.sh 2.3.2
 
 bin/openapi-gen:
 	go build -o ./bin/openapi-gen k8s.io/kube-openapi/cmd/openapi-gen
@@ -186,7 +186,7 @@ bin/golangci-lint:
 	hack/golangci-lint.sh v1.18.0
 
 bin/operator-sdk:
-	./hack/install-operator-sdk.sh v1.0.0
+	./hack/install-operator-sdk.sh v1.5.0
 
 bin/wwhrd:
 	./hack/install-wwhrd.sh 0.2.4

@@ -37,8 +37,9 @@ import (
 	"k8s.io/kubernetes/pkg/controller/podautoscaler/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
 
 var (
@@ -57,7 +58,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventRecorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "TestReconcileWatermarkPodAutoscaler"})
 
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	log := logf.Log.WithName("TestReconcileWatermarkPodAutoscaler_Reconcile")
 	s := scheme.Scheme
 	s.AddKnownTypes(v1alpha1.SchemeGroupVersion, &v1alpha1.WatermarkPodAutoscaler{})
@@ -83,7 +84,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 		{
 			name: "WatermarkPodAutoscaler not found",
 			fields: fields{
-				client:        fake.NewFakeClient(),
+				client:        fake.NewClientBuilder().Build(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				scheme:        s,
 				eventRecorder: eventRecorder,
@@ -97,7 +98,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 		{
 			name: "WatermarkPodAutoscaler found, but not defaulted",
 			fields: fields{
-				client:        fake.NewFakeClient(),
+				client:        fake.NewClientBuilder().Build(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				scheme:        s,
 				eventRecorder: eventRecorder,
@@ -114,7 +115,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 		{
 			name: "WatermarkPodAutoscalerfound and defaulted but invalid metric spec",
 			fields: fields{
-				client:        fake.NewFakeClient(),
+				client:        fake.NewClientBuilder().Build(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				scheme:        s,
 				eventRecorder: eventRecorder,
@@ -167,7 +168,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 		{
 			name: "WatermarkPodAutoscaler found and defaulted but invalid spec",
 			fields: fields{
-				client:        fake.NewFakeClient(),
+				client:        fake.NewClientBuilder().Build(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				scheme:        s,
 				eventRecorder: eventRecorder,
@@ -214,7 +215,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 		{
 			name: "WatermarkPodAutoscaler found and defaulted but invalid watermarks",
 			fields: fields{
-				client:        fake.NewFakeClient(),
+				client:        fake.NewClientBuilder().Build(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				scheme:        s,
 				eventRecorder: eventRecorder,
@@ -280,7 +281,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 			if tt.args.loadFunc != nil {
 				tt.args.loadFunc(r.Client)
 			}
-			got, err := r.Reconcile(tt.args.request)
+			got, err := r.Reconcile(context.TODO(), tt.args.request)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ReconcileWatermarkPodAutoscaler.Reconcile() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -312,7 +313,7 @@ type fakeMetricsClient struct {
 
 //// GetResourceMetric gets the given resource metric (and an associated oldest timestamp)
 //// for all pods matching the specified selector in the given namespace
-func (f fakeMetricsClient) GetResourceMetric(resource corev1.ResourceName, namespace string, selector labels.Selector) (metrics.PodMetricsInfo, time.Time, error) {
+func (f fakeMetricsClient) GetResourceMetric(resource corev1.ResourceName, namespace string, selector labels.Selector, container string) (metrics.PodMetricsInfo, time.Time, error) {
 	return nil, time.Time{}, nil
 }
 
@@ -343,7 +344,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventRecorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "TestReconcileWatermarkPodAutoscaler"})
 
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	s := scheme.Scheme
 
 	s.AddKnownTypes(appsv1.SchemeGroupVersion, &appsv1.Deployment{})
@@ -374,7 +375,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 		{
 			name: "WatermarkPodAutoscaler found and defaulted with valid watermarks",
 			fields: fields{
-				client:        fake.NewFakeClient(),
+				client:        fake.NewClientBuilder().Build(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
 				scheme:        s,
@@ -426,7 +427,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 		{
 			name: "Target deployment has 0 replicas",
 			fields: fields{
-				client:        fake.NewFakeClient(),
+				client:        fake.NewClientBuilder().Build(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
 				scheme:        s,
@@ -464,7 +465,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 		{
 			name: "Target deployment has more than MaxReplicas",
 			fields: fields{
-				client:        fake.NewFakeClient(),
+				client:        fake.NewClientBuilder().Build(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
 				scheme:        s,
@@ -505,7 +506,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 		{
 			name: "Target deployment has less than MinReplicas",
 			fields: fields{
-				client:        fake.NewFakeClient(),
+				client:        fake.NewClientBuilder().Build(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
 				scheme:        s,
@@ -547,7 +548,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 		{
 			name: "Target deployment has fewer replicas deployed than spec'ed",
 			fields: fields{
-				client:        fake.NewFakeClient(),
+				client:        fake.NewClientBuilder().Build(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
 				scheme:        s,
@@ -610,7 +611,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			if err := r.Client.Get(context.TODO(), types.NamespacedName{Name: tt.args.wpa.Name, Namespace: tt.args.wpa.Namespace}, wpa); err != nil {
 				t.Errorf("unable to get wpa, err: %v", err)
 			}
-			err := r.reconcileWPA(logf.Log.WithName(tt.name), wpa)
+			err := r.reconcileWPA(context.TODO(), logf.Log.WithName(tt.name), wpa)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ReconcileWatermarkPodAutoscaler.Reconcile() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -633,7 +634,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 	eventBroadcaster := record.NewBroadcaster()
 	eventRecorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "TestReconcileWatermarkPodAutoscaler"})
 
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 
 	type fields struct {
 		eventRecorder record.EventRecorder
@@ -819,7 +820,7 @@ func (f *fakeReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *
 }
 
 func TestDefaultWatermarkPodAutoscaler(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	tests := []struct {
 		name    string
 		wpaName string
@@ -950,7 +951,7 @@ func TestDefaultWatermarkPodAutoscaler(t *testing.T) {
 }
 
 func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 
 	type args struct {
 		wpa             *v1alpha1.WatermarkPodAutoscaler
@@ -1064,7 +1065,7 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 }
 
 func TestCalculateScaleUpLimit(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 
 	tests := []struct {
 		name            string
@@ -1113,7 +1114,7 @@ func TestCalculateScaleUpLimit(t *testing.T) {
 }
 
 func TestCalculateScaleDownLimit(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 
 	tests := []struct {
 		name            string
@@ -1172,7 +1173,7 @@ func makeWPAScaleFactor(scaleUpLimit, scaleDownLimit int32) *v1alpha1.WatermarkP
 }
 
 func TestConvertDesiredReplicasWithRules(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 
 	tests := []struct {
 		name                      string

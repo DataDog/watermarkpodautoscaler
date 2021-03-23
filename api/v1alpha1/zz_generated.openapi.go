@@ -38,6 +38,7 @@ func schema__api_v1alpha1_CrossVersionObjectReference(ref common.ReferenceCallba
 					"kind": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Kind of the referent; More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds\"",
+							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -45,6 +46,7 @@ func schema__api_v1alpha1_CrossVersionObjectReference(ref common.ReferenceCallba
 					"name": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Name of the referent; More info: http://kubernetes.io/docs/user-guide/identifiers#names",
+							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -73,6 +75,7 @@ func schema__api_v1alpha1_ExternalMetricSource(ref common.ReferenceCallback) com
 					"metricName": {
 						SchemaProps: spec.SchemaProps{
 							Description: "metricName is the name of the metric in question.",
+							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -112,6 +115,7 @@ func schema__api_v1alpha1_MetricSpec(ref common.ReferenceCallback) common.OpenAP
 					"type": {
 						SchemaProps: spec.SchemaProps{
 							Description: "type is the type of metric source.  It should be one of \"Object\", \"Pods\" or \"Resource\", each mapping to a matching field in the object.",
+							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -147,6 +151,7 @@ func schema__api_v1alpha1_ResourceMetricSource(ref common.ReferenceCallback) com
 					"name": {
 						SchemaProps: spec.SchemaProps{
 							Description: "name is the name of the resource in question.",
+							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -199,17 +204,20 @@ func schema__api_v1alpha1_WatermarkPodAutoscaler(ref common.ReferenceCallback) c
 					},
 					"metadata": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"),
+							Default: map[string]interface{}{},
+							Ref:     ref("k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"),
 						},
 					},
 					"spec": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("./api/v1alpha1.WatermarkPodAutoscalerSpec"),
+							Default: map[string]interface{}{},
+							Ref:     ref("./api/v1alpha1.WatermarkPodAutoscalerSpec"),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("./api/v1alpha1.WatermarkPodAutoscalerStatus"),
+							Default: map[string]interface{}{},
+							Ref:     ref("./api/v1alpha1.WatermarkPodAutoscalerStatus"),
 						},
 					},
 				},
@@ -255,6 +263,7 @@ func schema__api_v1alpha1_WatermarkPodAutoscalerSpec(ref common.ReferenceCallbac
 					"tolerance": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Parameter used to be a float, in order to support the transition seamlessly, we validate that it is ]0;1[ in the code.",
+							Default:     map[string]interface{}{},
 							Ref:         ref("k8s.io/apimachinery/pkg/api/resource.Quantity"),
 						},
 					},
@@ -275,6 +284,7 @@ func schema__api_v1alpha1_WatermarkPodAutoscalerSpec(ref common.ReferenceCallbac
 					"scaleTargetRef": {
 						SchemaProps: spec.SchemaProps{
 							Description: "part of HorizontalPodAutoscalerSpec, see comments in the k8s-1.10.8 repo: staging/src/k8s.io/api/autoscaling/v1/types.go reference to scaled resource; horizontal pod autoscaler will learn the current resource consumption and will set the desired number of pods by using its Scale subresource.",
+							Default:     map[string]interface{}{},
 							Ref:         ref("./api/v1alpha1.CrossVersionObjectReference"),
 						},
 					},
@@ -290,7 +300,8 @@ func schema__api_v1alpha1_WatermarkPodAutoscalerSpec(ref common.ReferenceCallbac
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
-										Ref: ref("./api/v1alpha1.MetricSpec"),
+										Default: map[string]interface{}{},
+										Ref:     ref("./api/v1alpha1.MetricSpec"),
 									},
 								},
 							},
@@ -343,14 +354,16 @@ func schema__api_v1alpha1_WatermarkPodAutoscalerStatus(ref common.ReferenceCallb
 					},
 					"currentReplicas": {
 						SchemaProps: spec.SchemaProps{
-							Type:   []string{"integer"},
-							Format: "int32",
+							Default: 0,
+							Type:    []string{"integer"},
+							Format:  "int32",
 						},
 					},
 					"desiredReplicas": {
 						SchemaProps: spec.SchemaProps{
-							Type:   []string{"integer"},
-							Format: "int32",
+							Default: 0,
+							Type:    []string{"integer"},
+							Format:  "int32",
 						},
 					},
 					"currentMetrics": {
@@ -364,7 +377,8 @@ func schema__api_v1alpha1_WatermarkPodAutoscalerStatus(ref common.ReferenceCallb
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
-										Ref: ref("k8s.io/api/autoscaling/v2beta1.MetricStatus"),
+										Default: map[string]interface{}{},
+										Ref:     ref("k8s.io/api/autoscaling/v2beta1.MetricStatus"),
 									},
 								},
 							},
@@ -381,7 +395,8 @@ func schema__api_v1alpha1_WatermarkPodAutoscalerStatus(ref common.ReferenceCallb
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
-										Ref: ref("k8s.io/api/autoscaling/v2beta1.HorizontalPodAutoscalerCondition"),
+										Default: map[string]interface{}{},
+										Ref:     ref("k8s.io/api/autoscaling/v2beta1.HorizontalPodAutoscalerCondition"),
 									},
 								},
 							},

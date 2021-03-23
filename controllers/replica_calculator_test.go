@@ -31,7 +31,8 @@ import (
 	metricsapi "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	metricsfake "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 	emfake "k8s.io/metrics/pkg/client/external_metrics/fake"
-	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
 type resourceInfo struct {
@@ -236,7 +237,7 @@ func (tc *replicaCalcTestCase) prepareTestClientSet() *fake.Clientset {
 }
 
 func (tc *replicaCalcTestCase) runTest(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	tc.namespace = testNamespace
 	fakeClient := tc.prepareTestClientSet()
 
@@ -287,7 +288,7 @@ func (tc *replicaCalcTestCase) runTest(t *testing.T) {
 }
 
 func TestReplicaCalcDisjointResourcesMetrics(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
@@ -330,7 +331,7 @@ func makeScale(_ string, currentReplicas int32, labelsMap map[string]string) *au
 }
 
 func TestReplicaCalcAbsoluteScaleUp(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
@@ -361,7 +362,7 @@ func TestReplicaCalcAbsoluteScaleUp(t *testing.T) {
 }
 
 func TestReplicaCalcAbsoluteScaleDown(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
@@ -392,7 +393,7 @@ func TestReplicaCalcAbsoluteScaleDown(t *testing.T) {
 }
 
 func TestReplicaCalcAbsoluteScaleDownLessScale(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
@@ -423,7 +424,7 @@ func TestReplicaCalcAbsoluteScaleDownLessScale(t *testing.T) {
 }
 
 func TestReplicaCalcAbsoluteScaleUpPendingLessScale(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
@@ -458,7 +459,7 @@ func TestReplicaCalcAbsoluteScaleUpPendingLessScale(t *testing.T) {
 }
 
 func TestReplicaCalcAbsoluteScaleUpPendingLessScaleExtraReplica(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
@@ -490,7 +491,7 @@ func TestReplicaCalcAbsoluteScaleUpPendingLessScaleExtraReplica(t *testing.T) {
 }
 
 func TestReplicaCalcAbsoluteScaleUpPendingNoScale(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
@@ -522,7 +523,7 @@ func TestReplicaCalcAbsoluteScaleUpPendingNoScale(t *testing.T) {
 }
 
 func TestReplicaCalcAbsoluteScaleUpPendingNoScaleStretchTolerance(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
@@ -554,7 +555,7 @@ func TestReplicaCalcAbsoluteScaleUpPendingNoScaleStretchTolerance(t *testing.T) 
 }
 
 func TestReplicaCalcAbsoluteScaleUpFailedLessScale(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
@@ -586,7 +587,7 @@ func TestReplicaCalcAbsoluteScaleUpFailedLessScale(t *testing.T) {
 }
 
 func TestReplicaCalcAbsoluteScaleUpUnreadyLessScale(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
@@ -632,7 +633,7 @@ func TestReplicaCalcAbsoluteScaleUpUnreadyLessScale(t *testing.T) {
 }
 
 func TestReplicaCalcAverageScaleUp(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
@@ -663,7 +664,7 @@ func TestReplicaCalcAverageScaleUp(t *testing.T) {
 }
 
 func TestReplicaCalcAverageScaleDown(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
@@ -694,7 +695,7 @@ func TestReplicaCalcAverageScaleDown(t *testing.T) {
 }
 
 func TestReplicaCalcAverageScaleDownLessScale(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
@@ -725,7 +726,7 @@ func TestReplicaCalcAverageScaleDownLessScale(t *testing.T) {
 }
 
 func TestReplicaCalcAverageScaleUpPendingLessScale(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
@@ -757,7 +758,7 @@ func TestReplicaCalcAverageScaleUpPendingLessScale(t *testing.T) {
 }
 
 func TestReplicaCalcAverageScaleUpPendingNoScale(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
@@ -789,7 +790,7 @@ func TestReplicaCalcAverageScaleUpPendingNoScale(t *testing.T) {
 }
 
 func TestReplicaCalcAverageScaleUpPendingNoScaleStretchTolerance(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
@@ -821,7 +822,7 @@ func TestReplicaCalcAverageScaleUpPendingNoScaleStretchTolerance(t *testing.T) {
 }
 
 func TestReplicaCalcAverageScaleUpFailedLessScale(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
@@ -853,7 +854,7 @@ func TestReplicaCalcAverageScaleUpFailedLessScale(t *testing.T) {
 }
 
 func TestReplicaCalcAverageScaleUpUnreadyLessScale(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
@@ -907,7 +908,7 @@ func TestReplicaCalcAverageScaleUpUnreadyLessScale(t *testing.T) {
 // Here one replicas can handle between 20% and 40 % of CPU usage and we currently have 4.
 // If we see that the application is running at 86% of CPU we need to at least double the number of replicas. (Upscale1 and Upscale2)
 func TestReplicaCalcAboveAbsoluteExternal_Upscale1(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ExternalMetricSourceType,
@@ -938,7 +939,7 @@ func TestReplicaCalcAboveAbsoluteExternal_Upscale1(t *testing.T) {
 }
 
 func TestReplicaCalcAboveAbsoluteExternal_Upscale2(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ExternalMetricSourceType,
@@ -970,7 +971,7 @@ func TestReplicaCalcAboveAbsoluteExternal_Upscale2(t *testing.T) {
 
 // Similarly if we the average CPU consumption is down to 2% (ten times smaller than the low watermark), we want to divide by 10 the number of replicas.
 func TestReplicaCalcAboveAbsoluteExternal_Upscale3(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ExternalMetricSourceType,
@@ -1002,7 +1003,7 @@ func TestReplicaCalcAboveAbsoluteExternal_Upscale3(t *testing.T) {
 
 // TestReplicaCalcWithinAbsoluteExternal shows the impact of the tolerance. Here we are just below the Adjusted High Watermark
 func TestReplicaCalcWithinAbsoluteExternal(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ExternalMetricSourceType,
@@ -1038,7 +1039,7 @@ func TestReplicaCalcWithinAbsoluteExternal(t *testing.T) {
 // Here one replicas can handle between 75 and 85 qps and we currently have 5 (which means we should serve between 375-425 qps at the LB level)
 // Going to 370 we only need 4 replicas and we can handle between 300-340 qps.
 func TestReplicaCalcBelowAverageExternal_Downscale1(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ExternalMetricSourceType,
@@ -1070,7 +1071,7 @@ func TestReplicaCalcBelowAverageExternal_Downscale1(t *testing.T) {
 
 // We see fewer qps, down to 240, which would yield 3 replicas.
 func TestReplicaCalcBelowAverageExternal_Downscale2(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ExternalMetricSourceType,
@@ -1102,7 +1103,7 @@ func TestReplicaCalcBelowAverageExternal_Downscale2(t *testing.T) {
 
 // We keep seeing the same number of qps to the load balancer, we stay at 3 replicas
 func TestReplicaCalcBelowAverageExternal_Downscale3(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ExternalMetricSourceType,
@@ -1134,7 +1135,7 @@ func TestReplicaCalcBelowAverageExternal_Downscale3(t *testing.T) {
 
 // We have pods that are pending and not within an acceptable window.
 func TestPendingtExpiredScale(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ExternalMetricSourceType,
@@ -1167,7 +1168,7 @@ func TestPendingtExpiredScale(t *testing.T) {
 
 // We have pods that are pending and one is within an acceptable window.
 func TestPendingNotExpiredScale(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ExternalMetricSourceType,
@@ -1223,7 +1224,7 @@ func TestPendingNotExpiredScale(t *testing.T) {
 
 // We have pods that are expired and only one is above the HWM so we end up downscaling.
 func TestPendingExpiredHigherWatermarkDownscale(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ExternalMetricSourceType,
@@ -1278,7 +1279,7 @@ func TestPendingExpiredHigherWatermarkDownscale(t *testing.T) {
 
 // We have pods that are pending and one is within an acceptable window.
 func TestPendingNotExpiredWithinBoundsNoScale(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ExternalMetricSourceType,
@@ -1334,7 +1335,7 @@ func TestPendingNotExpiredWithinBoundsNoScale(t *testing.T) {
 
 // We have pods that are pending and one is within an acceptable window.
 func TestPendingNotOverlyScaling(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	wpaMetricSpec := v1alpha1.MetricSpec{
 		Type: v1alpha1.ExternalMetricSourceType,
 		External: &v1alpha1.ExternalMetricSource{
@@ -1405,7 +1406,7 @@ func TestPendingNotOverlyScaling(t *testing.T) {
 
 // We have pods that are pending and one is within an acceptable window.
 func TestPendingUnprotectedOverlyScaling(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ExternalMetricSourceType,
@@ -1478,7 +1479,7 @@ func TestPendingUnprotectedOverlyScaling(t *testing.T) {
 
 // We now see a surge back to the initial value of 375, which means 5 replicas
 func TestReplicaCalcBelowAverageExternal_Downscale4(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ExternalMetricSourceType,
@@ -1509,7 +1510,7 @@ func TestReplicaCalcBelowAverageExternal_Downscale4(t *testing.T) {
 }
 
 func TestGroupPods(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 
 	tests := []struct {
 		name                string
@@ -2002,7 +2003,7 @@ func TestRemoveMetricsForPods(t *testing.T) {
 }
 
 func TestGetReadyPodsCount(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 
 	now := metav1.Now()
 	startTime := metav1.Unix(now.Unix()-120, 0)
