@@ -14,26 +14,26 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	apiregistrationv1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // InitMetricsServerFiles used to initialize the fake-custom-metrics-server
-func InitMetricsServerFiles(r io.Writer, deployDir, namespace string) ([]runtime.Object, error) {
+func InitMetricsServerFiles(r io.Writer, deployDir, namespace string) ([]client.Object, error) {
 	files, err := ioutil.ReadDir(deployDir)
 	if err != nil {
 		return nil, err
 	}
 
-	var serviceAccountList []runtime.Object
-	var serviceList []runtime.Object
-	var roleList []runtime.Object
-	var roleBindingList []runtime.Object
-	var clusterRoleList []runtime.Object
-	var clusterRoleBindingList []runtime.Object
-	var deploymentList []runtime.Object
-	var apiServiceList []runtime.Object
+	var serviceAccountList []client.Object
+	var serviceList []client.Object
+	var roleList []client.Object
+	var roleBindingList []client.Object
+	var clusterRoleList []client.Object
+	var clusterRoleBindingList []client.Object
+	var deploymentList []client.Object
+	var apiServiceList []client.Object
 
 	for _, file := range files {
 		if file.IsDir() {
@@ -104,7 +104,7 @@ func InitMetricsServerFiles(r io.Writer, deployDir, namespace string) ([]runtime
 			fmt.Fprintf(r, "unknow resource: %v", o)
 		}
 	}
-	var objs []runtime.Object
+	var objs []client.Object
 	objs = append(objs, serviceAccountList...)
 	objs = append(objs, roleList...)
 	objs = append(objs, clusterRoleList...)

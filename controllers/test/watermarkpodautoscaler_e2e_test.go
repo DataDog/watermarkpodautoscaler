@@ -12,7 +12,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 
 	dynclient "sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -72,7 +71,7 @@ func ginkgoLog(format string, a ...interface{}) {
 var _ = Describe("WatermarkPodAutoscaler Controller", func() {
 	namespace := testConfig.namespace
 	ctx := context.Background()
-	alreadyExistingObjs := make(map[runtime.Object]bool)
+	alreadyExistingObjs := make(map[dynclient.Object]bool)
 	BeforeEach(func() {
 		objs, err := metricsserver.InitMetricsServerFiles(GinkgoWriter, "../../test/e2e/metricsserver/deploy", namespace)
 		Expect(err).Should(Succeed())

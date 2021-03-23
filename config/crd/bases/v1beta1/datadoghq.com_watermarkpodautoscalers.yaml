@@ -328,6 +328,45 @@ spec:
                 description: MetricStatus describes the last-read state of a single
                   metric.
                 properties:
+                  containerResource:
+                    description: container resource refers to a resource metric (such
+                      as those specified in requests and limits) known to Kubernetes
+                      describing a single container in each pod in the current scale
+                      target (e.g. CPU or memory). Such metrics are built in to Kubernetes,
+                      and have special scaling options on top of those available to
+                      normal per-pod metrics using the "pods" source.
+                    properties:
+                      container:
+                        description: container is the name of the container in the
+                          pods of the scaling target
+                        type: string
+                      currentAverageUtilization:
+                        description: currentAverageUtilization is the current value
+                          of the average of the resource metric across all relevant
+                          pods, represented as a percentage of the requested value
+                          of the resource for the pods.  It will only be present if
+                          `targetAverageValue` was set in the corresponding metric
+                          specification.
+                        format: int32
+                        type: integer
+                      currentAverageValue:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: currentAverageValue is the current value of the
+                          average of the resource metric across all relevant pods,
+                          as a raw value (instead of as a percentage of the request),
+                          similar to the "pods" metric source type. It will always
+                          be set, regardless of the corresponding metric specification.
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      name:
+                        description: name is the name of the resource in question.
+                        type: string
+                    required:
+                    - container
+                    - currentAverageValue
+                    - name
+                    type: object
                   external:
                     description: external refers to a global metric that is not associated
                       with any Kubernetes object. It allows autoscaling based on information
@@ -599,9 +638,11 @@ spec:
                     - name
                     type: object
                   type:
-                    description: type is the type of metric source.  It will be one
-                      of "Object", "Pods" or "Resource", each corresponds to a matching
-                      field in the object.
+                    description: 'type is the type of metric source.  It will be one
+                      of "ContainerResource", "External", "Object", "Pods" or "Resource",
+                      each corresponds to a matching field in the object. Note: "ContainerResource"
+                      type is available on when the feature-gate HPAContainerMetrics
+                      is enabled'
                     type: string
                 required:
                 - type
