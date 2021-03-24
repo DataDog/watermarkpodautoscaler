@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -47,12 +48,14 @@ func main() {
 	var enableLeaderElection bool
 	var printVersionArg bool
 	var logEncoder string
+	var syncPeriodSeconds int
 	flag.BoolVar(&printVersionArg, "version", false, "print version and exit")
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", true,
 		"Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.")
 	flag.IntVar(&healthPort, "health-port", healthPort, "Port to use for the health probe")
 	flag.StringVar(&logEncoder, "logEncoder", "json", "log encoding ('json' or 'console')")
+	flag.IntVar(&syncPeriodSeconds, "syncPeriodSeconds", 60*60, "The informers resync period in seconds") // default 1 hour
 	logLevel := zap.LevelFlag("loglevel", zapcore.InfoLevel, "Set log level")
 
 	flag.Parse()
@@ -67,6 +70,7 @@ func main() {
 	}
 	version.PrintVersionLogs(setupLog)
 
+	syncDuration := time.Duration(syncPeriodSeconds) * time.Second
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), config.ManagerOptionsWithNamespaces(setupLog, ctrl.Options{
 		Scheme:                 scheme,
 		MetricsBindAddress:     fmt.Sprintf("%s:%d", host, metricsPort),
@@ -74,6 +78,7 @@ func main() {
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "watermarkpodautoscaler-lock",
 		HealthProbeBindAddress: fmt.Sprintf("%s:%d", host, healthPort),
+		SyncPeriod:             &syncDuration,
 	}))
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
