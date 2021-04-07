@@ -238,6 +238,14 @@ spec:
               format: int32
               minimum: 1
               type: integer
+            replicaScalingAbsoluteModulo:
+              description: Number of replicas to scale by at a time. When set, replicas
+                added or removed must be a multiple of this parameter. Allows for
+                special scaling patterns, for instance when an application requires
+                a certain number of pods in multiple
+              format: int32
+              minimum: 1
+              type: integer
             scaleDownLimitFactor:
               anyOf:
               - type: integer

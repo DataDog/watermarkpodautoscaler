@@ -66,6 +66,11 @@ type WatermarkPodAutoscalerSpec struct {
 	// ScaleDownLimitFactor == 0 means that downscaling will not be allowed for the target.
 	ScaleDownLimitFactor *resource.Quantity `json:"scaleDownLimitFactor,omitempty"`
 
+	// Number of replicas to scale by at a time. When set, replicas added or removed must be a multiple of this parameter.
+	// Allows for special scaling patterns, for instance when an application requires a certain number of pods in multiple
+	// +kubebuilder:validation:Minimum=1
+	ReplicaScalingAbsoluteModulo *int32 `json:"replicaScalingAbsoluteModulo,omitempty"`
+
 	// Parameter used to be a float, in order to support the transition seamlessly, we validate that it is ]0;1[ in the code.
 	Tolerance resource.Quantity `json:"tolerance,omitempty"`
 

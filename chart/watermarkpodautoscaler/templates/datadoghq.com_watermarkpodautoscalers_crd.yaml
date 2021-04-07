@@ -155,6 +155,11 @@ spec:
               format: int32
               minimum: 1
               type: integer
+            replicaScalingAbsoluteModulo:
+              description: The number of replicas to scale up or down by at a time.
+              format: int32
+              minimum: 1
+              type: integer
             scaleDownLimitFactor:
               description: Percentage of replicas that can be added in an upscale
                 event. Max value will set the limit at the Maximum number of Replicas.

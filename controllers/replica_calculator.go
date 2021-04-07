@@ -187,12 +187,20 @@ func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas i
 	switch {
 	case adjustedUsage > adjustedHM:
 		replicaCount = int32(math.Ceil(float64(currentReadyReplicas) * adjustedUsage / (float64(highMark.MilliValue()))))
+		// Scale up the computed replica count so that it is evenly divisible by the ReplicaScalingAbsoluteModulo.
+		if replicaScalingAbsoluteModuloRemainder := int32(math.Mod(float64(replicaCount), float64(*wpa.Spec.ReplicaScalingAbsoluteModulo))); replicaScalingAbsoluteModuloRemainder > 0 {
+			replicaCount += *wpa.Spec.ReplicaScalingAbsoluteModulo - replicaScalingAbsoluteModuloRemainder
+		}
 		// tolerance: milliValue/10 to represent the %.
 		logger.Info("Value is above highMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "tolerance (%):", float64(wpa.Spec.Tolerance.MilliValue())/10, "adjustedHM", adjustedHM, "adjustedUsage", adjustedUsage)
 	case adjustedUsage < adjustedLM:
 		replicaCount = int32(math.Floor(float64(currentReadyReplicas) * adjustedUsage / (float64(lowMark.MilliValue()))))
 		// Keep a minimum of 1 replica
 		replicaCount = int32(math.Max(float64(replicaCount), 1))
+		if replicaScalingAbsoluteModuloRemainder := int32(math.Mod(float64(replicaCount), float64(*wpa.Spec.ReplicaScalingAbsoluteModulo))); replicaScalingAbsoluteModuloRemainder > 0 {
+			// Scale up the computed replica count so that it is evenly divisible by the ReplicaScalingAbsoluteModulo.
+			replicaCount += *wpa.Spec.ReplicaScalingAbsoluteModulo - replicaScalingAbsoluteModuloRemainder
+		}
 		logger.Info("Value is below lowMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "tolerance (%):", float64(wpa.Spec.Tolerance.MilliValue())/10, "adjustedLM", adjustedLM, "adjustedUsage", adjustedUsage)
 	default:
 		restrictedScaling.With(labelsWithReason).Set(1)
