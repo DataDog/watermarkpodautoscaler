@@ -364,7 +364,7 @@ func TestReplicaCalcAbsoluteScaleUp(t *testing.T) {
 }
 
 func TestScaleIntervalReplicaCalcAbsoluteScaleUp(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
@@ -396,7 +396,7 @@ func TestScaleIntervalReplicaCalcAbsoluteScaleUp(t *testing.T) {
 }
 
 func TestScaleIntervalReplicaCalcNoScale(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
@@ -460,7 +460,7 @@ func TestReplicaCalcAbsoluteScaleDown(t *testing.T) {
 }
 
 func TestScaleIntervalReplicaCalcAbsoluteScaleDown(t *testing.T) {
-	logf.SetLogger(logf.ZapLogger(true))
+	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ResourceMetricSourceType,
 		Resource: &v1alpha1.ResourceMetricSource{
