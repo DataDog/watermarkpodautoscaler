@@ -18,9 +18,9 @@ const (
 	defaultScaleDownLimitFactor            = 20
 	defaultScaleUpLimitFactor              = 50
 	// Most common use case is to autoscale over avg:kubernetes.cpu.usage, which directly correlates to the # replicas.
-	defaultAlgorithm                    = "absolute"
-	defaultMinReplicas            int32 = 1
-	defaultReplicaScalingInterval int32 = 1
+	defaultAlgorithm                          = "absolute"
+	defaultMinReplicas                  int32 = 1
+	defaultReplicaScalingAbsoluteModulo int32 = 1
 )
 
 // DefaultWatermarkPodAutoscaler sets the default in the WPA
@@ -30,8 +30,8 @@ func DefaultWatermarkPodAutoscaler(wpa *WatermarkPodAutoscaler) *WatermarkPodAut
 	if wpa.Spec.MinReplicas == nil {
 		defaultWPA.Spec.MinReplicas = NewInt32(defaultMinReplicas)
 	}
-	if wpa.Spec.ReplicaScalingInterval == nil {
-		defaultWPA.Spec.ReplicaScalingInterval = NewInt32(defaultReplicaScalingInterval)
+	if wpa.Spec.ReplicaScalingAbsoluteModulo == nil {
+		defaultWPA.Spec.ReplicaScalingAbsoluteModulo = NewInt32(defaultReplicaScalingAbsoluteModulo)
 	}
 	if wpa.Spec.Algorithm == "" {
 		defaultWPA.Spec.Algorithm = defaultAlgorithm

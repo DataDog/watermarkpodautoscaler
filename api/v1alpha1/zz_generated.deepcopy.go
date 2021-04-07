@@ -187,8 +187,8 @@ func (in *WatermarkPodAutoscalerSpec) DeepCopyInto(out *WatermarkPodAutoscalerSp
 		x := (*in).DeepCopy()
 		*out = &x
 	}
-	if in.ReplicaScalingInterval != nil {
-		in, out := &in.ReplicaScalingInterval, &out.ReplicaScalingInterval
+	if in.ReplicaScalingAbsoluteModulo != nil {
+		in, out := &in.ReplicaScalingAbsoluteModulo, &out.ReplicaScalingAbsoluteModulo
 		*out = new(int32)
 		**out = **in
 	}

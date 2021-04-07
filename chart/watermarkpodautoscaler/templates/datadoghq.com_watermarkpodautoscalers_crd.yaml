@@ -155,7 +155,7 @@ spec:
               format: int32
               minimum: 1
               type: integer
-            replicaScalingInterval:
+            replicaScalingAbsoluteModulo:
               description: The number of replicas to scale up or down by at a time.
               format: int32
               minimum: 1
