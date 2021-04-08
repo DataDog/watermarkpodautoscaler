@@ -11,6 +11,7 @@ DATE=$(shell date +%Y-%m-%d/%H:%M:%S )
 LDFLAGS=-w -s -X ${BUILDINFOPKG}.Commit=${GIT_COMMIT} -X ${BUILDINFOPKG}.Version=${VERSION} -X ${BUILDINFOPKG}.BuildTime=${DATE}
 CHANNELS=alpha
 DEFAULT_CHANNEL=alpha
+GOARCH?=amd64
 
 # Default bundle image tag
 BUNDLE_IMG ?= controller-bundle:$(VERSION)
@@ -88,7 +89,7 @@ generate: controller-gen generate-openapi
 docker-build: generate docker-build-ci
 
 docker-build-ci:
-	docker build . -t ${IMG} --build-arg LDFLAGS="${LDFLAGS}"
+	docker build . -t ${IMG} --build-arg LDFLAGS="${LDFLAGS}" --build-arg GOARCH="${GOARCH}"
 
 # Push the docker image
 docker-push:

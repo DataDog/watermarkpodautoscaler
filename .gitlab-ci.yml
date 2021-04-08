@@ -2,10 +2,9 @@ image: golang:1.15
 variables:
   GO111MODULE: "on"
   PROJECTNAME: "watermarkpodautoscaler"
-  TARGET_TAG: v$CI_PIPELINE_ID-$CI_COMMIT_SHORT_SHA
-  DOCKER_REGISTRY: "486234852809.dkr.ecr.us-east-1.amazonaws.com/ci"
   GOPATH: "$CI_PROJECT_DIR/.cache"
-  FAKE_EXTERNALSERVER_DOCKER_IMAGE: docker.io/cedriclamoriniere/fake-custom-metrics-server:latest
+  TARGET_TAG: v$CI_PIPELINE_ID-$CI_COMMIT_SHORT_SHA
+  BUILD_DOCKER_REGISTRY: "486234852809.dkr.ecr.us-east-1.amazonaws.com/ci"
 cache: &global_cache
   key: ${CI_COMMIT_REF_SLUG}
   paths:
@@ -16,7 +15,6 @@ stages:
   - build
   - test
   - image
-  - test-e2e
   - release
 
 before_script:
@@ -29,7 +27,7 @@ build:
   script:
   - make build
 
-unit_tests:
+tests:
   stage: test
   tags: [ "runner:main", "size:large" ]
   script:
@@ -39,34 +37,94 @@ generate_code:
   stage: test
   tags: [ "runner:main", "size:large" ]
   script:
-    - make generate manifests
-    - git diff --exit-code
+  - make generate
+  - git diff --exit-code
 
-lint_code:
-  stage: test
-  tags: [ "runner:main", "size:large" ]
-  script:
-  - make lint
-
-build_image:
+build_image_amd64:
   stage: image
-  tags: [ "runner:docker", "size:large" ]
-  image: 486234852809.dkr.ecr.us-east-1.amazonaws.com/docker-notary:0.6.1
-  inherit:
-    default: false
-  script:
-    - IMG=$DOCKER_REGISTRY/$PROJECTNAME:$TARGET_TAG make docker-build-ci docker-push
-
-push_release_tag:
-  only:
-    - tags
-  stage: release
+  tags: ["runner:docker", "size:large"]
+  image: 486234852809.dkr.ecr.us-east-1.amazonaws.com/docker:v2718644-9ce6565-18.09.6-py3
+  variables:
+    GOARCH: amd64
+    TARGET_IMAGE: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}-amd64
+    RELEASE_IMAGE: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG-amd64
   before_script: []
-  tags: [ "runner:docker", "size:large" ]
-  image: 486234852809.dkr.ecr.us-east-1.amazonaws.com/docker-notary:0.6.1
   script:
-    - IMAGE_NAME=$DOCKER_REGISTRY/$PROJECTNAME:$TARGET_TAG
-    - RELEASE_IMAGE_NAME=$DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG
-    - docker pull $IMAGE_NAME
-    - docker tag $IMAGE_NAME $RELEASE_IMAGE_NAME
-    - docker push $RELEASE_IMAGE_NAME
+    - IMG=$TARGET_IMAGE make docker-build-ci docker-push
+    - if [ -n "$CI_COMMIT_TAG" ]; then docker tag $TARGET_IMAGE $RELEASE_IMAGE && docker push $RELEASE_IMAGE; fi
+
+build_image_arm64:
+  stage: image
+  tags: ["runner:docker-arm", "platform:arm64"]
+  image: 486234852809.dkr.ecr.us-east-1.amazonaws.com/docker:v2718787-3888eda-18.09.6-arm64-py3
+  variables:
+    GOARCH: arm64
+    TARGET_IMAGE: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}-arm64
+    RELEASE_IMAGE: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG-arm64
+  before_script: []
+  script:
+    - IMG=$TARGET_IMAGE make docker-build-ci docker-push
+    - if [ -n "$CI_COMMIT_TAG" ]; then docker tag $TARGET_IMAGE $RELEASE_IMAGE && docker push $RELEASE_IMAGE; fi
+
+publish_public_main:
+  stage: release
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: on_success
+    - when: never
+  trigger:
+    project: DataDog/public-images
+    branch: main
+    strategy: depend
+  variables:
+    IMG_SOURCES: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}-amd64,$BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}-arm64
+    IMG_DESTINATIONS: $PROJECTNAME:main
+    IMG_SIGNING: "false"
+
+publish_public_tag:
+  stage: release
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: manual
+    - when: never
+  trigger:
+    project: DataDog/public-images
+    branch: main
+    strategy: depend
+  variables:
+    IMG_SOURCES: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG-amd64,$BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG-arm64
+    IMG_DESTINATIONS: $PROJECTNAME:$CI_COMMIT_TAG
+    IMG_SIGNING: "false"
+
+publish_public_latest:
+  stage: release
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: manual
+    - when: never
+  trigger:
+    project: DataDog/public-images
+    branch: main
+    strategy: depend
+  variables:
+    IMG_SOURCES: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG-amd64,$BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG-arm64
+    IMG_DESTINATIONS: $PROJECTNAME:latest
+    IMG_SIGNING: "false"
+
+trigger_internal_image:
+  stage: release
+  rules:
+    - if: $CI_COMMIT_TAG
+    - when: never
+  trigger:
+    project: DataDog/images
+    branch: master
+    strategy: depend
+  variables:
+    IMAGE_VERSION: tmpl-v1
+    IMAGE_NAME: $PROJECTNAME
+    RELEASE_TAG: ${CI_COMMIT_REF_SLUG}
+    BUILD_TAG: ${CI_COMMIT_REF_SLUG}
+    TMPL_SRC_IMAGE: v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    RELEASE_STAGING: "true"
+    RELEASE_PROD: "true"

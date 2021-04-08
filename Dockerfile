@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.14 as builder
+FROM golang:1.15 as builder
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
@@ -17,7 +17,8 @@ COPY pkg/ pkg/
 
 # Build
 ARG LDFLAGS
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -ldflags "${LDFLAGS}" -o manager main.go
+ARG GOARCH
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${GOARCH} GO111MODULE=on go build -a -ldflags "${LDFLAGS}" -o manager main.go
 
 FROM registry.access.redhat.com/ubi8/ubi-minimal:latest
 
