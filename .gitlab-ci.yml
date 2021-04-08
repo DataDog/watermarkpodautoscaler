@@ -69,7 +69,7 @@ build_image_arm64:
 publish_public_main:
   stage: release
   rules:
-    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_COMMIT_BRANCH == "master"'
       when: on_success
     - when: never
   trigger:
@@ -78,7 +78,7 @@ publish_public_main:
     strategy: depend
   variables:
     IMG_SOURCES: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}-amd64,$BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}-arm64
-    IMG_DESTINATIONS: $PROJECTNAME:main
+    IMG_DESTINATIONS: $PROJECTNAME:master
     IMG_SIGNING: "false"
 
 publish_public_tag:

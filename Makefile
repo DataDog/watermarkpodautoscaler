@@ -36,6 +36,8 @@ endif
 
 all: manager test
 
+build: manager
+
 # Run tests
 test: manager manifests verify-license
 	go test ./... -coverprofile cover.out
