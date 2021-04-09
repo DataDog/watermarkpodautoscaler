@@ -58,7 +58,7 @@ The WPA controller will use `math.Floor` if the value is under the lower waterma
 
 To use the Watermark Pod Autoscaler, deploy it in your Kubernetes cluster:
 
-1. Download the [Watermark Pod Autoscaler project zip ball][https://github.com/DataDog/watermarkpodautoscaler/archive/master.zip]. Source code can be found at [`DataDog/watermarkpodautoscaler`][https://github.com/DataDog/watermarkpodautoscaler].
+1. Download the [Watermark Pod Autoscaler project zip ball][https://github.com/DataDog/watermarkpodautoscaler/archive/main.zip]. Source code can be found at [`DataDog/watermarkpodautoscaler`][https://github.com/DataDog/watermarkpodautoscaler].
 2. Unzip the project, and go into the `./watermarkpodautoscaler` folder.
 3. Define your namespace and Watermark Pod Autoscaler controller:
 
@@ -89,7 +89,7 @@ To use the Watermark Pod Autoscaler, deploy it in your Kubernetes cluster:
 
 ### The process
 
-Create your [WPA](https://github.com/DataDog/watermarkpodautoscaler/blob/master/deploy/crds/datadoghq.com_watermarkpodautoscalers_cr.yaml) in the same namespace as your target deployment.
+Create your [WPA](https://github.com/DataDog/watermarkpodautoscaler/blob/main/deploy/crds/datadoghq.com_watermarkpodautoscalers_cr.yaml) in the same namespace as your target deployment.
 
 The Datadog Cluster Agent will pick up the creation/update/deletion event. It parses the WPA spec to extract the metric and scope to get from Datadog.
 
@@ -199,7 +199,7 @@ The Cluster Agent doesn't run the WPA listener by default. To enable WPA in the 
 [...]
 ```
 
-Note: To enable WPA in the Cluster Agent using the [datadog helm chart](https://github.com/DataDog/helm-charts/tree/master/charts/datadog), set `clusterAgent.metricsProvider.wpaController` to `true`. The ClusterRole will be updated automatically.
+Note: To enable WPA in the Cluster Agent using the [datadog helm chart](https://github.com/DataDog/helm-charts/tree/main/charts/datadog), set `clusterAgent.metricsProvider.wpaController` to `true`. The ClusterRole will be updated automatically.
 
 Once you have applied those changes and created a WPA object, if you exec in the Datadog Cluster Agent pod and run `agent status` you will be able to see more specific details about the spec of the autoscalers that were parsed (whether it's a horizontal or a watermark pod autoscaler).
 
