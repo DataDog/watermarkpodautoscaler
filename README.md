@@ -191,7 +191,7 @@ The Cluster Agent doesn't run the WPA listener by default. To enable WPA in the 
 [...]
 - apiGroups: ["datadoghq.com"]
   resources:
-  - watermarkpodautoscalers 
+  - watermarkpodautoscalers
   verbs:
   - get
   - list
@@ -294,16 +294,29 @@ Finally, we have verification that the deployment was correctly autoscaled:
 
 #### FAQ
 
-- What happens if I scale manually my deployment?  
+- **What happens if I scale manually my deployment?**
+
     In the next reconcile loop, the new number of replicas will be considered to compute the desired number of replicas. You might see a log saying that the resource was modified by someone else. If the number of replicas configured is outside of the bounds, however, the controller will scale this back to a number of replicas within the acceptable range.
 
-- What is the footprint of the controller?  
-    From our testing, it is a factor of the number of deployments in the cluster. 
+- **How to disable temporarily the WPA to manually scale up/down my deployment?**
+
+  The recommended way is to set the WPA in dry run mode and then scale to the desired number of replicas.
+  You can set the WPA in dry run using this patch command:
+
+  ```
+  kubectl patch wpa <wpa-name> --type='json' -p='[{"op": "replace", "path": "/spec/dryRun", "value":true}]'
+  ```
+  Don't forget to set back the dry run mode to `false` once your temporary override is over so that the WPA is active again.
+
+- **What is the footprint of the controller?**
+
+    From our testing, it is a factor of the number of deployments in the cluster.
     * 500+ deployments, 65MB - 10mCores
-    * 1600+ deployments, 105MB - 5mCores  
+    * 1600+ deployments, 105MB - 5mCores
     **Note:** When the API server restarts, the controller runtime caches the old state and the new one for a second and then merges everything. This makes the memory usage shoot up and can OOM the controller.
 
-- Is the controller stateless?  
+- **Is the controller stateless?**
+
     Yes.
 
 #### RBAC
