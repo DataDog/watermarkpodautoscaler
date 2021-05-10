@@ -132,10 +132,10 @@ endif
 # Generate bundle manifests and metadata, then validate generated files.
 .PHONY: bundle
 bundle: manifests
-	operator-sdk generate kustomize manifests -q
+	./bin/operator-sdk generate kustomize manifests -q
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
-	$(KUSTOMIZE) build config/manifests | operator-sdk generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
-	operator-sdk bundle validate ./bundle
+	$(KUSTOMIZE) build config/manifests | ./bin/operator-sdk generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
+	./bin/operator-sdk bundle validate ./bundle
 
 # Build the bundle image.
 .PHONY: bundle-build
@@ -146,7 +146,7 @@ bundle-build:
 # Datadog Custom part
 #
 .PHONY: install-tools
-install-tools: bin/golangci-lint bin/operator-sdk bin/yq bin/kubebuilder
+install-tools: bin/golangci-lint bin/operator-sdk bin/yq bin/kubebuilder kustomize
 
 .PHONY: generate-openapi
 generate-openapi: bin/openapi-gen
