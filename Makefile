@@ -133,8 +133,9 @@ endif
 .PHONY: bundle
 bundle: manifests
 	./bin/operator-sdk generate kustomize manifests -q
-	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
+	cd config/manager && $(KUSTOMIZE) edit set image watermarkpodautoscaler=$(IMG)
 	$(KUSTOMIZE) build config/manifests | ./bin/operator-sdk generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
+	./hack/patch-bundle.sh
 	./bin/operator-sdk bundle validate ./bundle
 
 # Build the bundle image.
