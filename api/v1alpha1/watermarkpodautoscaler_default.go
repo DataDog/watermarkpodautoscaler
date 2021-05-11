@@ -75,6 +75,9 @@ func IsDefaultWatermarkPodAutoscaler(wpa *WatermarkPodAutoscaler) bool {
 	if wpa.Spec.DownscaleForbiddenWindowSeconds == 0 {
 		return false
 	}
+	if wpa.Spec.ReplicaScalingAbsoluteModulo == nil {
+		return false
+	}
 	if wpa.Spec.UpscaleForbiddenWindowSeconds == 0 {
 		return false
 	}
@@ -89,7 +92,7 @@ func CheckWPAValidity(wpa *WatermarkPodAutoscaler) error {
 		return fmt.Errorf(msg)
 	}
 	if wpa.Spec.MinReplicas == nil || wpa.Spec.MaxReplicas < *wpa.Spec.MinReplicas {
-		msg := fmt.Sprintf("watermark pod autoscaler requires the minimum number of replicas to be configured and inferior to the maximum")
+		msg := "watermark pod autoscaler requires the minimum number of replicas to be configured and inferior to the maximum"
 		return fmt.Errorf(msg)
 	}
 	if wpa.Spec.Tolerance.MilliValue() > 1000 || wpa.Spec.Tolerance.MilliValue() < 0 {
