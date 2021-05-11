@@ -1,4 +1,4 @@
-name: goreleaser
+name: release
 
 on:
   push:
@@ -12,18 +12,42 @@ jobs:
       -
         name: Checkout
         uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
+      -
+        name: Unshallow
+        run: git fetch --prune --unshallow --tags
+      -
+        name: Get tag
+        uses: little-core-labs/get-git-tag@v3.0.2
+        id: tag
       -
         name: Set up Go
         uses: actions/setup-go@v2
         with:
           go-version: 1.15
+      - 
+        name: Get Latest Release
+        id: latest_version
+        uses: pozetroninc/github-action-get-latest-release@master
+        with:
+            owner: ${{ github.repository_owner }}
+            repo: watermarkpodautoscaler
+            excludes: prerelease, draft
       -
         name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v2
+        uses: goreleaser/goreleaser-action@v1
         with:
           version: latest
-          args: release --rm-dist
+          args: release --skip-publish
         env:
+          GORELEASER_PREVIOUS_TAG: ${{steps.latest_version.outputs.release}}
+      -
+        name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          prerelease: ${{ contains(github.ref, '-rc.') }}
+          files: |
+            dist/*.zip
+            dist/*.tar.gz
+        env:
+          COMMIT_TAG: ${{steps.tag.outputs.tag}}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
