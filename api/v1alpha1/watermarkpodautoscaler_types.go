@@ -21,7 +21,7 @@ import (
 // +kubebuilder:printcolumn:name="age",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:printcolumn:name="min replicas",type="integer",JSONPath=".spec.minReplicas"
 // +kubebuilder:printcolumn:name="max replicas",type="integer",JSONPath=".spec.maxReplicas"
-// +kubebuilder:printcolumn:name="dry-run",type="string",JSONPath=".spec.dryRun"
+// +kubebuilder:printcolumn:name="dry-run",type="string",JSONPath=".status.conditions[?(@.type==\"DryRun\")].status"
 // +kubebuilder:resource:path=watermarkpodautoscalers,shortName=wpa
 // +k8s:openapi-gen=true
 // +genclient
