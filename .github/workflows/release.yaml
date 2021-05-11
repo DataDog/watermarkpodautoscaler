@@ -34,20 +34,12 @@ jobs:
             excludes: prerelease, draft
       -
         name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v1
-        with:
-          version: latest
-          args: release --skip-publish
-        env:
-          GORELEASER_PREVIOUS_TAG: ${{steps.latest_version.outputs.release}}
-      -
-        name: Release
-        uses: softprops/action-gh-release@v1
+        uses: goreleaser/goreleaser-action@v2
         with:
           prerelease: ${{ contains(github.ref, '-rc.') }}
-          files: |
-            dist/*.zip
-            dist/*.tar.gz
+          version: latest
+          args: release --rm-dist
         env:
           COMMIT_TAG: ${{steps.tag.outputs.tag}}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_PREVIOUS_TAG: ${{steps.latest_version.outputs.release}}
