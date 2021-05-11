@@ -2,31 +2,31 @@ apiVersion: v1
 kind: Namespace
 metadata:
   labels:
-    control-plane: controller-manager
+    control-plane: watermarkpodautoscaler-controller-manager
   name: datadog
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: watermarkpodautoscaler-controller-manager
+  name: controller-manager
   namespace: datadog
   labels:
-    control-plane: controller-manager
+    control-plane: watermarkpodautoscaler-controller-manager
 spec:
   selector:
     matchLabels:
-      control-plane: controller-manager
+      control-plane: watermarkpodautoscaler-controller-manager
   replicas: 1
   template:
     metadata:
       annotations:
-        ad.datadoghq.com/watermarkpodautoscaler.check_names: '["prometheus"]'
+        ad.datadoghq.com/watermarkpodautoscaler.check_names: '["openmetrics"]'
         ad.datadoghq.com/watermarkpodautoscaler.init_configs: '[{}]'
         ad.datadoghq.com/watermarkpodautoscaler.instances: '[{"prometheus_url": "http://%%host%%:8383/metrics","namespace":"watermarkpodautoscaler","metrics": ["wpa","wpa_controller*"]}]'
         # sample configuration for label joins (see DD_LABELS_AS_TAGS)
         # ad.datadoghq.com/watermarkpodautoscaler.instances: '[{"prometheus_url": "http://%%host%%:8383/metrics","namespace":"watermarkpodautoscaler","metrics": ["wpa","wpa_controller*"],"label_joins": {"wpa_controller_labels_info": {"label_to_match":"wpa_name","labels_to_get": ["label1","label2"]}}}]'
       labels:
-        control-plane: controller-manager
+        control-plane: watermarkpodautoscaler-controller-manager
     spec:
       serviceAccountName: watermarkpodautoscaler-controller-manager
       containers:
@@ -34,7 +34,7 @@ spec:
         - /manager
         args:
         - --enable-leader-election
-        image: datadog/watermarkpodautoscaler:latest
+        image: gcr.io/datadoghq/watermarkpodautoscaler:latest
         name: watermarkpodautoscaler
         resources:
           limits:
