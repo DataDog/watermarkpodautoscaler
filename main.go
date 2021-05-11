@@ -49,6 +49,7 @@ func main() {
 	var printVersionArg bool
 	var logEncoder string
 	var syncPeriodSeconds int
+	var leaderElectionResourceLock string
 	flag.BoolVar(&printVersionArg, "version", false, "print version and exit")
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", true,
@@ -56,6 +57,7 @@ func main() {
 	flag.IntVar(&healthPort, "health-port", healthPort, "Port to use for the health probe")
 	flag.StringVar(&logEncoder, "logEncoder", "json", "log encoding ('json' or 'console')")
 	flag.IntVar(&syncPeriodSeconds, "syncPeriodSeconds", 60*60, "The informers resync period in seconds") // default 1 hour
+	flag.StringVar(&leaderElectionResourceLock, "leader-election-resource", "configmaps", "determines which resource lock to use for leader election. option:[configmapsleases|endpointsleases|configmaps]")
 	logLevel := zap.LevelFlag("loglevel", zapcore.InfoLevel, "Set log level")
 
 	flag.Parse()
@@ -72,13 +74,14 @@ func main() {
 
 	syncDuration := time.Duration(syncPeriodSeconds) * time.Second
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), config.ManagerOptionsWithNamespaces(setupLog, ctrl.Options{
-		Scheme:                 scheme,
-		MetricsBindAddress:     fmt.Sprintf("%s:%d", host, metricsPort),
-		Port:                   9443,
-		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "watermarkpodautoscaler-lock",
-		HealthProbeBindAddress: fmt.Sprintf("%s:%d", host, healthPort),
-		SyncPeriod:             &syncDuration,
+		Scheme:                     scheme,
+		MetricsBindAddress:         fmt.Sprintf("%s:%d", host, metricsPort),
+		Port:                       9443,
+		LeaderElection:             enableLeaderElection,
+		LeaderElectionID:           "watermarkpodautoscaler-lock",
+		LeaderElectionResourceLock: leaderElectionResourceLock,
+		HealthProbeBindAddress:     fmt.Sprintf("%s:%d", host, healthPort),
+		SyncPeriod:                 &syncDuration,
 	}))
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

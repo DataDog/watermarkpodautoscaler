@@ -79,6 +79,8 @@ type WatermarkPodAutoscalerReconciler struct {
 // +kubebuilder:rbac:groups=,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=,resources=configmaps,resourceNames=watermarkpodautoscaler-lock,verbs=update;get
 // +kubebuilder:rbac:groups=apps;extensions,resources=replicasets/scale;deployments/scale;statefulsets/scale,verbs=update;get
+// +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=create
+// +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,resourceNames=watermarkpodautoscaler-lock,verbs=update;get
 
 // Reconcile reads that state of the cluster for a WatermarkPodAutoscaler object and makes changes based on the state read
 // and what is in the WatermarkPodAutoscaler.Spec

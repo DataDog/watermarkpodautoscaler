@@ -49,6 +49,7 @@ spec:
           - watermarkpodautoscaler
           args:
             - --zap-level={{ .Values.logLevel }}
+            - --leader-election-resource={{ .Values.leaderElectionResourceLock }}
           env:
             - name: WATCH_NAMESPACE
             {{- if .Values.watchAllNamespaces }}
