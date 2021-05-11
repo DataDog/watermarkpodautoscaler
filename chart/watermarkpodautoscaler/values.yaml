@@ -29,6 +29,9 @@ labelsAsTags: []
 podSecurityContext: {}
 # fsGroup: 2000
 
+# Determines which resource lock to use for leader election
+leaderElectionResourceLock: configmaps
+
 securityContext: {}
 # capabilities:
 #   drop:

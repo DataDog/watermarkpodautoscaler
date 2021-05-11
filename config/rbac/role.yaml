@@ -47,6 +47,21 @@ rules:
   - get
   - update
 - apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+- apiGroups:
+  - coordination.k8s.io
+  resourceNames:
+  - watermarkpodautoscaler-lock
+  resources:
+  - leases
+  verbs:
+  - get
+  - update
+- apiGroups:
   - datadoghq.com
   resources:
   - watermarkpodautoscalers
