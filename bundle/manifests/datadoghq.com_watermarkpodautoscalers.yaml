@@ -25,7 +25,7 @@ spec:
   - JSONPath: .spec.maxReplicas
     name: max replicas
     type: integer
-  - JSONPath: .spec.dryRun
+  - JSONPath: .status.conditions[?(@.type=="DryRun")].status
     name: dry-run
     type: string
   group: datadoghq.com
