@@ -6,27 +6,36 @@ metadata:
   creationTimestamp: null
   name: manager
 rules:
-- resources:
+- apiGroups:
+  - ""
+  resources:
   - configmaps
   verbs:
   - create
-- resourceNames:
+- apiGroups:
+  - ""
+  resourceNames:
   - watermarkpodautoscaler-lock
   resources:
   - configmaps
   verbs:
   - get
   - update
-- resources:
+- apiGroups:
+  - ""
+  resources:
   - events
   verbs:
   - create
   - patch
-- resources:
+- apiGroups:
+  - ""
+  resources:
   - pods
   verbs:
   - get
   - list
+  - watch
 - apiGroups:
   - apps
   - extensions

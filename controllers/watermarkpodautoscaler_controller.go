@@ -72,12 +72,11 @@ type WatermarkPodAutoscalerReconciler struct {
 }
 
 // +kubebuilder:rbac:groups=apps;extensions,resources=deployments/finalizers,resourceNames=watermarkpodautoscalers,verbs=update
-// +kubebuilder:rbac:groups=,resources=pods,verbs=get;list
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups=datadoghq.com,resources=watermarkpodautoscalers;watermarkpodautoscalers/status,verbs=*
-// +kubebuilder:rbac:groups=,resources=pods,verbs=get;list
-// +kubebuilder:rbac:groups=,resources=configmaps,verbs=create
-// +kubebuilder:rbac:groups=,resources=events,verbs=create;patch
-// +kubebuilder:rbac:groups=,resources=configmaps,resourceNames=watermarkpodautoscaler-lock,verbs=update;get
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=create
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups="",resources=configmaps,resourceNames=watermarkpodautoscaler-lock,verbs=update;get
 // +kubebuilder:rbac:groups=apps;extensions,resources=replicasets/scale;deployments/scale;statefulsets/scale,verbs=update;get
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=create
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,resourceNames=watermarkpodautoscaler-lock,verbs=update;get
