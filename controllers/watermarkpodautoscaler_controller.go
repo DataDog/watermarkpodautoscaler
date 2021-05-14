@@ -92,11 +92,9 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 	// NB: we can't return non-nil err, as the "reconcile" msg will be added to the rate-limited queue
 	// so that it'll slow down if we have several problems in a row
 	resRepeat := reconcile.Result{RequeueAfter: r.syncPeriod}
-
 	// Fetch the WatermarkPodAutoscaler instance
 	instance := &datadoghqv1alpha1.WatermarkPodAutoscaler{}
 	err = r.Client.Get(ctx, request.NamespacedName, instance)
-	log.Info("DEV", "Name", instance.Name, "NS", instance.Namespace, "ResVer", instance.ResourceVersion)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -125,7 +123,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedSpecCheck, err.Error())
 		wpaStatusOriginal := instance.Status.DeepCopy()
 		setCondition(instance, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedSpecCheck, "Invalid WPA specification: %s", err)
-		if err = r.updateStatusIfNeeded(ctx, wpaStatusOriginal, instance); err != nil {
+		if err = r.updateStatusIfNeeded(log, ctx, wpaStatusOriginal, instance); err != nil {
 			r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedUpdateStatus, err.Error())
 			return reconcile.Result{}, err
 		}
@@ -163,6 +161,8 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 			logger.Error(fmt.Errorf("recover error"), "RunTime error in reconcileWPA", "returnValue", err1)
 		}
 	}()
+
+	logger.Info("DEV", "Name", wpa.Name, "NS", wpa.Namespace, "ResVer", wpa.ResourceVersion)
 
 	// the following line are here to retrieve the GVK of the target ref
 	targetGV, err := schema.ParseGroupVersion(wpa.Spec.ScaleTargetRef.APIVersion)
@@ -222,7 +222,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 		proposedReplicas, metricName, metricStatuses, metricTimestamp, err = r.computeReplicasForMetrics(logger, wpa, currentScale)
 		if err != nil {
 			r.setCurrentReplicasInStatus(wpa, currentReplicas)
-			if err2 := r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa); err2 != nil {
+			if err2 := r.updateStatusIfNeeded(logger, ctx, wpaStatusOriginal, wpa); err2 != nil {
 				r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedUpdateReplicasStatus, err2.Error())
 				setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedUpdateReplicasStatus, "the WPA controller was unable to update the number of replicas: %v", err)
 				logger.Info("The WPA controller was unable to update the number of replicas", "error", err2)
@@ -258,7 +258,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 		if wpa.Spec.DryRun {
 			logger.Info("DryRun mode: scaling change was inhibited", "currentReplicas", currentReplicas, "desiredReplicas", desiredReplicas)
 			setStatus(wpa, currentReplicas, desiredReplicas, metricStatuses, rescale)
-			return r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa)
+			return r.updateStatusIfNeeded(logger, ctx, wpaStatusOriginal, wpa)
 		}
 
 		currentScale.Spec.Replicas = desiredReplicas
@@ -267,7 +267,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 			r.eventRecorder.Eventf(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedScale, fmt.Sprintf("New size: %d; reason: %s; error: %v", desiredReplicas, rescaleReason, err.Error()))
 			setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedScale, "the WPA controller was unable to update the target scale: %v", err)
 			r.setCurrentReplicasInStatus(wpa, currentReplicas)
-			if err := r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa); err != nil {
+			if err := r.updateStatusIfNeeded(logger, ctx, wpaStatusOriginal, wpa); err != nil {
 				r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedUpdateReplicasStatus, err.Error())
 				setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedUpdateReplicasStatus, "the WPA controller was unable to update the number of replicas: %v", err)
 				return nil
@@ -294,7 +294,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	labelsInfo.With(promLabels).Set(1)
 
 	setStatus(wpa, currentReplicas, desiredReplicas, metricStatuses, rescale)
-	return r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa)
+	return r.updateStatusIfNeeded(logger, ctx, wpaStatusOriginal, wpa)
 }
 
 // getScaleForResourceMappings attempts to fetch the scale for the
@@ -378,8 +378,9 @@ func (r *WatermarkPodAutoscalerReconciler) setCurrentReplicasInStatus(wpa *datad
 }
 
 // updateStatusIfNeeded calls updateStatus only if the status of the new HPA is not the same as the old status
-func (r *WatermarkPodAutoscalerReconciler) updateStatusIfNeeded(ctx context.Context, wpaStatus *datadoghqv1alpha1.WatermarkPodAutoscalerStatus, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) error {
+func (r *WatermarkPodAutoscalerReconciler) updateStatusIfNeeded(logger logr.Logger, ctx context.Context, wpaStatus *datadoghqv1alpha1.WatermarkPodAutoscalerStatus, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) error {
 	// skip a write if we wouldn't need to update
+	logger.Info("DEV updateIfNeeded", "status 1", wpaStatus, "status 2", &wpa.Status)
 	if apiequality.Semantic.DeepEqual(wpaStatus, &wpa.Status) {
 		return nil
 	}
