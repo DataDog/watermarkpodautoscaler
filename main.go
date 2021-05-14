@@ -18,6 +18,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth" // Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	ctrlzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -88,8 +89,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	c, err := client.New(mgr.GetConfig(), client.Options{})
+	if err != nil {
+		setupLog.Error(err, "unable to instantiate a client for the controller", "controller", "WatermarkPodAutoscaler")
+		os.Exit(1)
+	}
+
 	if err = (&controllers.WatermarkPodAutoscalerReconciler{
-		Client: mgr.GetClient(),
+		Client: c,
 		Log:    ctrl.Log.WithName("controllers").WithName("WatermarkPodAutoscaler"),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
