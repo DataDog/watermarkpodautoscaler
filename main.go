@@ -18,10 +18,10 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth" // Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	ctrlzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
 	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
 	"github.com/DataDog/watermarkpodautoscaler/controllers"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/config"
@@ -83,15 +83,21 @@ func main() {
 		LeaderElectionResourceLock: leaderElectionResourceLock,
 		HealthProbeBindAddress:     fmt.Sprintf("%s:%d", host, healthPort),
 		SyncPeriod:                 &syncDuration,
-		ClientDisableCacheFor:      []client.Object{&datadoghqv1alpha1.WatermarkPodAutoscaler{}},
+		// ClientDisableCacheFor:      []client.Object{&datadoghqv1alpha1.WatermarkPodAutoscaler{}},
 	}))
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
+
+	// Setup Scheme for all resources
+	if err = v1alpha1.AddToScheme(mgr.GetScheme()); err != nil {
+		os.Exit(1)
+	}
+
 	if err = (&controllers.WatermarkPodAutoscalerReconciler{
-		Log:    ctrl.Log.WithName("controllers").WithName("WatermarkPodAutoscaler"),
-		Client: mgr.GetClient(),
+		Log: ctrl.Log.WithName("controllers").WithName("WatermarkPodAutoscaler"),
+		//Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WatermarkPodAutoscaler")

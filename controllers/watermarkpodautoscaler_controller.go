@@ -699,11 +699,6 @@ func updatePredicate(ev event.UpdateEvent) bool {
 func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&datadoghqv1alpha1.WatermarkPodAutoscaler{}, builder.WithPredicates(predicate.Funcs{UpdateFunc: updatePredicate}))
-	err := b.Complete(r)
-
-	if err != nil {
-		return err
-	}
 
 	config := mgr.GetConfig()
 	mc := metrics.NewRESTMetricsClient(
@@ -729,6 +724,15 @@ func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager) er
 		return err
 	}
 
+	c, err := client.New(mgr.GetConfig(), client.Options{
+		Scheme: mgr.GetScheme(),
+		Mapper: restMapper,
+	})
+	if err != nil {
+		return err
+	}
+	r.Client = c
+
 	replicaCalc := NewReplicaCalculator(mc, pl)
 
 	r.replicaCalc = replicaCalc
@@ -737,7 +741,7 @@ func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager) er
 	r.eventRecorder = mgr.GetEventRecorderFor("wpa_controller")
 	r.syncPeriod = defaultSyncPeriod
 
-	return nil
+	return b.Complete(r)
 }
 
 func initializePodInformer(clientConfig *rest.Config, stop chan struct{}) listerv1.PodLister {
