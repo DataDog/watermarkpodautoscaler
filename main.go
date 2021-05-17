@@ -83,21 +83,15 @@ func main() {
 		LeaderElectionResourceLock: leaderElectionResourceLock,
 		HealthProbeBindAddress:     fmt.Sprintf("%s:%d", host, healthPort),
 		SyncPeriod:                 &syncDuration,
+		ClientDisableCacheFor:      []client.Object{&datadoghqv1alpha1.WatermarkPodAutoscaler{}},
 	}))
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
-
-	c, err := client.New(mgr.GetConfig(), client.Options{})
-	if err != nil {
-		setupLog.Error(err, "unable to instantiate a client for the controller", "controller", "WatermarkPodAutoscaler")
-		os.Exit(1)
-	}
-
 	if err = (&controllers.WatermarkPodAutoscalerReconciler{
-		Client: c,
 		Log:    ctrl.Log.WithName("controllers").WithName("WatermarkPodAutoscaler"),
+		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WatermarkPodAutoscaler")

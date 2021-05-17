@@ -95,6 +95,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 	// Fetch the WatermarkPodAutoscaler instance
 	instance := &datadoghqv1alpha1.WatermarkPodAutoscaler{}
 	err = r.Client.Get(ctx, request.NamespacedName, instance)
+	log.Info("DEV", "instace kind", instance.Kind, "APIV", instance.APIVersion, "instance RV", instance.ResourceVersion)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -162,7 +163,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 		}
 	}()
 
-	logger.Info("DEV", "Name", wpa.Name, "NS", wpa.Namespace, "ResVer", wpa.ResourceVersion)
+	logger.Info("DEV", "WPA", wpa)
 
 	// the following line are here to retrieve the GVK of the target ref
 	targetGV, err := schema.ParseGroupVersion(wpa.Spec.ScaleTargetRef.APIVersion)
@@ -380,14 +381,14 @@ func (r *WatermarkPodAutoscalerReconciler) setCurrentReplicasInStatus(wpa *datad
 // updateStatusIfNeeded calls updateStatus only if the status of the new HPA is not the same as the old status
 func (r *WatermarkPodAutoscalerReconciler) updateStatusIfNeeded(logger logr.Logger, ctx context.Context, wpaStatus *datadoghqv1alpha1.WatermarkPodAutoscalerStatus, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) error {
 	// skip a write if we wouldn't need to update
-	logger.Info("DEV updateIfNeeded", "status 1", wpaStatus, "status 2", &wpa.Status)
 	if apiequality.Semantic.DeepEqual(wpaStatus, &wpa.Status) {
 		return nil
 	}
-	return r.updateWPA(ctx, wpa)
+	logger.Info("DEV", "wpa is", fmt.Sprintf("%#v", wpa.Status), "old wpa status", fmt.Sprintf("%#v", wpaStatus))
+	return r.updateWPA(logger, ctx, wpa)
 }
 
-func (r *WatermarkPodAutoscalerReconciler) updateWPA(ctx context.Context, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) error {
+func (r *WatermarkPodAutoscalerReconciler) updateWPA(logger logr.Logger, ctx context.Context, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) error {
 	return r.Client.Status().Update(ctx, wpa)
 }
 
@@ -727,6 +728,7 @@ func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager) er
 	if err != nil {
 		return err
 	}
+
 	replicaCalc := NewReplicaCalculator(mc, pl)
 
 	r.replicaCalc = replicaCalc
