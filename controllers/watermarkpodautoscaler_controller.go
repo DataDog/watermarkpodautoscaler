@@ -53,9 +53,7 @@ const (
 	defaultSyncPeriod = 15 * time.Second
 )
 
-var (
-	dryRunCondition autoscalingv2.HorizontalPodAutoscalerConditionType = "DryRun"
-)
+var dryRunCondition autoscalingv2.HorizontalPodAutoscalerConditionType = "DryRun"
 
 // WatermarkPodAutoscalerReconciler reconciles a WatermarkPodAutoscaler object
 type WatermarkPodAutoscalerReconciler struct {
@@ -591,7 +589,6 @@ func normalizeDesiredReplicas(logger logr.Logger, wpa *datadoghqv1alpha1.Waterma
 
 // convertDesiredReplicas performs the actual normalization, without depending on the `WatermarkPodAutoscaler`
 func convertDesiredReplicasWithRules(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, desiredReplicas, wpaMinReplicas, wpaMaxReplicas int32) (int32, string, string) {
-
 	var minimumAllowedReplicas int32
 	var maximumAllowedReplicas int32
 	var possibleLimitingCondition string
@@ -696,31 +693,34 @@ func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager) er
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&datadoghqv1alpha1.WatermarkPodAutoscaler{}, builder.WithPredicates(predicate.Funcs{UpdateFunc: updatePredicate}))
 	err := b.Complete(r)
-
 	if err != nil {
 		return err
 	}
 
-	config := mgr.GetConfig()
+	// mgr.GetConfig() returns the *rest.Config that's actually used by client instantiated by controller-runtime
+	// It should not be modified as it WILL impact controllers.
+	// Unfortunately some `New` or `NewForConfig` calls do modify the passed *rest.Config object.
+	// To prevent any impact, we use copies.
+	podConfig := rest.CopyConfig(mgr.GetConfig())
 	mc := metrics.NewRESTMetricsClient(
-		resourceclient.NewForConfigOrDie(config),
+		resourceclient.NewForConfigOrDie(podConfig),
 		nil,
-		external_metrics.NewForConfigOrDie(config),
+		external_metrics.NewForConfigOrDie(podConfig),
 	)
 	var stop chan struct{}
-	pl := initializePodInformer(config, stop)
+	pl := initializePodInformer(podConfig, stop)
 
-	clientSet, err := kubernetes.NewForConfig(config)
+	scaleConfig := rest.CopyConfig(mgr.GetConfig())
+	clientSet, err := kubernetes.NewForConfig(scaleConfig)
 	if err != nil {
 		return err
 	}
-
 	// init the scaleClient
 	cachedDiscovery := discocache.NewMemCacheClient(clientSet.Discovery())
 	restMapper := restmapper.NewDeferredDiscoveryRESTMapper(cachedDiscovery)
 	restMapper.Reset()
 	scaleKindResolver := scale.NewDiscoveryScaleKindResolver(clientSet.Discovery())
-	scaleClient, err := scale.NewForConfig(config, restMapper, dynamic.LegacyAPIPathResolverFunc, scaleKindResolver)
+	scaleClient, err := scale.NewForConfig(scaleConfig, restMapper, dynamic.LegacyAPIPathResolverFunc, scaleKindResolver)
 	if err != nil {
 		return err
 	}
