@@ -5,7 +5,7 @@
 replicaCount: 1
 image:
   repository: datadog/watermarkpodautoscaler
-  tag: v0.3.0-rc3
+  tag: v0.3.0-rc5
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 nameOverride: ""

@@ -41,7 +41,7 @@ metadata:
     capabilities: Basic Install
     operators.operatorframework.io/builder: operator-sdk-v1.4.0+git
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v2
-  name: watermarkpodautoscaler.v0.3.0-rc.4
+  name: watermarkpodautoscaler.v0.3.0-rc.5
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -59,6 +59,80 @@ spec:
     mediatype: ""
   install:
     spec:
+      clusterPermissions:
+      - rules:
+        - apiGroups:
+          - ""
+          resources:
+          - configmaps
+          verbs:
+          - create
+        - apiGroups:
+          - ""
+          resourceNames:
+          - watermarkpodautoscaler-lock
+          resources:
+          - configmaps
+          verbs:
+          - get
+          - update
+        - apiGroups:
+          - ""
+          resources:
+          - events
+          verbs:
+          - create
+          - patch
+        - apiGroups:
+          - ""
+          resources:
+          - pods
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - apps
+          - extensions
+          resourceNames:
+          - watermarkpodautoscalers
+          resources:
+          - deployments/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - apps
+          - extensions
+          resources:
+          - deployments/scale
+          - replicasets/scale
+          - statefulsets/scale
+          verbs:
+          - get
+          - update
+        - apiGroups:
+          - coordination.k8s.io
+          resources:
+          - leases
+          verbs:
+          - create
+        - apiGroups:
+          - coordination.k8s.io
+          resourceNames:
+          - watermarkpodautoscaler-lock
+          resources:
+          - leases
+          verbs:
+          - get
+          - update
+        - apiGroups:
+          - datadoghq.com
+          resources:
+          - watermarkpodautoscalers
+          - watermarkpodautoscalers/status
+          verbs:
+          - '*'
+        serviceAccountName: watermarkpodautoscaler-controller-manager
       deployments:
       - name: watermarkpodautoscaler-controller-manager
         spec:
@@ -163,4 +237,4 @@ spec:
   maturity: alpha
   provider:
     name: Datadog
-  version: 0.3.0-rc.4
+  version: 0.3.0-rc.5
