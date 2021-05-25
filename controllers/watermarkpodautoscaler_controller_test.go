@@ -327,7 +327,7 @@ func addUpdateReactor(s *fakescale.FakeScaleClient) {
 }
 
 func addGetReactor(s *fakescale.FakeScaleClient, replicas int32) {
-	deploymentGetter := func(rawAction testcore.Action) (handled bool, ret runtime.Object, err error) {
+	s.AddReactor("get", "deployments", func(rawAction testcore.Action) (handled bool, ret runtime.Object, err error) {
 		action := rawAction.(testcore.GetAction)
 		if action.GetName() != testingDeployName {
 			return false, nil, nil
@@ -345,8 +345,7 @@ func addGetReactor(s *fakescale.FakeScaleClient, replicas int32) {
 			},
 		}
 		return true, obj, nil
-	}
-	s.AddReactor("get", "deployments", deploymentGetter)
+	})
 }
 
 func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
