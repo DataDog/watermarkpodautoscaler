@@ -196,7 +196,6 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	desiredReplicas := int32(0)
 	rescaleReason := ""
 	now := time.Now()
-
 	rescale := true
 	switch {
 	case currentScale.Spec.Replicas == 0:
@@ -229,12 +228,11 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 			logger.Info("Failed to compute desired number of replicas based on listed metrics.", "reference", reference, "error", err)
 			return nil
 		}
-		logger.Info("Proposing replicas", "proposedReplicas", proposedReplicas, "metricName", metricName, "reference", reference)
+		logger.Info("Proposing replicas", "proposedReplicas", proposedReplicas, "metricName", metricName, "reference", reference, "metric timestamp", metricTimestamp.Format(time.RFC1123))
 
 		rescaleMetric := ""
 		if proposedReplicas > desiredReplicas {
 			desiredReplicas = proposedReplicas
-			now = metricTimestamp
 			rescaleMetric = metricName
 		}
 		if desiredReplicas > currentReplicas {
@@ -246,7 +244,6 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 
 		desiredReplicas = normalizeDesiredReplicas(logger, wpa, currentReplicas, desiredReplicas)
 		logger.Info("Normalized Desired replicas", "desiredReplicas", desiredReplicas)
-
 		rescale = shouldScale(logger, wpa, currentReplicas, desiredReplicas, now)
 	}
 
