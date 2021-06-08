@@ -131,6 +131,11 @@ else
 KUSTOMIZE=$(shell which kustomize)
 endif
 
+# Make release
+.PHONY: release
+release: bundle
+	./hack/patch-chart.sh $(VERSION)
+
 # Generate bundle manifests and metadata, then validate generated files.
 .PHONY: bundle
 bundle: manifests
