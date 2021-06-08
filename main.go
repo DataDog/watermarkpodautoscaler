@@ -13,10 +13,12 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth" // Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	ctrlzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -48,6 +50,7 @@ func main() {
 	var enableLeaderElection bool
 	var printVersionArg bool
 	var logEncoder string
+	var logTimestampFormat string
 	var syncPeriodSeconds int
 	var leaderElectionResourceLock string
 	flag.BoolVar(&printVersionArg, "version", false, "print version and exit")
@@ -56,13 +59,14 @@ func main() {
 		"Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.")
 	flag.IntVar(&healthPort, "health-port", healthPort, "Port to use for the health probe")
 	flag.StringVar(&logEncoder, "logEncoder", "json", "log encoding ('json' or 'console')")
+	flag.StringVar(&logTimestampFormat, "log-timestamp-format", "millis", "log timestamp format ('millis', 'nanos', 'epoch', 'rfc3339' or 'rfc3339nano')")
 	flag.IntVar(&syncPeriodSeconds, "syncPeriodSeconds", 60*60, "The informers resync period in seconds") // default 1 hour
 	flag.StringVar(&leaderElectionResourceLock, "leader-election-resource", "configmaps", "determines which resource lock to use for leader election. option:[configmapsleases|endpointsleases|configmaps]")
 	logLevel := zap.LevelFlag("loglevel", zapcore.InfoLevel, "Set log level")
 
 	flag.Parse()
 
-	if err := customSetupLogging(*logLevel, logEncoder); err != nil {
+	if err := customSetupLogging(*logLevel, logEncoder, logTimestampFormat); err != nil {
 		setupLog.Error(err, "unable to setup the logger")
 		os.Exit(1)
 	}
@@ -88,9 +92,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	managerLogger := ctrl.Log.WithName("controllers").WithName("WatermarkPodAutoscaler")
+	klog.SetLogger(managerLogger) // Redirect klog to the controller logger (zap)
+
 	if err = (&controllers.WatermarkPodAutoscalerReconciler{
 		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("WatermarkPodAutoscaler"),
+		Log:    managerLogger,
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WatermarkPodAutoscaler")
@@ -110,13 +117,18 @@ func main() {
 	}
 }
 
-func customSetupLogging(logLevel zapcore.Level, logEncoder string) error {
+func customSetupLogging(logLevel zapcore.Level, logEncoder, logTimestampFormat string) error {
+	zapConfig := zap.NewProductionEncoderConfig()
+	if err := zapConfig.EncodeTime.UnmarshalText([]byte(logTimestampFormat)); err != nil {
+		return fmt.Errorf("unable to configure the log timestamp format, err: %w", err)
+	}
+
 	var encoder zapcore.Encoder
 	switch logEncoder {
 	case "console":
-		encoder = zapcore.NewConsoleEncoder(zap.NewProductionEncoderConfig())
+		encoder = zapcore.NewConsoleEncoder(zapConfig)
 	case "json":
-		encoder = zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
+		encoder = zapcore.NewJSONEncoder(zapConfig)
 	default:
 		return fmt.Errorf("unknow log encoder: %s", logEncoder)
 	}
