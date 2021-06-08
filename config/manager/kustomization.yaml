@@ -1,7 +1,7 @@
 resources:
 - manager.yaml
 images:
-- name: watermarkpodautoscaler
+- name: gcr.io/datadoghq/watermarkpodautoscaler
   newName: gcr.io/datadoghq/watermarkpodautoscaler
   newTag: 0.3.0-rc.6
 apiVersion: kustomize.config.k8s.io/v1beta1

@@ -30,12 +30,11 @@ spec:
     spec:
       serviceAccountName: watermarkpodautoscaler-controller-manager
       containers:
-      - command:
-        - /manager
+      - name: watermarkpodautoscaler
         args:
         - --enable-leader-election
         image: gcr.io/datadoghq/watermarkpodautoscaler:latest
-        name: watermarkpodautoscaler
+        imagePullPolicy: IfNotPresent
         resources:
           limits:
             cpu: 100m

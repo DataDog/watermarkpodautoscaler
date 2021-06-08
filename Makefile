@@ -4,7 +4,8 @@
 BUILDINFOPKG=github.com/DataDog/watermarkpodautoscaler/pkg/version
 GIT_TAG?=$(shell git tag -l --contains HEAD | tail -1)
 TAG_HASH=$(shell git tag | tail -1)_$(shell git rev-parse --short HEAD)
-VERSION?=$(if $(GIT_TAG),$(GIT_TAG),$(TAG_HASH))
+GIT_VERSION?=$(if $(GIT_TAG),$(GIT_TAG),$(TAG_HASH))
+VERSION?=$(GIT_VERSION:v%=%)
 IMG_VERSION?=$(if $(VERSION),$(VERSION),latest)
 GIT_COMMIT?=$(shell git rev-parse HEAD)
 DATE=$(shell date +%Y-%m-%d/%H:%M:%S )
@@ -12,6 +13,7 @@ LDFLAGS=-w -s -X ${BUILDINFOPKG}.Commit=${GIT_COMMIT} -X ${BUILDINFOPKG}.Version
 CHANNELS=alpha
 DEFAULT_CHANNEL=alpha
 GOARCH?=amd64
+IMG_NAME=gcr.io/datadoghq/watermarkpodautoscaler
 
 # Default bundle image tag
 BUNDLE_IMG ?= controller-bundle:$(VERSION)
@@ -25,7 +27,7 @@ endif
 BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
 # Image URL to use all building/pushing image targets
-IMG ?= gcr.io/datadoghq/watermarkpodautoscaler:$(IMG_VERSION)
+IMG ?= $(IMG_NAME):$(IMG_VERSION)
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -66,7 +68,7 @@ uninstall: manifests kustomize
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy: manifests kustomize
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	cd config/manager && $(KUSTOMIZE) edit set image $(IMG_NAME)=$(IMG)
 	$(KUSTOMIZE) build config/default | kubectl apply -f -
 
 # Generate manifests e.g. CRD, RBAC etc.
@@ -133,7 +135,7 @@ endif
 .PHONY: bundle
 bundle: manifests
 	./bin/operator-sdk generate kustomize manifests -q
-	cd config/manager && $(KUSTOMIZE) edit set image watermarkpodautoscaler=$(IMG)
+	cd config/manager && $(KUSTOMIZE) edit set image $(IMG_NAME)=$(IMG)
 	$(KUSTOMIZE) build config/manifests | ./bin/operator-sdk generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
 	./hack/patch-bundle.sh
 	./bin/operator-sdk bundle validate ./bundle
