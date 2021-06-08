@@ -51,10 +51,19 @@ rules:
   resources:
   - deployments/scale
   - replicasets/scale
+  - replicationcontrollers/scale
   - statefulsets/scale
   verbs:
   - get
   - update
+- apiGroups:
+  - apps.openshift.io
+  resources:
+  - deploymentconfigs
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - coordination.k8s.io
   resources:
