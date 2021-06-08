@@ -45,8 +45,6 @@ spec:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command:
-          - watermarkpodautoscaler
           args:
             - --zap-level={{ .Values.logLevel }}
             - --leader-election-resource={{ .Values.leaderElectionResourceLock }}
