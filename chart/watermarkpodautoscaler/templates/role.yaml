@@ -57,8 +57,16 @@ rules:
   - extensions
   resources:
   - replicasets/scale
+  - replicationcontrollers/scale
   - deployments/scale
   - statefulsets/scale
+  verbs:
+  - 'update'
+  - 'get'
+- apiGroups:
+  - apps.openshift.io
+  resources:
+  - deploymentconfigs/scale
   verbs:
   - 'update'
   - 'get'
