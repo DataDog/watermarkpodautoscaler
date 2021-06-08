@@ -41,7 +41,7 @@ metadata:
     capabilities: Basic Install
     operators.operatorframework.io/builder: operator-sdk-v1.4.0+git
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v2
-  name: watermarkpodautoscaler.v0.3.0-rc.6
+  name: watermarkpodautoscaler.v0.3.0-rc.7
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -106,10 +106,19 @@ spec:
           resources:
           - deployments/scale
           - replicasets/scale
+          - replicationcontrollers/scale
           - statefulsets/scale
           verbs:
           - get
           - update
+        - apiGroups:
+          - apps.openshift.io
+          resources:
+          - deploymentconfigs
+          verbs:
+          - get
+          - list
+          - watch
         - apiGroups:
           - coordination.k8s.io
           resources:
@@ -153,8 +162,6 @@ spec:
               containers:
               - args:
                 - --enable-leader-election
-                command:
-                - /manager
                 env:
                 - name: WATCH_NAMESPACE
                   valueFrom:
@@ -164,7 +171,8 @@ spec:
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.name
-                image: gcr.io/datadoghq/watermarkpodautoscaler:latest
+                image: gcr.io/datadoghq/watermarkpodautoscaler:v0.3.0-rc.7
+                imagePullPolicy: IfNotPresent
                 livenessProbe:
                   httpGet:
                     path: /healthz/
@@ -237,4 +245,4 @@ spec:
   maturity: alpha
   provider:
     name: Datadog
-  version: 0.3.0-rc.6
+  version: 0.3.0-rc.7

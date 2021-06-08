@@ -5,7 +5,7 @@
 replicaCount: 1
 image:
   repository: gcr.io/datadoghq/watermarkpodautoscaler
-  tag: v0.3.0-rc.6
+  tag: v0.3.0-rc.7
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 nameOverride: ""
@@ -31,7 +31,6 @@ podSecurityContext: {}
 
 # Determines which resource lock to use for leader election
 leaderElectionResourceLock: configmaps
-
 securityContext: {}
 # capabilities:
 #   drop:
