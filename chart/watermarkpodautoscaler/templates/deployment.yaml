@@ -46,7 +46,7 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
-            - --zap-level={{ .Values.logLevel }}
+            - --loglevel={{ .Values.logLevel }}
             - --leader-election-resource={{ .Values.leaderElectionResourceLock }}
           env:
             - name: WATCH_NAMESPACE
