@@ -7,6 +7,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -846,7 +847,7 @@ func TestDefaultWatermarkPodAutoscaler(t *testing.T) {
 			err: fmt.Errorf("tolerance should be set as a quantity between 0 and 1, currently set to : 5, which is 500%%"),
 		},
 		{
-			name:    "scaleuplimitfactor is out of bounds",
+			name:    "scaleuplimitfactor can be > 100",
 			wpaName: "test-1",
 			wpaNs:   "default",
 			spec: &v1alpha1.WatermarkPodAutoscalerSpec{
@@ -857,7 +858,21 @@ func TestDefaultWatermarkPodAutoscaler(t *testing.T) {
 				ScaleDownLimitFactor: resource.NewQuantity(10, resource.DecimalSI),
 				Tolerance:            *resource.NewMilliQuantity(50, resource.DecimalSI),
 			},
-			err: fmt.Errorf("scaleuplimitfactor should be set as a quantity between 0 and 100, currently set to : 101, which could yield a 101%% growth"),
+			err: nil,
+		},
+		{
+			name:    "scaleuplimitfactor < 0",
+			wpaName: "test-1",
+			wpaNs:   "default",
+			spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+				ScaleTargetRef:       testCrossVersionObjectRef,
+				MinReplicas:          getReplicas(4),
+				MaxReplicas:          7,
+				ScaleUpLimitFactor:   resource.NewQuantity(-1, resource.DecimalSI),
+				ScaleDownLimitFactor: resource.NewQuantity(10, resource.DecimalSI),
+				Tolerance:            *resource.NewMilliQuantity(50, resource.DecimalSI),
+			},
+			err: errors.New("scaleuplimitfactor should be set as a positive quantity, currently set to : -1, which could yield a -1% growth"),
 		},
 		{
 			name:    "scaledownlimitfactor is out of bounds",
