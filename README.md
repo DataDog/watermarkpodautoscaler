@@ -109,6 +109,10 @@ spec:
   scaleUpLimitFactor: 50
   minReplicas: 4
   maxReplicas: 9
+  scaleTargetRef:
+    kind: "Deployment",
+    name: "some_app",
+    apiVersion: "apps/v1",
   metrics:
   - external:
       highWatermark: 400m
@@ -120,7 +124,7 @@ spec:
           service: billing
           short_image: billing-app
     type: External
-  tolerance: 0.01
+  tolerance: "0.01"
 ```
 
 * **Bounds**
