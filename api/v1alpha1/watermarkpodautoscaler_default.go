@@ -116,7 +116,7 @@ func checkWPAMetricsValidity(wpa *WatermarkPodAutoscaler) (err error) {
 	// We also make sure that the Watermarks are properly set.
 	for _, metric := range wpa.Spec.Metrics {
 		switch metric.Type {
-		case "External":
+		case ExternalMetricSourceType:
 			if metric.External == nil {
 				return fmt.Errorf("metric.External is nil while metric.Type is '%s'", metric.Type)
 			}
@@ -132,7 +132,7 @@ func checkWPAMetricsValidity(wpa *WatermarkPodAutoscaler) (err error) {
 				msg := fmt.Sprintf("Low WaterMark of External metric %s{%s} has to be strictly inferior to the High Watermark", metric.External.MetricName, metric.External.MetricSelector.MatchLabels)
 				return fmt.Errorf(msg)
 			}
-		case "Resource":
+		case ResourceMetricSourceType:
 			if metric.Resource == nil {
 				return fmt.Errorf("metric.Resource is nil while metric.Type is '%s'", metric.Type)
 			}
