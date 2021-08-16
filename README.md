@@ -110,9 +110,9 @@ spec:
   minReplicas: 4
   maxReplicas: 9
   scaleTargetRef:
-    kind: "Deployment",
-    name: "some_app",
-    apiVersion: "apps/v1",
+    kind: "Deployment"
+    name: "some_app"
+    apiVersion: "apps/v1"
   metrics:
   - external:
       highWatermark: 400m
