@@ -7,6 +7,12 @@ metadata:
   name: watermarkpodautoscalers.datadoghq.com
 spec:
   additionalPrinterColumns:
+  - JSONPath: .status.conditions[0].type
+    name: condition
+    type: string
+  - JSONPath: .status.conditions[0].status
+    name: condition status
+    type: string
   - JSONPath: .status.currentMetrics[*].external.currentValue..
     name: value
     type: string
@@ -28,6 +34,9 @@ spec:
   - JSONPath: .status.conditions[?(@.type=="DryRun")].status
     name: dry-run
     type: string
+  - JSONPath: .status.lastScaleTime
+    name: last scale
+    type: date
   group: datadoghq.com
   names:
     kind: WatermarkPodAutoscaler

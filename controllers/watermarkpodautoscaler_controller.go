@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -559,6 +560,10 @@ func setConditionInList(inputList []autoscalingv2.HorizontalPodAutoscalerConditi
 	existingCond.Status = status
 	existingCond.Reason = reason
 	existingCond.Message = fmt.Sprintf(message, args...)
+
+	sort.Slice(resList, func(i, j int) bool {
+		return resList[i].LastTransitionTime.After(resList[j].LastTransitionTime.Time)
+	})
 
 	return resList
 }

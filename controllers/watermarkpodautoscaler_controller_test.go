@@ -1251,6 +1251,63 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 	}
 }
 
+func TestSetCondition(t *testing.T) {
+	tests := []struct {
+		name              string
+		currentConditions []v2beta1.HorizontalPodAutoscalerCondition
+		newConditionType  v2beta1.HorizontalPodAutoscalerConditionType
+		expectedOrder     []v2beta1.HorizontalPodAutoscalerConditionType
+	}{
+		{
+			name: "add condition with new type",
+			currentConditions: []v2beta1.HorizontalPodAutoscalerCondition{
+				{
+					Type:               v2beta1.ScalingLimited,
+					Status:             corev1.ConditionFalse,
+					LastTransitionTime: metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
+				}},
+			newConditionType: v2beta1.ScalingActive,
+			// The result should be sorted (most recent first)
+			expectedOrder: []v2beta1.HorizontalPodAutoscalerConditionType{v2beta1.ScalingActive, v2beta1.ScalingLimited},
+		},
+		{
+			name: "add condition with existing type",
+			currentConditions: []v2beta1.HorizontalPodAutoscalerCondition{
+				{
+					Type:               v2beta1.ScalingLimited,
+					Status:             corev1.ConditionFalse,
+					LastTransitionTime: metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
+				},
+				{
+					Type:               dryRunCondition,
+					Status:             corev1.ConditionFalse,
+					LastTransitionTime: metav1.Time{Time: time.Now().Add(-2 * time.Minute)},
+				},
+			},
+			newConditionType: dryRunCondition,
+			// The LastTransitionTime of dryRun should be the most recent one
+			// now. That's why it should appear first in the resulting array.
+			expectedOrder: []v2beta1.HorizontalPodAutoscalerConditionType{dryRunCondition, v2beta1.ScalingLimited},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wpa := makeWPASpec(1, 10, 2, 2)
+			wpa.Status.Conditions = tt.currentConditions
+
+			setCondition(wpa, tt.newConditionType, corev1.ConditionTrue, "", "")
+
+			var resultSortedTypes []v2beta1.HorizontalPodAutoscalerConditionType
+			for _, condition := range wpa.Status.Conditions {
+				resultSortedTypes = append(resultSortedTypes, condition.Type)
+			}
+
+			assert.Equal(t, tt.expectedOrder, resultSortedTypes)
+		})
+	}
+}
+
 func newScaleForDeployment(replicasStatus int32) *autoscalingv1.Scale {
 	return &autoscalingv1.Scale{
 		TypeMeta: metav1.TypeMeta{Kind: "Scale"},

@@ -15,6 +15,8 @@ import (
 // WatermarkPodAutoscaler is the Schema for the watermarkpodautoscalers API
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="condition",type="string",JSONPath=".status.conditions[0].type"
+// +kubebuilder:printcolumn:name="condition status",type="string",JSONPath=".status.conditions[0].status"
 // +kubebuilder:printcolumn:name="value",type="string",JSONPath=".status.currentMetrics[*].external.currentValue.."
 // +kubebuilder:printcolumn:name="high watermark",type="string",JSONPath=".spec.metrics[*].external.highWatermark.."
 // +kubebuilder:printcolumn:name="low watermark",type="string",JSONPath=".spec.metrics[*].external.lowWatermark.."
@@ -22,6 +24,7 @@ import (
 // +kubebuilder:printcolumn:name="min replicas",type="integer",JSONPath=".spec.minReplicas"
 // +kubebuilder:printcolumn:name="max replicas",type="integer",JSONPath=".spec.maxReplicas"
 // +kubebuilder:printcolumn:name="dry-run",type="string",JSONPath=".status.conditions[?(@.type==\"DryRun\")].status"
+// +kubebuilder:printcolumn:name="last scale",type="date",JSONPath=".status.lastScaleTime"
 // +kubebuilder:resource:path=watermarkpodautoscalers,shortName=wpa
 // +k8s:openapi-gen=true
 // +genclient
