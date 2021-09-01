@@ -204,3 +204,17 @@ type WatermarkPodAutoscalerList struct {
 func init() {
 	SchemeBuilder.Register(&WatermarkPodAutoscaler{}, &WatermarkPodAutoscalerList{})
 }
+
+// GetLogAttrs takes a list of log attrs that would be sent to logger.info, and adds all key value label pairs from
+// the WPA spec. logAttrs should be pairs of key/values, with each key being a string.
+func (wpa *WatermarkPodAutoscaler) GetLogAttrs(logAttrs ...interface{}) []interface{} {
+	var logAttributes []interface{}
+	for k,v := range wpa.ObjectMeta.Labels {
+		logAttributes = append(logAttributes, k)
+		logAttributes = append(logAttributes, v)
+	}
+	for _, v := range logAttrs {
+		logAttributes = append(logAttributes, v)
+	}
+	return logAttributes
+}
