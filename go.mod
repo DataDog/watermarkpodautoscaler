@@ -5,7 +5,6 @@ go 1.15
 require (
 	github.com/go-logr/logr v0.3.0
 	github.com/go-openapi/spec v0.19.3
-	github.com/magiconair/properties v1.8.1 // indirect
 	github.com/mikefarah/yq/v3 v3.0.0-20200615114226-086f0ec6b9aa
 	github.com/onsi/ginkgo v1.14.1
 	github.com/onsi/gomega v1.10.2
@@ -22,7 +21,7 @@ require (
 	k8s.io/klog/v2 v2.4.0
 	k8s.io/kube-aggregator v0.20.2
 	k8s.io/kube-openapi v0.0.0-20201113171705-d219536bb9fd
-	k8s.io/kubernetes v1.20.5
+	k8s.io/kubernetes v1.20.7
 	k8s.io/metrics v0.20.2
 	sigs.k8s.io/controller-runtime v0.7.2
 )
