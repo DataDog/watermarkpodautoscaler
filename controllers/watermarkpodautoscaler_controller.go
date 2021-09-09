@@ -355,16 +355,16 @@ func shouldScale(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 		transitionCountdown.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, transitionPromLabel: "upscale", resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(0)
 	}
 
-	return canScale(logger, backoffUp, backoffDown, currentReplicas, desiredReplicas)
+	return canScale(logger, backoffUp, backoffDown, currentReplicas, desiredReplicas, wpa)
 }
 
 // canScale ensures that we only scale under the right conditions.
-func canScale(logger logr.Logger, backoffUp, backoffDown bool, currentReplicas, desiredReplicas int32) bool {
+func canScale(logger logr.Logger, backoffUp, backoffDown bool, currentReplicas, desiredReplicas int32, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) bool {
 	if desiredReplicas == currentReplicas {
-		logger.Info("Will not scale: number of replicas has not changed")
+		logger.Info("Will not scale: number of replicas has not changed", wpa.GetLogAttrs())
 		return false
 	}
-	logger.Info("Cooldown status","backoffUp", backoffUp, "backoffDown", backoffDown, "desiredReplicas", desiredReplicas, "currentReplicas", currentReplicas)
+	logger.Info("Cooldown status", wpa.GetLogAttrs("backoffUp", backoffUp, "backoffDown", backoffDown, "desiredReplicas", desiredReplicas, "currentReplicas", currentReplicas))
 	return !backoffUp && desiredReplicas > currentReplicas || !backoffDown && desiredReplicas < currentReplicas
 }
 
