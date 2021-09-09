@@ -6,6 +6,7 @@
 package v1alpha1
 
 import (
+	"encoding/json"
 	autoscalingv2 "k8s.io/api/autoscaling/v2beta1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -205,15 +206,27 @@ func init() {
 	SchemeBuilder.Register(&WatermarkPodAutoscaler{}, &WatermarkPodAutoscalerList{})
 }
 
-// GetLogAttrs takes a list of log attrs that would be sent to logger.info, and adds all key value label pairs from
-// the WPA spec. logAttrs should be pairs of key/values, with each key being a string.
+// GetLogAttrs takes a list of log attrs that would be sent to logger.info, and adds user specified key value attribute
+// pairs from the ad.datadoghq.com/attributes annotation of the WPA spec.
+// logAttrs should be pairs of key/values, with each key being a string.
 func (wpa *WatermarkPodAutoscaler) GetLogAttrs(logAttrs ...interface{}) []interface{} {
 	var logAttributes []interface{}
-	for k,v := range wpa.ObjectMeta.Labels {
-		logAttributes = append(logAttributes, k)
+
+	for _, v := range logAttrs {
 		logAttributes = append(logAttributes, v)
 	}
-	for _, v := range logAttrs {
+
+	customAttrsStr := wpa.ObjectMeta.Annotations["ad.datadoghq.com/attributes"]
+	var customAttrs map[string]interface{}
+	err := json.Unmarshal([]byte(customAttrsStr), &customAttrs)
+	if err != nil {
+		// Someone put invalid JSON in their annotation, don't want to spam controller logs with errors for that.
+		// Just continue with the log attributes defined by the controller.
+		return logAttributes
+	}
+
+	for k,v := range customAttrs {
+		logAttributes = append(logAttributes, k)
 		logAttributes = append(logAttributes, v)
 	}
 	return logAttributes
