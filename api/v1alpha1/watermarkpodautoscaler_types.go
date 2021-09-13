@@ -107,6 +107,7 @@ type WatermarkPodAutoscalerSpec struct {
 type ExternalMetricSource struct {
 	// metricName is the name of the metric in question.
 	MetricName string `json:"metricName"`
+
 	// metricSelector is used to identify a specific time series
 	// within a given metric.
 	// +optional
@@ -127,6 +128,7 @@ type ExternalMetricSource struct {
 type ResourceMetricSource struct {
 	// name is the name of the resource in question.
 	Name v1.ResourceName `json:"name"`
+
 	// metricSelector is used to identify a specific time series
 	// within a given metric.
 	// +optional
