@@ -410,7 +410,7 @@ func schema__api_v1alpha1_WatermarkPodAutoscalerStatus(ref common.ReferenceCallb
 						},
 					},
 				},
-				Required: []string{"currentReplicas", "desiredReplicas", "currentMetrics", "conditions"},
+				Required: []string{"currentReplicas", "desiredReplicas"},
 			},
 		},
 		Dependencies: []string{

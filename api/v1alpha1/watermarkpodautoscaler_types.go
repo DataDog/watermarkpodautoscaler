@@ -88,6 +88,7 @@ type WatermarkPodAutoscalerSpec struct {
 	// and will set the desired number of pods by using its Scale subresource.
 	ScaleTargetRef CrossVersionObjectReference `json:"scaleTargetRef"`
 	// specifications that will be used to calculate the desired replica count
+	// +optional
 	// +listType=set
 	Metrics []MetricSpec `json:"metrics,omitempty"`
 	// +kubebuilder:validation:Minimum=1
@@ -106,6 +107,7 @@ type WatermarkPodAutoscalerSpec struct {
 type ExternalMetricSource struct {
 	// metricName is the name of the metric in question.
 	MetricName string `json:"metricName"`
+
 	// metricSelector is used to identify a specific time series
 	// within a given metric.
 	// +optional
@@ -126,6 +128,7 @@ type ExternalMetricSource struct {
 type ResourceMetricSource struct {
 	// name is the name of the resource in question.
 	Name v1.ResourceName `json:"name"`
+
 	// metricSelector is used to identify a specific time series
 	// within a given metric.
 	// +optional
@@ -184,10 +187,12 @@ type WatermarkPodAutoscalerStatus struct {
 	LastScaleTime      *metav1.Time `json:"lastScaleTime,omitempty"`
 	CurrentReplicas    int32        `json:"currentReplicas"`
 	DesiredReplicas    int32        `json:"desiredReplicas"`
+	// +optional
 	// +listType=set
-	CurrentMetrics []autoscalingv2.MetricStatus `json:"currentMetrics"`
+	CurrentMetrics []autoscalingv2.MetricStatus `json:"currentMetrics,omitempty"`
+	// +optional
 	// +listType=set
-	Conditions []autoscalingv2.HorizontalPodAutoscalerCondition `json:"conditions"`
+	Conditions []autoscalingv2.HorizontalPodAutoscalerCondition `json:"conditions,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
