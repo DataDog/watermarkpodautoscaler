@@ -209,6 +209,7 @@ func init() {
 // GetLogAttrs takes a list of log attrs that would be sent to logger.info, and adds user specified key value attribute
 // pairs from the ad.datadoghq.com/attributes annotation of the WPA spec.
 // logAttrs should be pairs of key/values, with each key being a string.
+// This func returns a slice! To pass this as variadic parameters to logger.info, you need the ellipses, so use wpa.GetLogAttrs()...
 func (wpa *WatermarkPodAutoscaler) GetLogAttrs(logAttrs ...interface{}) []interface{} {
 	var logAttributes []interface{}
 
