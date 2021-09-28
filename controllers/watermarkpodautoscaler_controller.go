@@ -7,6 +7,7 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
@@ -52,6 +53,7 @@ import (
 
 const (
 	defaultSyncPeriod = 15 * time.Second
+	logAttributesAnnotation = "wpa.datadoghq.com/logs-attributes"
 )
 
 var dryRunCondition autoscalingv2.HorizontalPodAutoscalerConditionType = "DryRun"
@@ -95,6 +97,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 
 	// Fetch the WatermarkPodAutoscaler instance
 	instance := &datadoghqv1alpha1.WatermarkPodAutoscaler{}
+	log = log.WithValues(GetLogAttrsFromWpa(instance)...)
 	err = r.Client.Get(ctx, request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -252,7 +255,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	if rescale {
 		setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, datadoghqv1alpha1.ConditionReasonReadyForScale, "the last scaling time was sufficiently old as to warrant a new scale")
 		if wpa.Spec.DryRun {
-			logger.Info("DryRun mode: scaling change was inhibited", wpa.GetLogAttrs("currentReplicas", currentReplicas, "desiredReplicas", desiredReplicas))
+			logger.Info("DryRun mode: scaling change was inhibited", "currentReplicas", currentReplicas, "desiredReplicas", desiredReplicas)
 			setStatus(wpa, currentReplicas, desiredReplicas, metricStatuses, rescale)
 			return r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa)
 		}
@@ -273,7 +276,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 		setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, datadoghqv1alpha1.ConditionReasonSuccessfulScale, "the WPA controller was able to update the target scale to %d", desiredReplicas)
 		r.eventRecorder.Eventf(wpa, corev1.EventTypeNormal, datadoghqv1alpha1.ReasonScaling, fmt.Sprintf("New size: %d; reason: %s", desiredReplicas, rescaleReason))
 
-		logger.Info("Successful rescale", wpa.GetLogAttrs("currentReplicas", currentReplicas, "desiredReplicas", desiredReplicas, "rescaleReason", rescaleReason)...)
+		logger.Info("Successful rescale", "currentReplicas", currentReplicas, "desiredReplicas", desiredReplicas, "rescaleReason", rescaleReason)
 	} else {
 		r.eventRecorder.Eventf(wpa, corev1.EventTypeNormal, datadoghqv1alpha1.ReasonNotScaling, fmt.Sprintf("Decided not to scale %s to %d (last scale time was %v )", reference, desiredReplicas, wpa.Status.LastScaleTime))
 		desiredReplicas = currentReplicas
@@ -320,7 +323,7 @@ func (r *WatermarkPodAutoscalerReconciler) getScaleForResourceMappings(ctx conte
 
 func shouldScale(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, desiredReplicas int32, timestamp time.Time) bool {
 	if wpa.Status.LastScaleTime == nil {
-		logger.Info("No timestamp for the lastScale event", wpa.GetLogAttrs()...)
+		logger.Info("No timestamp for the lastScale event")
 		return true
 	}
 
@@ -333,7 +336,7 @@ func shouldScale(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 		transitionCountdown.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, transitionPromLabel: "downscale", resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(downscaleCountdown)
 		setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonBackOffDownscale, "the time since the previous scale is still within the downscale forbidden window")
 		backoffDown = true
-		logger.Info("Too early to downscale", wpa.GetLogAttrs("lastScaleTime", wpa.Status.LastScaleTime, "nextDownscaleTimestamp", metav1.Time{Time: wpa.Status.LastScaleTime.Add(downscaleForbiddenWindow)}, "lastMetricsTimestamp", metav1.Time{Time: timestamp})...)
+		logger.Info("Too early to downscale", "lastScaleTime", wpa.Status.LastScaleTime, "nextDownscaleTimestamp", metav1.Time{Time: wpa.Status.LastScaleTime.Add(downscaleForbiddenWindow)}, "lastMetricsTimestamp", metav1.Time{Time: timestamp})
 	} else {
 		transitionCountdown.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, transitionPromLabel: "downscale", resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(0)
 	}
@@ -344,7 +347,7 @@ func shouldScale(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 	if upscaleCountdown > 0 {
 		transitionCountdown.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, transitionPromLabel: "upscale", resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(upscaleCountdown)
 		backoffUp = true
-		logger.Info("Too early to upscale", wpa.GetLogAttrs("lastScaleTime", wpa.Status.LastScaleTime, "nextUpscaleTimestamp", metav1.Time{Time: wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow)}, "lastMetricsTimestamp", metav1.Time{Time: timestamp})...)
+		logger.Info("Too early to upscale", "lastScaleTime", wpa.Status.LastScaleTime, "nextUpscaleTimestamp", metav1.Time{Time: wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow)}, "lastMetricsTimestamp", metav1.Time{Time: timestamp})
 
 		if backoffDown {
 			setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonBackOff, "the time since the previous scale is still within both the downscale and upscale forbidden windows")
@@ -361,10 +364,10 @@ func shouldScale(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 // canScale ensures that we only scale under the right conditions.
 func canScale(logger logr.Logger, backoffUp, backoffDown bool, currentReplicas, desiredReplicas int32, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) bool {
 	if desiredReplicas == currentReplicas {
-		logger.Info("Will not scale: number of replicas has not changed", wpa.GetLogAttrs()...)
+		logger.Info("Will not scale: number of replicas has not changed")
 		return false
 	}
-	logger.Info("Cooldown status", wpa.GetLogAttrs("backoffUp", backoffUp, "backoffDown", backoffDown, "desiredReplicas", desiredReplicas, "currentReplicas", currentReplicas)...)
+	logger.Info("Cooldown status", "backoffUp", backoffUp, "backoffDown", backoffDown, "desiredReplicas", desiredReplicas, "currentReplicas", currentReplicas)
 	return !backoffUp && desiredReplicas > currentReplicas || !backoffDown && desiredReplicas < currentReplicas
 }
 
@@ -615,7 +618,7 @@ func convertDesiredReplicasWithRules(logger logr.Logger, wpa *datadoghqv1alpha1.
 		restrictedScaling.With(promLabelsForWpa).Set(1)
 		possibleLimitingCondition = "ScaleDownLimit"
 		possibleLimitingReason = "the desired replica count is decreasing faster than the maximum scale rate"
-		logger.Info("Downscaling rate higher than limit set by `scaleDownLimitFactor`, capping the maximum downscale to 'minimumAllowedReplicas'", wpa.GetLogAttrs("scaleDownLimitFactor", fmt.Sprintf("%.1f", float64(wpa.Spec.ScaleDownLimitFactor.MilliValue()/1000)), "wpaMinReplicas", wpaMinReplicas, "minimumAllowedReplicas", minimumAllowedReplicas)...)
+		logger.Info("Downscaling rate higher than limit set by `scaleDownLimitFactor`, capping the maximum downscale to 'minimumAllowedReplicas'", "scaleDownLimitFactor", fmt.Sprintf("%.1f", float64(wpa.Spec.ScaleDownLimitFactor.MilliValue()/1000)), "wpaMinReplicas", wpaMinReplicas, "minimumAllowedReplicas", minimumAllowedReplicas)
 	case desiredReplicas >= scaleDownLimit:
 		minimumAllowedReplicas = wpaMinReplicas
 		restrictedScaling.With(promLabelsForWpa).Set(0)
@@ -633,7 +636,7 @@ func convertDesiredReplicasWithRules(logger logr.Logger, wpa *datadoghqv1alpha1.
 		maximumAllowedReplicas = int32(math.Min(float64(scaleUpLimit), float64(wpaMaxReplicas)))
 		promLabelsForWpa[reasonPromLabel] = upscaleCappingPromLabelVal
 		restrictedScaling.With(promLabelsForWpa).Set(1)
-		logger.Info("Upscaling rate higher than limit set by 'ScaleUpLimitFactor', capping the maximum upscale to 'maximumAllowedReplicas'", wpa.GetLogAttrs("scaleUpLimitFactor", fmt.Sprintf("%.1f", float64(wpa.Spec.ScaleUpLimitFactor.MilliValue()/1000)), "wpaMaxReplicas", wpaMaxReplicas, "maximumAllowedReplicas", maximumAllowedReplicas)...)
+		logger.Info("Upscaling rate higher than limit set by 'ScaleUpLimitFactor', capping the maximum upscale to 'maximumAllowedReplicas'", "scaleUpLimitFactor", fmt.Sprintf("%.1f", float64(wpa.Spec.ScaleUpLimitFactor.MilliValue()/1000)), "wpaMaxReplicas", wpaMaxReplicas, "maximumAllowedReplicas", maximumAllowedReplicas)
 		possibleLimitingCondition = "ScaleUpLimit"
 		possibleLimitingReason = "the desired replica count is increasing faster than the maximum scale rate"
 	} else {
@@ -645,7 +648,7 @@ func convertDesiredReplicasWithRules(logger logr.Logger, wpa *datadoghqv1alpha1.
 
 	// make sure the desiredReplicas is between the allowed boundaries.
 	if desiredReplicas > maximumAllowedReplicas {
-		logger.Info("Returning replicas, condition and reason", wpa.GetLogAttrs("replicas", maximumAllowedReplicas, "condition", possibleLimitingCondition, reasonPromLabel, possibleLimitingReason)...)
+		logger.Info("Returning replicas, condition and reason", "replicas", maximumAllowedReplicas, "condition", possibleLimitingCondition, reasonPromLabel, possibleLimitingReason)
 		return maximumAllowedReplicas, possibleLimitingCondition, possibleLimitingReason
 	}
 
@@ -751,4 +754,24 @@ func initializePodInformer(clientConfig *rest.Config, stop chan struct{}) lister
 	go sharedInf.Core().V1().Pods().Informer().Run(stop)
 
 	return sharedInf.Core().V1().Pods().Lister()
+}
+
+// GetLogAttrsFromWpa returns a slice of all key/value pairs specified in the WPA log attributes annotation json.
+func GetLogAttrsFromWpa(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) []interface{} {
+	var logAttributes []interface{}
+	customAttrsStr := wpa.ObjectMeta.Annotations[logAttributesAnnotation]
+	var customAttrs map[string]interface{}
+
+	err := json.Unmarshal([]byte(customAttrsStr), &customAttrs)
+	if err != nil {
+		// Someone put invalid JSON in their annotation, don't want to spam controller logs with errors for that.
+		// Just continue with the log attributes defined by the controller.
+		return logAttributes
+	}
+
+	for k,v := range customAttrs {
+		logAttributes = append(logAttributes, k)
+		logAttributes = append(logAttributes, v)
+	}
+	return logAttributes
 }
