@@ -36,7 +36,7 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-all: manager test
+all: install-tools manager test
 
 build: manager
 
