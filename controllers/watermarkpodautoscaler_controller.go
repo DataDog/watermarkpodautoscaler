@@ -52,8 +52,8 @@ import (
 )
 
 const (
-	defaultSyncPeriod = 15 * time.Second
-	logAttributesAnnotation = "wpa.datadoghq.com/logs-attributes"
+	defaultSyncPeriod          = 15 * time.Second
+	logAttributesAnnotationKey = "wpa.datadoghq.com/logs-attributes"
 )
 
 var dryRunCondition autoscalingv2.HorizontalPodAutoscalerConditionType = "DryRun"
@@ -358,11 +358,11 @@ func shouldScale(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 		transitionCountdown.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, transitionPromLabel: "upscale", resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(0)
 	}
 
-	return canScale(logger, backoffUp, backoffDown, currentReplicas, desiredReplicas, wpa)
+	return canScale(logger, backoffUp, backoffDown, currentReplicas, desiredReplicas)
 }
 
 // canScale ensures that we only scale under the right conditions.
-func canScale(logger logr.Logger, backoffUp, backoffDown bool, currentReplicas, desiredReplicas int32, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) bool {
+func canScale(logger logr.Logger, backoffUp, backoffDown bool, currentReplicas, desiredReplicas int32) bool {
 	if desiredReplicas == currentReplicas {
 		logger.Info("Will not scale: number of replicas has not changed")
 		return false
@@ -759,7 +759,7 @@ func initializePodInformer(clientConfig *rest.Config, stop chan struct{}) lister
 // GetLogAttrsFromWpa returns a slice of all key/value pairs specified in the WPA log attributes annotation json.
 func GetLogAttrsFromWpa(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) []interface{} {
 	var logAttributes []interface{}
-	customAttrsStr := wpa.ObjectMeta.Annotations[logAttributesAnnotation]
+	customAttrsStr := wpa.ObjectMeta.Annotations[logAttributesAnnotationKey]
 	var customAttrs map[string]interface{}
 
 	err := json.Unmarshal([]byte(customAttrsStr), &customAttrs)
@@ -769,7 +769,7 @@ func GetLogAttrsFromWpa(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) []interfa
 		return logAttributes
 	}
 
-	for k,v := range customAttrs {
+	for k, v := range customAttrs {
 		logAttributes = append(logAttributes, k)
 		logAttributes = append(logAttributes, v)
 	}

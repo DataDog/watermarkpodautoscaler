@@ -1,10 +1,11 @@
 package controllers
 
 import (
+	"testing"
+
 	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1/test"
 	"github.com/DataDog/watermarkpodautoscaler/controllers"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestAddsAnnotationLogAttrs(t *testing.T) {
@@ -13,7 +14,7 @@ func TestAddsAnnotationLogAttrs(t *testing.T) {
 
 	logAttrs := controllers.GetLogAttrsFromWpa(wpa)
 
-	validateVariadicExpansion(t, []interface{}{ "key", "value", "pool", "all"}, logAttrs...)
+	validateVariadicExpansion(t, []interface{}{"key", "value", "pool", "all"}, logAttrs...)
 }
 
 func TestLogWithNoAnnotation(t *testing.T) {
