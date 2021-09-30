@@ -7,6 +7,7 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
@@ -51,7 +52,8 @@ import (
 )
 
 const (
-	defaultSyncPeriod = 15 * time.Second
+	defaultSyncPeriod          = 15 * time.Second
+	logAttributesAnnotationKey = "wpa.datadoghq.com/logs-attributes"
 )
 
 var dryRunCondition autoscalingv2.HorizontalPodAutoscalerConditionType = "DryRun"
@@ -95,6 +97,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 
 	// Fetch the WatermarkPodAutoscaler instance
 	instance := &datadoghqv1alpha1.WatermarkPodAutoscaler{}
+	log = log.WithValues(GetLogAttrsFromWpa(instance)...)
 	err = r.Client.Get(ctx, request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -751,4 +754,24 @@ func initializePodInformer(clientConfig *rest.Config, stop chan struct{}) lister
 	go sharedInf.Core().V1().Pods().Informer().Run(stop)
 
 	return sharedInf.Core().V1().Pods().Lister()
+}
+
+// GetLogAttrsFromWpa returns a slice of all key/value pairs specified in the WPA log attributes annotation json.
+func GetLogAttrsFromWpa(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) []interface{} {
+	var logAttributes []interface{}
+	customAttrsStr := wpa.ObjectMeta.Annotations[logAttributesAnnotationKey]
+	var customAttrs map[string]interface{}
+
+	err := json.Unmarshal([]byte(customAttrsStr), &customAttrs)
+	if err != nil {
+		// Someone put invalid JSON in their annotation, don't want to spam controller logs with errors for that.
+		// Just continue with the log attributes defined by the controller.
+		return logAttributes
+	}
+
+	for k, v := range customAttrs {
+		logAttributes = append(logAttributes, k)
+		logAttributes = append(logAttributes, v)
+	}
+	return logAttributes
 }
