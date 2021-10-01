@@ -313,10 +313,11 @@ func addUpdateReactor(s *fakescale.FakeScaleClient) {
 			return false, nil, nil
 		}
 		newReplicas := obj.Spec.Replicas
-		return true, &autoscalingv1.Scale{ObjectMeta: metav1.ObjectMeta{
-			Name:      obj.Name,
-			Namespace: action.GetNamespace(),
-		},
+		return true, &autoscalingv1.Scale{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      obj.Name,
+				Namespace: action.GetNamespace(),
+			},
 			Spec: autoscalingv1.ScaleSpec{
 				Replicas: newReplicas,
 			},
@@ -600,7 +601,6 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 					t.Errorf("ReconcileWatermarkPodAutoscaler.Reconcile() wantFunc validation error: %v", err)
 				}
 			}
-
 		})
 	}
 }
@@ -775,7 +775,6 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 			if len(statuses) != tt.args.validMetrics {
 				t.Errorf("Incorrect number of valid metrics")
 			}
-
 		})
 	}
 }
@@ -1265,7 +1264,8 @@ func TestSetCondition(t *testing.T) {
 					Type:               v2beta1.ScalingLimited,
 					Status:             corev1.ConditionFalse,
 					LastTransitionTime: metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
-				}},
+				},
+			},
 			newConditionType: v2beta1.ScalingActive,
 			// The result should be sorted (most recent first)
 			expectedOrder: []v2beta1.HorizontalPodAutoscalerConditionType{v2beta1.ScalingActive, v2beta1.ScalingLimited},
@@ -1318,5 +1318,67 @@ func newScaleForDeployment(replicasStatus int32) *autoscalingv1.Scale {
 		Status: autoscalingv1.ScaleStatus{
 			Replicas: replicasStatus,
 		},
+	}
+}
+
+func TestGetLogAttrsFromWpa(t *testing.T) {
+	tests := []struct {
+		name    string
+		wpa     *v1alpha1.WatermarkPodAutoscaler
+		want    []interface{}
+		wantErr bool
+	}{
+		{
+			name: "to logs-attributes annotation",
+			wpa: &v1alpha1.WatermarkPodAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: make(map[string]string),
+				},
+			},
+			want:    nil,
+			wantErr: false,
+		},
+		{
+			name:    "nil annotations",
+			wpa:     &v1alpha1.WatermarkPodAutoscaler{},
+			want:    nil,
+			wantErr: false,
+		},
+		{
+			name: "valide logs-attributes annotation",
+			wpa: &v1alpha1.WatermarkPodAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						logAttributesAnnotationKey: `{"test": "foo"}`,
+					},
+				},
+			},
+			want:    []interface{}{"test", "foo"},
+			wantErr: false,
+		},
+		{
+			name: "invalid logs-attributes annotation",
+			wpa: &v1alpha1.WatermarkPodAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						logAttributesAnnotationKey: `{"test" "foo"`,
+					},
+				},
+			},
+			want:    nil,
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := GetLogAttrsFromWpa(tt.wpa)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetLogAttrsFromWpa() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("GetLogAttrsFromWpa() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

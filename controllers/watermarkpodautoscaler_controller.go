@@ -97,7 +97,6 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 
 	// Fetch the WatermarkPodAutoscaler instance
 	instance := &datadoghqv1alpha1.WatermarkPodAutoscaler{}
-	log = log.WithValues(GetLogAttrsFromWpa(instance)...)
 	err = r.Client.Get(ctx, request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -108,6 +107,14 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		}
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
+	}
+
+	// Attach to the logger the logs-attributes if exist
+	logsAttr, err := GetLogAttrsFromWpa(instance)
+	if err != nil {
+		log.V(4).Error(err, "invalid logs attributes")
+	} else if len(logsAttr) > 0 {
+		log = log.WithValues(logsAttr...)
 	}
 
 	if !datadoghqv1alpha1.IsDefaultWatermarkPodAutoscaler(instance) {
@@ -757,21 +764,29 @@ func initializePodInformer(clientConfig *rest.Config, stop chan struct{}) lister
 }
 
 // GetLogAttrsFromWpa returns a slice of all key/value pairs specified in the WPA log attributes annotation json.
-func GetLogAttrsFromWpa(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) []interface{} {
-	var logAttributes []interface{}
-	customAttrsStr := wpa.ObjectMeta.Annotations[logAttributesAnnotationKey]
+func GetLogAttrsFromWpa(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) ([]interface{}, error) {
+	if wpa.ObjectMeta.Annotations == nil {
+		return nil, nil
+	}
+
+	customAttrsStr, found := wpa.ObjectMeta.Annotations[logAttributesAnnotationKey]
+	if !found {
+		return nil, nil
+	}
 	var customAttrs map[string]interface{}
 
 	err := json.Unmarshal([]byte(customAttrsStr), &customAttrs)
 	if err != nil {
-		// Someone put invalid JSON in their annotation, don't want to spam controller logs with errors for that.
-		// Just continue with the log attributes defined by the controller.
-		return logAttributes
+		return nil, fmt.Errorf("unable to decode the logs-attributes: [%s], err: %w", customAttrsStr, err)
 	}
 
+	if len(customAttrs) == 0 {
+		return nil, nil
+	}
+	logAttributes := make([]interface{}, 0, len(customAttrs)*2)
 	for k, v := range customAttrs {
 		logAttributes = append(logAttributes, k)
 		logAttributes = append(logAttributes, v)
 	}
-	return logAttributes
+	return logAttributes, nil
 }
