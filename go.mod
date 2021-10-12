@@ -17,11 +17,10 @@ require (
 	k8s.io/code-generator v0.20.11
 	k8s.io/controller-manager v0.20.11
 	k8s.io/gengo v0.0.0-20201113003025-83324d819ded
-	k8s.io/heapster v1.5.4 // indirect
+	k8s.io/heapster v1.5.4
 	k8s.io/klog/v2 v2.4.0
 	k8s.io/kube-aggregator v0.20.11
 	k8s.io/kube-openapi v0.0.0-20201113171705-d219536bb9fd
-	k8s.io/kubernetes v1.20.11
 	k8s.io/metrics v0.20.11
 	sigs.k8s.io/controller-runtime v0.7.2
 )
