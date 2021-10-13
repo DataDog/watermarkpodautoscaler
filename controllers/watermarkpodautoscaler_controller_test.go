@@ -309,6 +309,9 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				if err != nil {
 					return err
 				}
+				if *wpa.Spec.Metrics[0].External.HighWatermark != *wpa.Spec.Metrics[0].External.LowWatermark {
+					return fmt.Errorf("Watermark not correctly overridden for WPA")
+				}
 				return nil
 			},
 		},
