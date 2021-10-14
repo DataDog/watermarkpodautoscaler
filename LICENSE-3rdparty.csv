@@ -629,7 +629,6 @@ core,"k8s.io/kube-openapi/pkg/generators",Apache-2.0
 core,"k8s.io/kube-openapi/pkg/generators/rules",Apache-2.0
 core,"k8s.io/kube-openapi/pkg/util/proto",Apache-2.0
 core,"k8s.io/kube-openapi/pkg/util/sets",Apache-2.0
-core,"k8s.io/kubernetes/pkg/controller/podautoscaler/metrics",Apache-2.0
 core,"k8s.io/metrics/pkg/apis/custom_metrics",Apache-2.0
 core,"k8s.io/metrics/pkg/apis/custom_metrics/v1beta1",Apache-2.0
 core,"k8s.io/metrics/pkg/apis/custom_metrics/v1beta2",Apache-2.0
