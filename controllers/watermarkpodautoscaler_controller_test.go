@@ -264,57 +264,6 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				return nil
 			},
 		},
-		{
-			name: "WatermarkPodAutoscaler found and defaulted and missing a watermark",
-			fields: fields{
-				client:        fake.NewClientBuilder().Build(),
-				scaleclient:   &fakescale.FakeScaleClient{},
-				scheme:        s,
-				eventRecorder: eventRecorder,
-			},
-			args: args{
-				request: newRequest(testingNamespace, testingWPAName),
-				loadFunc: func(c client.Client) {
-					wpa := test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
-						Labels: map[string]string{"foo-key": "bar-value"},
-						Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
-							ScaleTargetRef: v1alpha1.CrossVersionObjectReference{
-								Kind: "Deployment",
-								Name: testingDeployName,
-							},
-							MaxReplicas: 5,
-							MinReplicas: getReplicas(3),
-							Metrics: []v1alpha1.MetricSpec{
-								{
-									Type: v1alpha1.ExternalMetricSourceType,
-									External: &v1alpha1.ExternalMetricSource{
-										MetricName:     "deadbeef",
-										MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}, MatchExpressions: nil},
-										HighWatermark:  resource.NewQuantity(3, resource.DecimalSI),
-									},
-								},
-							},
-						},
-					})
-					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
-					_ = c.Create(context.TODO(), wpa)
-				},
-			},
-			want:    reconcile.Result{Requeue: true},
-			wantErr: false,
-			wantFunc: func(c client.Client) error {
-				rq := newRequest(testingNamespace, testingWPAName)
-				wpa := &v1alpha1.WatermarkPodAutoscaler{}
-				err := c.Get(context.TODO(), rq.NamespacedName, wpa)
-				if err != nil {
-					return err
-				}
-				if *wpa.Spec.Metrics[0].External.HighWatermark != *wpa.Spec.Metrics[0].External.LowWatermark {
-					return fmt.Errorf("Watermark not correctly overridden for WPA")
-				}
-				return nil
-			},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -853,7 +802,6 @@ func TestDefaultWatermarkPodAutoscaler(t *testing.T) {
 		name    string
 		wpaName string
 		wpaNs   string
-		requeue bool
 		err     error
 		spec    *v1alpha1.WatermarkPodAutoscalerSpec
 	}{
@@ -862,7 +810,6 @@ func TestDefaultWatermarkPodAutoscaler(t *testing.T) {
 			wpaName: "test-1",
 			wpaNs:   "default",
 			spec:    &v1alpha1.WatermarkPodAutoscalerSpec{},
-			requeue: false,
 			err:     fmt.Errorf("the Spec.ScaleTargetRef should be populated, currently Kind: and/or Name: are not set properly"),
 		},
 		{
@@ -872,8 +819,7 @@ func TestDefaultWatermarkPodAutoscaler(t *testing.T) {
 			spec: &v1alpha1.WatermarkPodAutoscalerSpec{
 				ScaleTargetRef: testCrossVersionObjectRef,
 			},
-			requeue: false,
-			err:     fmt.Errorf("watermark pod autoscaler requires the minimum number of replicas to be configured and inferior to the maximum"),
+			err: fmt.Errorf("watermark pod autoscaler requires the minimum number of replicas to be configured and inferior to the maximum"),
 		},
 		{
 			name:    "number of MinReplicas is incorrect",
@@ -884,8 +830,7 @@ func TestDefaultWatermarkPodAutoscaler(t *testing.T) {
 				MinReplicas:    getReplicas(4),
 				MaxReplicas:    3,
 			},
-			requeue: false,
-			err:     fmt.Errorf("watermark pod autoscaler requires the minimum number of replicas to be configured and inferior to the maximum"),
+			err: fmt.Errorf("watermark pod autoscaler requires the minimum number of replicas to be configured and inferior to the maximum"),
 		},
 		{
 			name:    "tolerance is out of bounds",
@@ -897,8 +842,7 @@ func TestDefaultWatermarkPodAutoscaler(t *testing.T) {
 				MaxReplicas:    7,
 				Tolerance:      *resource.NewMilliQuantity(5000, resource.DecimalSI),
 			},
-			requeue: false,
-			err:     fmt.Errorf("tolerance should be set as a quantity between 0 and 1, currently set to : 5, which is 500%%"),
+			err: fmt.Errorf("tolerance should be set as a quantity between 0 and 1, currently set to : 5, which is 500%%"),
 		},
 		{
 			name:    "scaleuplimitfactor can be > 100",
@@ -912,8 +856,7 @@ func TestDefaultWatermarkPodAutoscaler(t *testing.T) {
 				ScaleDownLimitFactor: resource.NewQuantity(10, resource.DecimalSI),
 				Tolerance:            *resource.NewMilliQuantity(50, resource.DecimalSI),
 			},
-			requeue: false,
-			err:     nil,
+			err: nil,
 		},
 		{
 			name:    "scaleuplimitfactor < 0",
@@ -927,8 +870,7 @@ func TestDefaultWatermarkPodAutoscaler(t *testing.T) {
 				ScaleDownLimitFactor: resource.NewQuantity(10, resource.DecimalSI),
 				Tolerance:            *resource.NewMilliQuantity(50, resource.DecimalSI),
 			},
-			requeue: false,
-			err:     errors.New("scaleuplimitfactor should be set as a positive quantity, currently set to : -1, which could yield a -1% growth"),
+			err: errors.New("scaleuplimitfactor should be set as a positive quantity, currently set to : -1, which could yield a -1% growth"),
 		},
 		{
 			name:    "scaledownlimitfactor is out of bounds",
@@ -942,8 +884,7 @@ func TestDefaultWatermarkPodAutoscaler(t *testing.T) {
 				ScaleDownLimitFactor: resource.NewQuantity(134, resource.DecimalSI),
 				Tolerance:            *resource.NewMilliQuantity(50, resource.DecimalSI),
 			},
-			requeue: false,
-			err:     fmt.Errorf("scaledownlimitfactor should be set as a quantity between 0 and 100 (exc.), currently set to : 134, which could yield a 134%% decrease"),
+			err: fmt.Errorf("scaledownlimitfactor should be set as a quantity between 0 and 100 (exc.), currently set to : 134, which could yield a 134%% decrease"),
 		},
 		{
 			// If Tolerance is unset, it will be considered to be 0 but it is not invalid.
@@ -958,8 +899,7 @@ func TestDefaultWatermarkPodAutoscaler(t *testing.T) {
 				ScaleUpLimitFactor:   resource.NewQuantity(10, resource.DecimalSI),
 				ScaleDownLimitFactor: resource.NewQuantity(10, resource.DecimalSI),
 			},
-			requeue: false,
-			err:     nil,
+			err: nil,
 		},
 		{
 			// If scaleup or scaledown is unset, it would be defaulted later on but as we use pointers we need to ensure they are not nil.
@@ -971,8 +911,7 @@ func TestDefaultWatermarkPodAutoscaler(t *testing.T) {
 				MinReplicas:    getReplicas(4),
 				MaxReplicas:    7,
 			},
-			requeue: false,
-			err:     fmt.Errorf("scaleuplimitfactor and scaledownlimitfactor can't be nil, make sure the WPA spec is defaulted"),
+			err: fmt.Errorf("scaleuplimitfactor and scaledownlimitfactor can't be nil, make sure the WPA spec is defaulted"),
 		},
 		{
 			name:    "correct case",
@@ -986,15 +925,13 @@ func TestDefaultWatermarkPodAutoscaler(t *testing.T) {
 				ScaleUpLimitFactor:   resource.NewQuantity(10, resource.DecimalSI),
 				ScaleDownLimitFactor: resource.NewQuantity(10, resource.DecimalSI),
 			},
-			requeue: false,
-			err:     nil,
+			err: nil,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			wpa := test.NewWatermarkPodAutoscaler(tt.wpaName, tt.wpaNs, &test.NewWatermarkPodAutoscalerOptions{Spec: tt.spec})
-			requeue, err := v1alpha1.CheckWPAValidity(wpa)
-			assert.Equal(t, requeue, tt.requeue)
+			err := v1alpha1.CheckWPAValidity(wpa)
 			if err != nil {
 				assert.Equal(t, err.Error(), tt.err.Error())
 			} else {

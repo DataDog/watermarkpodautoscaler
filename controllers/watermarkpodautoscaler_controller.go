@@ -127,19 +127,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		// default values of the WatermarkPodAutoscaler are set. Return and requeue to show them in the spec.
 		return reconcile.Result{Requeue: true}, nil
 	}
-	requeue, err := datadoghqv1alpha1.CheckWPAValidity(instance)
-	// If a WaterMark value was missing and supplied via CheckWPAValidity,
-	// return and requeue the modified WPA values
-	if requeue {
-		log.Info("Overriding WPA spec", "error", err)
-		wpaOriginal := instance.DeepCopy()
-		if err = r.Client.Update(ctx, wpaOriginal); err != nil {
-			log.Info("Failed to set the overridden values during reconciliation", "error", err)
-			return reconcile.Result{}, err
-		}
-		return reconcile.Result{Requeue: true}, nil
-	}
-	if err != nil {
+	if err = datadoghqv1alpha1.CheckWPAValidity(instance); err != nil {
 		log.Info("Got an invalid WPA spec", "Instance", request.NamespacedName.String(), "error", err)
 		// If the WPA spec is incorrect (most likely, in "metrics" section) stop processing it
 		// When the spec is updated, the wpa will be re-added to the reconcile queue
@@ -158,6 +146,26 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 	var needToReturn bool
 	if needToReturn, err = r.handleFinalizer(log, instance); err != nil || needToReturn {
 		return reconcile.Result{}, err
+	}
+
+	// If one WaterMark is missing, use the same value as the configured WaterMark
+	for i, metric := range instance.Spec.Metrics {
+		switch metric.Type {
+		case datadoghqv1alpha1.ExternalMetricSourceType:
+			if metric.External.LowWatermark == nil {
+				instance.Spec.Metrics[i].External.LowWatermark = metric.External.HighWatermark
+			}
+			if metric.External.HighWatermark == nil {
+				instance.Spec.Metrics[i].External.HighWatermark = metric.External.LowWatermark
+			}
+		case datadoghqv1alpha1.ResourceMetricSourceType:
+			if metric.Resource.LowWatermark == nil {
+				instance.Spec.Metrics[i].Resource.LowWatermark = metric.Resource.HighWatermark
+			}
+			if metric.Resource.HighWatermark == nil {
+				instance.Spec.Metrics[i].Resource.HighWatermark = metric.Resource.LowWatermark
+			}
+		}
 	}
 
 	if instance.Spec.DryRun {
