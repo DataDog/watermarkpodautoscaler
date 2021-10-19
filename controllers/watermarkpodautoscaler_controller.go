@@ -143,29 +143,11 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		return reconcile.Result{}, nil
 	}
 
+	fillMissingWatermark(log, instance)
+
 	var needToReturn bool
 	if needToReturn, err = r.handleFinalizer(log, instance); err != nil || needToReturn {
 		return reconcile.Result{}, err
-	}
-
-	// If one WaterMark is missing, use the same value as the configured WaterMark
-	for i, metric := range instance.Spec.Metrics {
-		switch metric.Type {
-		case datadoghqv1alpha1.ExternalMetricSourceType:
-			if metric.External.LowWatermark == nil {
-				instance.Spec.Metrics[i].External.LowWatermark = metric.External.HighWatermark
-			}
-			if metric.External.HighWatermark == nil {
-				instance.Spec.Metrics[i].External.HighWatermark = metric.External.LowWatermark
-			}
-		case datadoghqv1alpha1.ResourceMetricSourceType:
-			if metric.Resource.LowWatermark == nil {
-				instance.Spec.Metrics[i].Resource.LowWatermark = metric.Resource.HighWatermark
-			}
-			if metric.Resource.HighWatermark == nil {
-				instance.Spec.Metrics[i].Resource.HighWatermark = metric.Resource.LowWatermark
-			}
-		}
 	}
 
 	if instance.Spec.DryRun {
@@ -809,4 +791,32 @@ func GetLogAttrsFromWpa(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) ([]interf
 		logAttributes = append(logAttributes, v)
 	}
 	return logAttributes, nil
+}
+
+// fillMissingWatermark sets a missing WaterMark to the same value as the configured WaterMark
+func fillMissingWatermark(log logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
+	for i, metric := range wpa.Spec.Metrics {
+		switch metric.Type {
+		case datadoghqv1alpha1.ExternalMetricSourceType:
+			if metric.External != nil {
+				if metric.External.LowWatermark == nil && metric.External.HighWatermark != nil {
+					wpa.Spec.Metrics[i].External.LowWatermark = metric.External.HighWatermark
+				}
+				if metric.External.HighWatermark == nil && metric.External.LowWatermark != nil {
+					wpa.Spec.Metrics[i].External.HighWatermark = metric.External.LowWatermark
+				}
+			}
+		case datadoghqv1alpha1.ResourceMetricSourceType:
+			if metric.Resource != nil {
+				if metric.Resource.LowWatermark == nil && metric.Resource.HighWatermark != nil {
+					wpa.Spec.Metrics[i].Resource.LowWatermark = metric.Resource.HighWatermark
+				}
+				if metric.Resource.HighWatermark == nil && metric.Resource.LowWatermark != nil {
+					wpa.Spec.Metrics[i].Resource.HighWatermark = metric.Resource.LowWatermark
+				}
+			}
+		default:
+			log.Info(fmt.Sprintf("Incorrect metric.Type: '%s'", metric.Type))
+		}
+	}
 }
