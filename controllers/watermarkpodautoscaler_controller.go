@@ -56,8 +56,6 @@ const (
 	logAttributesAnnotationKey = "wpa.datadoghq.com/logs-attributes"
 )
 
-var dryRunCondition autoscalingv2.HorizontalPodAutoscalerConditionType = "DryRun"
-
 // WatermarkPodAutoscalerReconciler reconciles a WatermarkPodAutoscaler object
 type WatermarkPodAutoscalerReconciler struct {
 	// This client, initialized using mgr.Client() above, is a split client
@@ -117,6 +115,11 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		log = log.WithValues(logsAttr...)
 	}
 
+	var needToReturn bool
+	if needToReturn, err = r.handleFinalizer(log, instance); err != nil || needToReturn {
+		return reconcile.Result{}, err
+	}
+
 	if !datadoghqv1alpha1.IsDefaultWatermarkPodAutoscaler(instance) {
 		log.Info("Some configuration options are missing, falling back to the default ones")
 		defaultWPA := datadoghqv1alpha1.DefaultWatermarkPodAutoscaler(instance)
@@ -145,15 +148,10 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 
 	fillMissingWatermark(log, instance)
 
-	var needToReturn bool
-	if needToReturn, err = r.handleFinalizer(log, instance); err != nil || needToReturn {
-		return reconcile.Result{}, err
-	}
-
 	if instance.Spec.DryRun {
-		setCondition(instance, dryRunCondition, corev1.ConditionTrue, "DryRun mode enabled", "Scaling changes won't be applied")
+		setCondition(instance, datadoghqv1alpha1.WatermarkPodAutoscalerStatusDryRunCondition, corev1.ConditionTrue, "DryRun mode enabled", "Scaling changes won't be applied")
 	} else {
-		setCondition(instance, dryRunCondition, corev1.ConditionFalse, "DryRun mode disabled", "Scaling changes can be applied")
+		setCondition(instance, datadoghqv1alpha1.WatermarkPodAutoscalerStatusDryRunCondition, corev1.ConditionFalse, "DryRun mode disabled", "Scaling changes can be applied")
 	}
 	if err := r.reconcileWPA(ctx, log, instance); err != nil {
 		log.Info("Error during reconcileWPA", "error", err)
@@ -200,10 +198,8 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 
 	reference := fmt.Sprintf("%s/%s/%s", wpa.Spec.ScaleTargetRef.Kind, wpa.Namespace, wpa.Spec.ScaleTargetRef.Name)
 	setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, datadoghqv1alpha1.ConditionReasonSuccessfulGetScale, "the WPA controller was able to get the target's current scale")
+
 	metricStatuses := wpaStatusOriginal.CurrentMetrics
-	if metricStatuses == nil {
-		metricStatuses = []autoscalingv2.MetricStatus{}
-	}
 	proposedReplicas := int32(0)
 	metricName := ""
 

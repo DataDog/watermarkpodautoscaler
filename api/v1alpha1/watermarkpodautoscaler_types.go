@@ -195,6 +195,9 @@ type WatermarkPodAutoscalerStatus struct {
 	Conditions []autoscalingv2.HorizontalPodAutoscalerCondition `json:"conditions,omitempty"`
 }
 
+// WatermarkPodAutoscalerStatusDryRunCondition ConditionType used when the WPA is in dry run mode
+const WatermarkPodAutoscalerStatusDryRunCondition autoscalingv2.HorizontalPodAutoscalerConditionType = "DryRun"
+
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // WatermarkPodAutoscalerList contains a list of WatermarkPodAutoscaler
