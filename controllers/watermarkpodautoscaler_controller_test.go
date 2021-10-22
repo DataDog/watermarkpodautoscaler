@@ -133,7 +133,6 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 									External: &v1alpha1.ExternalMetricSource{
 										MetricName:     "deadbeef",
 										MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}, MatchExpressions: nil},
-										HighWatermark:  resource.NewQuantity(3, resource.DecimalSI),
 									},
 								},
 							},
@@ -1379,6 +1378,126 @@ func TestGetLogAttrsFromWpa(t *testing.T) {
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("GetLogAttrsFromWpa() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func TestFillMissingWatermark(t *testing.T) {
+	logf.SetLogger(zap.New())
+	log := logf.Log.WithName("TestReconcileWatermarkPodAutoscaler_Reconcile")
+
+	tests := []struct {
+		name string
+		wpa  *v1alpha1.WatermarkPodAutoscaler
+		want v1alpha1.MetricSpec
+	}{
+		{
+			name: "Missing low watermark",
+			wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+				Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+					Metrics: []v1alpha1.MetricSpec{
+						{
+							Type: v1alpha1.ExternalMetricSourceType,
+							External: &v1alpha1.ExternalMetricSource{
+								MetricName:     "foo",
+								MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}},
+								HighWatermark:  resource.NewMilliQuantity(80, resource.DecimalSI),
+							},
+						},
+					},
+				},
+			}),
+			want: v1alpha1.MetricSpec{
+				Type: v1alpha1.ExternalMetricSourceType,
+				External: &v1alpha1.ExternalMetricSource{
+					MetricName:     "foo",
+					MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}},
+					HighWatermark:  resource.NewMilliQuantity(80, resource.DecimalSI),
+					LowWatermark:   resource.NewMilliQuantity(80, resource.DecimalSI),
+				},
+			},
+		},
+		{
+			name: "Missing high watermark",
+			wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+				Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+					Metrics: []v1alpha1.MetricSpec{
+						{
+							Type: v1alpha1.ExternalMetricSourceType,
+							External: &v1alpha1.ExternalMetricSource{
+								MetricName:     "foo",
+								MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}},
+								LowWatermark:   resource.NewMilliQuantity(50, resource.DecimalSI),
+							},
+						},
+					},
+				},
+			}),
+			want: v1alpha1.MetricSpec{
+				Type: v1alpha1.ExternalMetricSourceType,
+				External: &v1alpha1.ExternalMetricSource{
+					MetricName:     "foo",
+					MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}},
+					HighWatermark:  resource.NewMilliQuantity(50, resource.DecimalSI),
+					LowWatermark:   resource.NewMilliQuantity(50, resource.DecimalSI),
+				},
+			},
+		},
+		{
+			name: "Missing both watermarks",
+			wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+				Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+					Metrics: []v1alpha1.MetricSpec{
+						{
+							Type: v1alpha1.ExternalMetricSourceType,
+							External: &v1alpha1.ExternalMetricSource{
+								MetricName:     "foo",
+								MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}},
+							},
+						},
+					},
+				},
+			}),
+			want: v1alpha1.MetricSpec{
+				Type: v1alpha1.ExternalMetricSourceType,
+				External: &v1alpha1.ExternalMetricSource{
+					MetricName:     "foo",
+					MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}},
+				},
+			},
+		},
+		{
+			name: "No missing watermarks",
+			wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+				Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+					Metrics: []v1alpha1.MetricSpec{
+						{
+							Type: v1alpha1.ExternalMetricSourceType,
+							External: &v1alpha1.ExternalMetricSource{
+								MetricName:     "foo",
+								MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}},
+								HighWatermark:  resource.NewMilliQuantity(100, resource.DecimalSI),
+								LowWatermark:   resource.NewMilliQuantity(60, resource.DecimalSI),
+							},
+						},
+					},
+				},
+			}),
+			want: v1alpha1.MetricSpec{
+				Type: v1alpha1.ExternalMetricSourceType,
+				External: &v1alpha1.ExternalMetricSource{
+					MetricName:     "foo",
+					MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}},
+					HighWatermark:  resource.NewMilliQuantity(100, resource.DecimalSI),
+					LowWatermark:   resource.NewMilliQuantity(60, resource.DecimalSI),
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fillMissingWatermark(log, tt.wpa)
+			assert.Equal(t, tt.wpa.Spec.Metrics[0], tt.want)
 		})
 	}
 }
