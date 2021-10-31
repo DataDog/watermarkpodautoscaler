@@ -1278,15 +1278,15 @@ func TestSetCondition(t *testing.T) {
 					LastTransitionTime: metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
 				},
 				{
-					Type:               dryRunCondition,
+					Type:               v1alpha1.WatermarkPodAutoscalerStatusDryRunCondition,
 					Status:             corev1.ConditionFalse,
 					LastTransitionTime: metav1.Time{Time: time.Now().Add(-2 * time.Minute)},
 				},
 			},
-			newConditionType: dryRunCondition,
+			newConditionType: v1alpha1.WatermarkPodAutoscalerStatusDryRunCondition,
 			// The LastTransitionTime of dryRun should be the most recent one
 			// now. That's why it should appear first in the resulting array.
-			expectedOrder: []v2beta1.HorizontalPodAutoscalerConditionType{dryRunCondition, v2beta1.ScalingLimited},
+			expectedOrder: []v2beta1.HorizontalPodAutoscalerConditionType{v1alpha1.WatermarkPodAutoscalerStatusDryRunCondition, v2beta1.ScalingLimited},
 		},
 	}
 
