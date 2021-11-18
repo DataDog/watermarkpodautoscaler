@@ -193,6 +193,10 @@ func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas i
 		}
 		// tolerance: milliValue/10 to represent the %.
 		logger.Info("Value is above highMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "tolerance (%)", float64(wpa.Spec.Tolerance.MilliValue())/10, "adjustedHM", adjustedHM, "adjustedUsage", adjustedUsage)
+		if replicaCount < currentReplicas {
+			logger.Info("Recommendation is lower than current number of replicas while attempting to upscale, aborting", "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas)
+			replicaCount = currentReplicas
+		}
 	case adjustedUsage < adjustedLM:
 		replicaCount = int32(math.Floor(float64(currentReadyReplicas) * adjustedUsage / (float64(lowMark.MilliValue()))))
 		// Keep a minimum of 1 replica
