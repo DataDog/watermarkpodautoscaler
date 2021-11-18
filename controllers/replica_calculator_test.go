@@ -913,7 +913,7 @@ func TestReplicaCalcAverageScaleUpPendingNoScaleStretchTolerance(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		expectedReplicas: 2,
+		expectedReplicas: 3,
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
@@ -1345,7 +1345,7 @@ func TestPendingNotExpiredScale(t *testing.T) {
 	tc.runTest(t)
 }
 
-// We have pods that are expired and only one is above the HWM so we end up downscaling.
+// We have pods that are expired and only one is above the HWM so we keep the number of replicas.
 func TestPendingExpiredHigherWatermarkDownscale(t *testing.T) {
 	logf.SetLogger(zap.New())
 
@@ -1362,7 +1362,7 @@ func TestPendingExpiredHigherWatermarkDownscale(t *testing.T) {
 	startTime := metav1.Unix(now.Unix()-120, 0)
 	expired := metav1.Unix(now.Unix()-2*readinessDelay, 0)
 	tc := replicaCalcTestCase{
-		expectedReplicas: 2,
+		expectedReplicas: 3,
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
