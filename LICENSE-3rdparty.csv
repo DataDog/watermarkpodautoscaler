@@ -8,6 +8,10 @@ core,"github.com/Azure/go-autorest/autorest/azure",Apache-2.0
 core,"github.com/Azure/go-autorest/autorest/date",Apache-2.0
 core,"github.com/Azure/go-autorest/logger",Apache-2.0
 core,"github.com/Azure/go-autorest/tracing",Apache-2.0
+core,"github.com/DataDog/datadog-go/statsd",MIT
+core,"github.com/DataDog/gostackparse",Apache-2.0
+core,"github.com/Microsoft/go-winio",MIT
+core,"github.com/Microsoft/go-winio/pkg/guid",MIT
 core,"github.com/PuerkitoBio/purell",NewBSD
 core,"github.com/PuerkitoBio/urlesc",NewBSD
 core,"github.com/beorn7/perks/quantile",MIT
@@ -44,6 +48,8 @@ core,"github.com/google/go-cmp/cmp/internal/flags",NewBSD
 core,"github.com/google/go-cmp/cmp/internal/function",NewBSD
 core,"github.com/google/go-cmp/cmp/internal/value",NewBSD
 core,"github.com/google/gofuzz",Apache-2.0
+core,"github.com/google/gofuzz/bytesource",Apache-2.0
+core,"github.com/google/pprof/profile",Apache-2.0
 core,"github.com/google/uuid",NewBSD
 core,"github.com/googleapis/gnostic/compiler",Apache-2.0
 core,"github.com/googleapis/gnostic/extensions",Apache-2.0
@@ -224,6 +230,13 @@ core,"google.golang.org/protobuf/runtime/protoimpl",NewBSD
 core,"google.golang.org/protobuf/types/known/anypb",NewBSD
 core,"google.golang.org/protobuf/types/known/durationpb",NewBSD
 core,"google.golang.org/protobuf/types/known/timestamppb",NewBSD
+core,"gopkg.in/DataDog/dd-trace-go.v1/ddtrace",Apache-2.0
+core,"gopkg.in/DataDog/dd-trace-go.v1/internal",Apache-2.0
+core,"gopkg.in/DataDog/dd-trace-go.v1/internal/globalconfig",Apache-2.0
+core,"gopkg.in/DataDog/dd-trace-go.v1/internal/log",Apache-2.0
+core,"gopkg.in/DataDog/dd-trace-go.v1/internal/version",Apache-2.0
+core,"gopkg.in/DataDog/dd-trace-go.v1/profiler",Apache-2.0
+core,"gopkg.in/DataDog/dd-trace-go.v1/profiler/internal/pprofutils",Apache-2.0
 core,"gopkg.in/inf.v0",NewBSD
 core,"gopkg.in/op/go-logging.v1",NewBSD
 core,"gopkg.in/tomb.v1",NewBSD
