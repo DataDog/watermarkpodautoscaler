@@ -3,14 +3,16 @@ module github.com/DataDog/watermarkpodautoscaler
 go 1.16
 
 require (
+	github.com/Microsoft/go-winio v0.5.1 // indirect
 	github.com/go-logr/logr v0.3.0
 	github.com/go-openapi/spec v0.19.3
 	github.com/mikefarah/yq/v3 v3.0.0-20200615114226-086f0ec6b9aa
 	github.com/onsi/ginkgo v1.14.1
 	github.com/onsi/gomega v1.10.2
 	github.com/prometheus/client_golang v1.7.1
-	github.com/stretchr/testify v1.6.1
+	github.com/stretchr/testify v1.7.0
 	go.uber.org/zap v1.15.0
+	gopkg.in/DataDog/dd-trace-go.v1 v1.34.0
 	k8s.io/api v0.20.11
 	k8s.io/apimachinery v0.20.11
 	k8s.io/client-go v0.20.11

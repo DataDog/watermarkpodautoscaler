@@ -13,6 +13,7 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"gopkg.in/DataDog/dd-trace-go.v1/profiler"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -53,6 +54,7 @@ func main() {
 	var logTimestampFormat string
 	var syncPeriodSeconds int
 	var leaderElectionResourceLock string
+	var ddProfilingEnabled bool
 	flag.BoolVar(&printVersionArg, "version", false, "print version and exit")
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", true,
@@ -62,17 +64,35 @@ func main() {
 	flag.StringVar(&logTimestampFormat, "log-timestamp-format", "millis", "log timestamp format ('millis', 'nanos', 'epoch', 'rfc3339' or 'rfc3339nano')")
 	flag.IntVar(&syncPeriodSeconds, "syncPeriodSeconds", 60*60, "The informers resync period in seconds") // default 1 hour
 	flag.StringVar(&leaderElectionResourceLock, "leader-election-resource", "configmaps", "determines which resource lock to use for leader election. option:[configmapsleases|endpointsleases|configmaps]")
+	flag.BoolVar(&ddProfilingEnabled, "ddProfilingEnabled", false, "Enable the datadog profiler")
 	logLevel := zap.LevelFlag("loglevel", zapcore.InfoLevel, "Set log level")
 
 	flag.Parse()
 
+	exitCode := 0
+	defer func() { os.Exit(exitCode) }()
+
 	if err := customSetupLogging(*logLevel, logEncoder, logTimestampFormat); err != nil {
 		setupLog.Error(err, "unable to setup the logger")
-		os.Exit(1)
+		exitCode = 1
+		return
 	}
+
+	if ddProfilingEnabled {
+		setupLog.Info("Starting datadog profiler")
+		if err := profiler.Start(
+			profiler.WithVersion(version.Version),
+			profiler.WithProfileTypes(profiler.CPUProfile, profiler.HeapProfile),
+		); err != nil {
+			setupLog.Error(err, "unable to start datadog profiler")
+		}
+
+		defer profiler.Stop()
+	}
+
 	if printVersionArg {
 		version.PrintVersionWriter(os.Stdout)
-		os.Exit(0)
+		return
 	}
 	version.PrintVersionLogs(setupLog)
 
@@ -89,7 +109,8 @@ func main() {
 	}))
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
-		os.Exit(1)
+		exitCode = 1
+		return
 	}
 
 	managerLogger := ctrl.Log.WithName("controllers").WithName("WatermarkPodAutoscaler")
@@ -101,19 +122,22 @@ func main() {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WatermarkPodAutoscaler")
-		os.Exit(1)
+		exitCode = 1
+		return
 	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("health-probe", healthz.Ping); err != nil {
 		setupLog.Error(err, "Unable add liveness check")
-		os.Exit(1)
+		exitCode = 1
+		return
 	}
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
-		os.Exit(1)
+		exitCode = 1
+		return
 	}
 }
 
