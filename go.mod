@@ -11,10 +11,13 @@ require (
 	github.com/onsi/gomega v1.10.2
 	github.com/prometheus/client_golang v1.7.1
 	github.com/stretchr/testify v1.7.0
+	github.com/spf13/cobra v1.1.1
+	github.com/spf13/pflag v1.0.5
 	go.uber.org/zap v1.15.0
 	gopkg.in/DataDog/dd-trace-go.v1 v1.34.0
 	k8s.io/api v0.20.11
 	k8s.io/apimachinery v0.20.11
+	k8s.io/cli-runtime v0.22.4
 	k8s.io/client-go v0.20.11
 	k8s.io/code-generator v0.20.11
 	k8s.io/controller-manager v0.20.11
