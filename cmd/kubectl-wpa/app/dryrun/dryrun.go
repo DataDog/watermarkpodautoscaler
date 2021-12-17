@@ -53,9 +53,8 @@ func NewCmdDryRun(streams genericclioptions.IOStreams) *cobra.Command {
 	o := newDryrunOptions(streams)
 
 	cmd := &cobra.Command{
-		Use:          "dry-run [WatermarkPodAutoscaler name]",
-		Short:        "configure dry-run mode on a WPA",
-		Example:      fmt.Sprintf(dryrunExample, "dryrun"),
+		Use:          "dry-run",
+		Short:        "configure WPA(s) dry-run",
 		SilenceUsage: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			if err := o.complete(c, args); err != nil {
@@ -85,7 +84,7 @@ func newCmdDryRunList(streams genericclioptions.IOStreams) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "list [WatermarkPodAutoscaler name]",
 		Short:        "list dry-run mode of wpa(s)",
-		Example:      fmt.Sprintf(dryrunExample, "dryrun"),
+		Example:      fmt.Sprintf(dryrunExample, "dry-run list"),
 		SilenceUsage: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			if err := o.complete(c, args); err != nil {
@@ -108,9 +107,9 @@ func newCmdDryRunEnabled(streams genericclioptions.IOStreams) *cobra.Command {
 	o.enabledDryRun = true
 
 	cmd := &cobra.Command{
-		Use:          "enabled [WatermarkPodAutoscaler name]",
-		Short:        "enabled dry-run mode on a WPA",
-		Example:      fmt.Sprintf(dryrunExample, "dryrun"),
+		Use:          "enable [WatermarkPodAutoscaler name]",
+		Short:        "enable WPA(s) dry-run mode",
+		Example:      fmt.Sprintf(dryrunExample, "dry-run enable"),
 		SilenceUsage: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			if err := o.complete(c, args); err != nil {
@@ -136,9 +135,9 @@ func newCmdDryRunDisabled(streams genericclioptions.IOStreams) *cobra.Command {
 	o.enabledDryRun = false
 
 	cmd := &cobra.Command{
-		Use:          "disabled [WatermarkPodAutoscaler name]",
-		Short:        "disabled dry-run mode on a WPA",
-		Example:      fmt.Sprintf(dryrunExample, "dryrun"),
+		Use:          "disable [WatermarkPodAutoscaler name]",
+		Short:        "disable WPA(s) dry-run mode",
+		Example:      fmt.Sprintf(dryrunExample, "dry-run disable"),
 		SilenceUsage: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			if err := o.complete(c, args); err != nil {
