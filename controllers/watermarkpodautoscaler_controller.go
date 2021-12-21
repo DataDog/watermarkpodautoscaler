@@ -39,6 +39,7 @@ import (
 	resourceclient "k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1beta1"
 	"k8s.io/metrics/pkg/client/external_metrics"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -701,9 +702,10 @@ func updatePredicate(ev event.UpdateEvent) bool {
 }
 
 // SetupWithManager creates a new Watermarkpodautoscaler controller
-func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, workers int) error {
 	b := ctrl.NewControllerManagedBy(mgr).
-		For(&datadoghqv1alpha1.WatermarkPodAutoscaler{}, builder.WithPredicates(predicate.Funcs{UpdateFunc: updatePredicate}))
+		For(&datadoghqv1alpha1.WatermarkPodAutoscaler{}, builder.WithPredicates(predicate.Funcs{UpdateFunc: updatePredicate})).
+		WithOptions(controller.Options{MaxConcurrentReconciles: workers})
 	err := b.Complete(r)
 	if err != nil {
 		return err

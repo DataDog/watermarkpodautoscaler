@@ -55,6 +55,7 @@ func main() {
 	var syncPeriodSeconds int
 	var leaderElectionResourceLock string
 	var ddProfilingEnabled bool
+	var workers int
 	flag.BoolVar(&printVersionArg, "version", false, "print version and exit")
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", true,
@@ -65,6 +66,8 @@ func main() {
 	flag.IntVar(&syncPeriodSeconds, "syncPeriodSeconds", 60*60, "The informers resync period in seconds") // default 1 hour
 	flag.StringVar(&leaderElectionResourceLock, "leader-election-resource", "configmaps", "determines which resource lock to use for leader election. option:[configmapsleases|endpointsleases|configmaps]")
 	flag.BoolVar(&ddProfilingEnabled, "ddProfilingEnabled", false, "Enable the datadog profiler")
+	flag.IntVar(&workers, "workers", 1, "Maximum number of concurrent Reconciles which can be run")
+
 	logLevel := zap.LevelFlag("loglevel", zapcore.InfoLevel, "Set log level")
 
 	flag.Parse()
@@ -120,7 +123,7 @@ func main() {
 		Client: mgr.GetClient(),
 		Log:    managerLogger,
 		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(mgr, workers); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WatermarkPodAutoscaler")
 		exitCode = 1
 		return
