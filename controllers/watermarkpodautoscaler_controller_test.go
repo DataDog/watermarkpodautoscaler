@@ -699,7 +699,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 				// With 8 replicas, the avg algo and an external value returned of 100 we have 10 replicas and the utilization of 10
 				return ReplicaCalculation{0, 0, time.Time{}}, fmt.Errorf("unable to fetch metrics from external metrics API")
 			},
-			err: fmt.Errorf("failed to get external metric deadbeef: unable to fetch metrics from external metrics API"),
+			err: fmt.Errorf("failed to compute replicas based on external metric deadbeef: unable to fetch metrics from external metrics API"),
 		},
 		{
 			name: "Multiple metrics Case",

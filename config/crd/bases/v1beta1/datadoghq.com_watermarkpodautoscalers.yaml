@@ -239,6 +239,12 @@ spec:
                 - type
                 type: object
               type: array
+            minAvailableReplicaPerc:
+              description: MinAvailableReplicaPerc indicates the minimum percentage
+                of replicas that need to be available in order for the controller
+                to autoscale the target.
+              format: int32
+              type: integer
             minReplicas:
               format: int32
               minimum: 1
@@ -305,6 +311,7 @@ spec:
               minimum: 1
               type: integer
           required:
+          - minAvailableReplicaPerc
           - scaleTargetRef
           type: object
         status:

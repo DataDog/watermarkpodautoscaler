@@ -770,6 +770,45 @@ func TestReplicaCalcAverageScaleUp(t *testing.T) {
 	tc.runTest(t)
 }
 
+func TestFastFailGetExternalMetricReplicas(t *testing.T) {
+	logf.SetLogger(zap.New())
+	now := metav1.Now()
+	metric1 := v1alpha1.MetricSpec{
+		Type:     v1alpha1.ExternalMetricSourceType,
+		External: &v1alpha1.ExternalMetricSource{},
+	}
+	tc := replicaCalcTestCase{
+		podCondition: []corev1.PodCondition{
+			{
+				Status:             corev1.ConditionTrue,
+				LastTransitionTime: now, // LastTransitionTime does not matter.
+			},
+			{
+				Status:             corev1.ConditionTrue,
+				LastTransitionTime: now,
+			},
+			{
+				Status:             corev1.ConditionTrue,
+				LastTransitionTime: now,
+			},
+			{
+				Status:             corev1.ConditionTrue,
+				LastTransitionTime: now,
+			},
+		},
+		wpa:              &v1alpha1.WatermarkPodAutoscaler{},
+		scale:            makeScale("", 4, map[string]string{"name": "wrong"}), // name: test-pod would be the right
+		podPhase:         []corev1.PodPhase{corev1.PodRunning, corev1.PodRunning, corev1.PodRunning, corev1.PodRunning},
+		expectedReplicas: 0,
+		expectedError:    fmt.Errorf("no pods returned by selector while calculating replica count"),
+		metric: &metricInfo{
+			spec: metric1,
+		},
+	}
+
+	tc.runTest(t)
+}
+
 func TestReplicaCalcAverageScaleDown(t *testing.T) {
 	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
@@ -1284,6 +1323,31 @@ func TestPendingtExpiredScale(t *testing.T) {
 			levels:              []int64{10000}, // We are well under the low watermarks
 			expectedUtilization: 10000,
 		},
+	}
+	tc.runTest(t)
+}
+
+func TestTooManyUnreadyPods(t *testing.T) {
+	logf.SetLogger(zap.New())
+	metric1 := v1alpha1.MetricSpec{
+		Type:     v1alpha1.ExternalMetricSourceType,
+		External: &v1alpha1.ExternalMetricSource{},
+	}
+	tc := replicaCalcTestCase{
+		expectedReplicas: 4,
+		scale:            makeScale(testDeploymentName, 4, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				Algorithm:                    "average",
+				MinAvailableReplicaPerc:      30,
+				Tolerance:                    *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                      []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
+			},
+		},
+		podPhase:      []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodRunning},
+		metric:        &metricInfo{spec: metric1},
+		expectedError: fmt.Errorf("25 %% of the pods are unready, will not autoscale /foo-bar-123"),
 	}
 	tc.runTest(t)
 }
@@ -2214,28 +2278,6 @@ func TestGetReadyPodsCount(t *testing.T) {
 			errorExpected: fmt.Errorf("among the %d pods, none is ready. Skipping recommendation", 3),
 		},
 		{
-			name:     "No matching pods",
-			selector: labels.Set{"name": "wrong"},
-			conditions: []corev1.PodCondition{
-				{
-					Status:             corev1.ConditionTrue,
-					LastTransitionTime: now, // LastTransitionTime does not matter.
-				},
-				{
-					Status:             corev1.ConditionTrue,
-					LastTransitionTime: now,
-				},
-				{
-					Status:             corev1.ConditionTrue,
-					LastTransitionTime: now,
-				},
-			},
-			startTimes:    []metav1.Time{startTime, startTime, startTime},
-			phases:        []corev1.PodPhase{corev1.PodRunning, corev1.PodRunning, corev1.PodRunning},
-			expected:      0,
-			errorExpected: fmt.Errorf("no pods returned by selector while calculating replica count"),
-		},
-		{
 			name:     "No ready pods",
 			selector: labels.Set{"name": "test-pod"},
 			conditions: []corev1.PodCondition{
@@ -2303,7 +2345,11 @@ func TestGetReadyPodsCount(t *testing.T) {
 			if !cache.WaitForNamedCacheSync("HPA", stop, informer.Informer().HasSynced) {
 				return
 			}
-			val, err := replicaCalculator.getReadyPodsCount(logf.Log, tc.scale, labels.SelectorFromSet(f.selector), readinessDelay*time.Second)
+
+			podList, err := replicaCalculator.podLister.Pods(tc.scale.Namespace).List(labels.SelectorFromSet(f.selector))
+			assert.NoError(t, err)
+
+			val, _, err := replicaCalculator.getReadyPodsCount(logf.Log, tc.scale.Name, podList, readinessDelay*time.Second)
 			assert.Equal(t, f.expected, val)
 			if f.errorExpected != nil {
 				assert.EqualError(t, f.errorExpected, err.Error())
