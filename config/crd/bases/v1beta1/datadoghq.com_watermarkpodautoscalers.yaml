@@ -311,7 +311,6 @@ spec:
               minimum: 1
               type: integer
           required:
-          - minAvailableReplicaPerc
           - scaleTargetRef
           type: object
         status:
