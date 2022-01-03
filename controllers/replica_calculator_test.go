@@ -1338,11 +1338,11 @@ func TestTooManyUnreadyPods(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 4, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Algorithm:                    "average",
-				MinAvailableReplicaPerc:      30,
-				Tolerance:                    *resource.NewMilliQuantity(20, resource.DecimalSI),
-				Metrics:                      []v1alpha1.MetricSpec{metric1},
-				ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
+				Algorithm:                     "average",
+				MinAvailableReplicaPercentage: 30,
+				Tolerance:                     *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                       []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingAbsoluteModulo:  v1alpha1.NewInt32(1),
 			},
 		},
 		podPhase:      []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodRunning},

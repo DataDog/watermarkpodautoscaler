@@ -76,7 +76,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 	}
 
 	ratioReadyPods := (100 * currentReadyReplicas / (int32(len(podList)) - incorrectTargetPodsCount))
-	if ratioReadyPods < wpa.Spec.MinAvailableReplicaPerc {
+	if ratioReadyPods < wpa.Spec.MinAvailableReplicaPercentage {
 		return ReplicaCalculation{}, fmt.Errorf("%d %% of the pods are unready, will not autoscale %s/%s", ratioReadyPods, target.Namespace, target.Name)
 	}
 
@@ -172,7 +172,7 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 
 	ratioReadyPods := int32(100 * readyPodCount / (len(podList) - len(ignoredPods)))
 
-	if ratioReadyPods < wpa.Spec.MinAvailableReplicaPerc {
+	if ratioReadyPods < wpa.Spec.MinAvailableReplicaPercentage {
 		return ReplicaCalculation{}, fmt.Errorf("%d %% of the pods are unready, will not autoscale %s/%s", ratioReadyPods, target.Namespace, target.Name)
 	}
 

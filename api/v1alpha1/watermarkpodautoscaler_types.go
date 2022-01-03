@@ -93,9 +93,10 @@ type WatermarkPodAutoscalerSpec struct {
 	Metrics []MetricSpec `json:"metrics,omitempty"`
 	// +kubebuilder:validation:Minimum=1
 	MinReplicas *int32 `json:"minReplicas,omitempty"`
-	// MinAvailableReplicaPerc indicates the minimum percentage of replicas that need to be available in order for the
+	// MinAvailableReplicaPercentage indicates the minimum percentage of replicas that need to be available in order for the
 	// controller to autoscale the target.
-	MinAvailableReplicaPerc int32 `json:"minAvailableReplicaPerc,omitempty"`
+	// +kubebuilder:validation:Maximum=100
+	MinAvailableReplicaPercentage int32 `json:"minAvailableReplicaPercentage,omitempty"`
 	// +kubebuilder:validation:Minimum=1
 	MaxReplicas int32 `json:"maxReplicas,omitempty"`
 	// +kubebuilder:validation:Minimum=1
