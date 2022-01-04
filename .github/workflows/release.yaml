@@ -36,10 +36,31 @@ jobs:
         name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v2
         with:
-          prerelease: ${{ contains(github.ref, '-rc.') }}
           version: latest
-          args: release --rm-dist
+          args: release --skip-publish
+        env:
+          COMMIT_TAG: ${{steps.tag.outputs.tag}}
+          GORELEASER_PREVIOUS_TAG: ${{steps.latest_version.outputs.release}}
+      -
+        name: Generate Plugin manifest
+        run: ./hack/plugin/generate-plugin-manifest.sh ${{steps.tag.outputs.tag}}
+      -
+        name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: dist/CHANGELOG.md
+          prerelease: ${{ contains(github.ref, '-rc.') }}
+          files: |
+            dist/wpa-plugin.yaml
+            dist/*.zip
+            dist/*.tar.gz
         env:
           COMMIT_TAG: ${{steps.tag.outputs.tag}}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_PREVIOUS_TAG: ${{steps.latest_version.outputs.release}}
+      # TODO: we need first to add the plugin manualy into the krew db repo.
+      # -
+      #  name: Update new plugin version in krew-index
+      #  uses: rajatjindal/krew-release-bot@v0.0.40
+      #  continue-on-error: true
+      #  with:
+      #    krew_template_file: dist/wpa-plugin.yaml

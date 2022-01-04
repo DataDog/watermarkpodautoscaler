@@ -3,6 +3,7 @@ vendor
 # Temporary Build Files
 build/_output
 build/_test
+cmd/kubectl-wpa/kubectl-wpa
 # Vendor folder
 /controller
 # Code coverage report

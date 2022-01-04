@@ -87,6 +87,11 @@ To use the Watermark Pod Autoscaler, deploy it in your Kubernetes cluster:
    helm install $DD_NAMEWPA -n $DD_NAMESPACE ./chart/watermarkpodautoscaler
    ```
 
+#### kubectl plugin
+
+The WatermarkPodAutoscaler Controler comes with a kubectl plugin providing a set of helper utilities. more information on the dedicated documentation page: [docs/kubect-plugin.md](docs/kubect-plugin.md)
+
+
 ### The process
 
 Create your [WPA](https://github.com/DataDog/watermarkpodautoscaler/blob/main/deploy/crds/datadoghq.com_watermarkpodautoscalers_cr.yaml) in the same namespace as your target deployment.

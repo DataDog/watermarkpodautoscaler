@@ -38,7 +38,7 @@ endif
 
 all: install-tools manager test
 
-build: manager
+build: manager kubectl-wpa
 
 # Run tests
 test: manager manifests verify-license
@@ -53,6 +53,9 @@ goe2e:
 # Build manager binary
 manager: generate lint fmt vet
 	go build -o bin/manager main.go
+
+kubectl-wpa: fmt vet lint
+	CGO_ENABLED=1 go build -ldflags '${LDFLAGS}' -o bin/kubectl-wpa ./cmd/kubectl-wpa/main.go
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
 run: generate fmt vet manifests

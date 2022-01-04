@@ -5,17 +5,27 @@ before:
     - go mod download
     - go generate ./...
 builds:
-- env:
+- id: kubectl-wpa
+  goos:
+  - linux
+  - darwin
+  - windows
+  goarch:
+  - amd64
+  env:
   - CGO_ENABLED=0
-  main: ./main.go
-  ldflags: -w -X ${BUILDINFOPKG}.Tag=${TAG} -X ${BUILDINFOPKG}.Commit=${GIT_COMMIT} -X ${BUILDINFOPKG}.Version=${VERSION} -X ${BUILDINFOPKG}.BuildTime=${DATE} -s
+  main: ./cmd/kubectl-wpa/main.go
+  ldflags: -w -X ${BUILDINFOPKG}.Commit=${GIT_COMMIT} -X ${BUILDINFOPKG}.Version=${VERSION} -X ${BUILDINFOPKG}.BuildTime=${DATE} -s
+  binary: kubectl-wpa
 archives:
-- replacements:
-    darwin: Darwin
-    linux: Linux
-    windows: Windows
-    386: i386
-    amd64: x86_64
+- id: kubectl-wpa
+  builds:
+  - kubectl-wpa
+  name_template: "kubectl-wpa_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  wrap_in_directory: false
+  format: zip
+  files:
+  - LICENSE
 checksum:
   name_template: 'checksums.txt'
 snapshot:

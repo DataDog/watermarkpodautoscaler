@@ -1,0 +1,48 @@
+apiVersion: krew.googlecontainertools.github.com/v1alpha2
+kind: Plugin
+metadata:
+  name: wpa
+spec:
+  version: "PLACEHOLDER_TAG"
+  shortDescription: Easily interact and manage WatermarkPodAutoscaler resources.
+  description: |
+    The WatermarkPodAutoscaler kubectl plugin provides useful utilities to operate WatermarkPodAutoscaler
+    via the WatermarkPodAutoscaler controller and the WatermarkPodAutoscaler CRD.
+  homepage: https://github.com/DataDog/watermarkpodautoscaler
+  platforms:
+  - uri: https://github.com/DataDog/watermarkpodautoscaler/releases/download/PLACEHOLDER_TAG/kubectl-wpa_PLACEHOLDER_VERSION_darwin_amd64.zip
+    sha256: "PLACEHOLDER_SHA_DARWIN"
+    bin: kubectl-wpa
+    files:
+    - from: kubectl-wpa
+      to: .
+    - from: LICENSE
+      to: .
+    selector:
+      matchLabels:
+        os: darwin
+        arch: amd64
+  - uri: https://github.com/DataDog/watermarkpodautoscaler/releases/download/PLACEHOLDER_TAG/kubectl-wpa_PLACEHOLDER_VERSION_linux_amd64.zip
+    sha256: "PLACEHOLDER_SHA_LINUX"
+    bin: kubectl-wpa
+    files:
+    - from: kubectl-wpa
+      to: .
+    - from: LICENSE
+      to: .
+    selector:
+      matchLabels:
+        os: linux
+        arch: amd64
+  - uri: https://github.com/DataDog/watermarkpodautoscaler/releases/download/PLACEHOLDER_TAG/kubectl-wpa_PLACEHOLDER_VERSION_windows_amd64.zip
+    sha256: "PLACEHOLDER_SHA_WINDOWS"
+    bin: kubectl-wpa.exe
+    files:
+    - from: kubectl-wpa.exe
+      to: .
+    - from: LICENSE
+      to: .
+    selector:
+      matchLabels:
+        os: windows
+        arch: amd64
