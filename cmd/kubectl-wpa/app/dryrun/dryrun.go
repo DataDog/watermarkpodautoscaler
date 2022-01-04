@@ -7,7 +7,10 @@ package dryrun
 
 import (
 	"context"
+	"encoding/csv"
 	"fmt"
+	"io"
+	"os"
 
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -36,7 +39,10 @@ type dryrunOptions struct {
 	userNamespace string
 	userWPAName   string
 	labelSelector string
+	outputFormat  string
+	csvFile       string
 	enabledDryRun bool
+	allWPA        bool
 }
 
 // newDryrunOptions provides an instance of GetOptions with default values.
@@ -70,6 +76,7 @@ func NewCmdDryRun(streams genericclioptions.IOStreams) *cobra.Command {
 
 	cmd.AddCommand(newCmdDryRunEnabled(streams))
 	cmd.AddCommand(newCmdDryRunDisabled(streams))
+	cmd.AddCommand(newCmdRevert(streams))
 	cmd.AddCommand(newCmdDryRunList(streams))
 
 	o.configFlags.AddFlags(cmd.Flags())
@@ -90,12 +97,18 @@ func newCmdDryRunList(streams genericclioptions.IOStreams) *cobra.Command {
 			if err := o.complete(c, args); err != nil {
 				return err
 			}
+			if err := o.validate(); err != nil {
+				return err
+			}
 
 			return o.run(o.list)
 		},
 	}
 
 	cmd.Flags().StringVarP(&o.labelSelector, "label-selector", "l", "", "Use to select WPA based in their labels")
+	cmd.Flags().BoolVarP(&o.allWPA, "all", "", false, "Use select all existing WPA instances in a cluster")
+	cmd.Flags().StringVarP(&o.outputFormat, "output", "o", "", "use to change the default output formating (csv)")
+
 	o.configFlags.AddFlags(cmd.Flags())
 
 	return cmd
@@ -124,6 +137,7 @@ func newCmdDryRunEnabled(streams genericclioptions.IOStreams) *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&o.labelSelector, "label-selector", "l", "", "Use to select WPA based in their labels")
+	cmd.Flags().BoolVarP(&o.allWPA, "all", "", false, "Use select all existing WPA instances in a cluster")
 	o.configFlags.AddFlags(cmd.Flags())
 
 	return cmd
@@ -152,6 +166,31 @@ func newCmdDryRunDisabled(streams genericclioptions.IOStreams) *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&o.labelSelector, "label-selector", "l", "", "Use to select WPA based in their labels")
+	cmd.Flags().BoolVarP(&o.allWPA, "all", "", false, "Use select all existing WPA instances in a cluster")
+	o.configFlags.AddFlags(cmd.Flags())
+
+	return cmd
+}
+
+// newCmdDryRunDisabled provides a cobra command wrapping dryrunOptions.
+func newCmdRevert(streams genericclioptions.IOStreams) *cobra.Command {
+	o := newDryrunOptions(streams)
+	o.enabledDryRun = false
+
+	cmd := &cobra.Command{
+		Use:          "revert",
+		Short:        "revert all WPA instance dry-run configuration from a csv backup file",
+		Example:      fmt.Sprintf(dryrunExample, "dry-run disable"),
+		SilenceUsage: true,
+		RunE: func(c *cobra.Command, args []string) error {
+			if err := o.complete(c, args); err != nil {
+				return err
+			}
+			return o.runRevert()
+		},
+	}
+
+	cmd.Flags().StringVarP(&o.csvFile, "csv-file", "f", "", "read WPA dry-run configuration from csv file")
 	o.configFlags.AddFlags(cmd.Flags())
 
 	return cmd
@@ -169,6 +208,7 @@ func (o *dryrunOptions) complete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("unable to instantiate client, err: %w", err)
 	}
 
+	// Get namespace from the client config or from the parameter
 	o.userNamespace, _, err = clientConfig.Namespace()
 	if err != nil {
 		return err
@@ -182,6 +222,7 @@ func (o *dryrunOptions) complete(cmd *cobra.Command, args []string) error {
 		o.userNamespace = ns
 	}
 
+	// get WPA name from argument
 	if len(args) > 0 {
 		o.userWPAName = args[0]
 	}
@@ -191,7 +232,7 @@ func (o *dryrunOptions) complete(cmd *cobra.Command, args []string) error {
 
 // validate ensures that all required arguments and flag values are provided.
 func (o *dryrunOptions) validate() error {
-	if len(o.args) < 1 && o.labelSelector != "" {
+	if o.userWPAName == "" && o.labelSelector == "" && !o.allWPA {
 		return fmt.Errorf("the watermarkpodautoscaler name or label-selector is required")
 	}
 
@@ -199,23 +240,44 @@ func (o *dryrunOptions) validate() error {
 }
 
 func (o *dryrunOptions) list(wpas []v1alpha1.WatermarkPodAutoscaler) error {
+	if len(wpas) == 0 {
+		return fmt.Errorf("no matching WatermarkPodAutoscaler intance")
+	}
+
+	var writerFunc func(w io.Writer, wpa *v1alpha1.WatermarkPodAutoscaler)
+	switch o.outputFormat {
+	case "csv":
+		csvWriter := csv.NewWriter(o.Out)
+		writerFunc = func(w io.Writer, wpa *v1alpha1.WatermarkPodAutoscaler) {
+			if err := csvWriter.Write([]string{wpa.Namespace, wpa.Name, dryRunString(wpa)}); err != nil {
+				fmt.Fprintf(o.ErrOut, "error")
+			}
+		}
+		defer csvWriter.Flush()
+	default:
+		writerFunc = func(w io.Writer, wpa *v1alpha1.WatermarkPodAutoscaler) {
+			fmt.Fprintf(w, "WatermarkPodAutoscaler '%s/%s' dry-run option is: %v\n", wpa.Namespace, wpa.Name, wpa.Spec.DryRun)
+		}
+	}
+
 	for _, wpa := range wpas {
-		fmt.Fprintf(o.Out, "WatermarkPodAutoscaler '%s/%s' dry-run option is: %v\n", wpa.Namespace, wpa.Name, wpa.Spec.DryRun)
+		writerFunc(o.Out, &wpa)
 	}
 	return nil
 }
 
 func (o *dryrunOptions) patch(wpas []v1alpha1.WatermarkPodAutoscaler) error {
+	if len(wpas) == 0 {
+		return fmt.Errorf("no matching WatermarkPodAutoscaler intance")
+	}
+
 	for _, wpa := range wpas {
-		newWPA := wpa.DeepCopy()
-		newWPA.Spec.DryRun = o.enabledDryRun
-
-		patch := client.MergeFrom(&wpa)
-		if err := o.client.Patch(context.TODO(), newWPA, patch); err != nil {
-			return fmt.Errorf("unable to set dry-run option to %v, err: %w", o.enabledDryRun, err)
+		err := patchWPA(o.client, &wpa, o.enabledDryRun)
+		if err != nil {
+			fmt.Fprintf(o.ErrOut, "error: %v", err)
+		} else {
+			fmt.Fprintf(o.Out, "WatermarkPodAutoscaler '%s/%s' dry-run option is now %v\n", wpa.Namespace, wpa.Name, o.enabledDryRun)
 		}
-
-		fmt.Fprintf(o.Out, "WatermarkPodAutoscaler '%s/%s' dry-run option is now %v\n", wpa.Namespace, wpa.Name, o.enabledDryRun)
 	}
 	return nil
 }
@@ -225,12 +287,9 @@ func (o *dryrunOptions) run(actionFunc func(wpas []v1alpha1.WatermarkPodAutoscal
 	wpas := &v1alpha1.WatermarkPodAutoscalerList{}
 
 	if o.userWPAName != "" {
-		wpa := &v1alpha1.WatermarkPodAutoscaler{}
-		err := o.client.Get(context.TODO(), client.ObjectKey{Namespace: o.userNamespace, Name: o.userWPAName}, wpa)
-		if err != nil && errors.IsNotFound(err) {
-			return fmt.Errorf("WatermarkPodAutoscaler %s/%s not found", o.userNamespace, o.userWPAName)
-		} else if err != nil {
-			return fmt.Errorf("unable to get WatermarkPodAutoscaler, err: %w", err)
+		wpa, err := getWpa(o.client, o.userNamespace, o.userWPAName)
+		if err != nil {
+			return err
 		}
 		wpas.Items = append(wpas.Items, *wpa)
 	} else {
@@ -250,3 +309,99 @@ func (o *dryrunOptions) run(actionFunc func(wpas []v1alpha1.WatermarkPodAutoscal
 
 	return actionFunc(wpas.Items)
 }
+
+func (o *dryrunOptions) runRevert() error {
+	input := o.In
+	if o.csvFile != "" {
+		f, err := os.Open(o.csvFile)
+		if err != nil {
+			return fmt.Errorf("unable to open the csv file %s, err: %w", o.csvFile, err)
+		}
+		defer func() {
+			errClose := f.Close()
+			if errClose != nil {
+				fmt.Fprintf(o.ErrOut, "unable to close the file: %v", errClose)
+			}
+		}()
+		input = f
+	}
+
+	csvReader := csv.NewReader(input)
+	for {
+		record, err := csvReader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			fmt.Fprintf(o.ErrOut, "error: %v", err)
+			continue
+		}
+		if len(record) != 3 {
+			fmt.Fprintf(o.ErrOut, "invalid line: %v", record)
+			continue
+		}
+		wpa, err := getWpa(o.client, record[0], record[1])
+		if err != nil {
+			fmt.Fprintf(o.ErrOut, "error: %v", err)
+			continue
+		}
+		previousDryRunValue := dryRunBool(record[2])
+		if wpa.Spec.DryRun == previousDryRunValue {
+			continue
+		}
+		err = patchWPA(o.client, wpa, previousDryRunValue)
+		if err != nil {
+			fmt.Fprintf(o.ErrOut, "error: %v", err)
+		} else {
+			fmt.Fprintf(o.Out, "WatermarkPodAutoscaler '%s/%s' dry-run option is now %v\n", wpa.Namespace, wpa.Name, previousDryRunValue)
+		}
+	}
+
+	return nil
+}
+
+func getWpa(k8sclient client.Client, ns, name string) (*v1alpha1.WatermarkPodAutoscaler, error) {
+	wpa := &v1alpha1.WatermarkPodAutoscaler{}
+	err := k8sclient.Get(context.TODO(), client.ObjectKey{Namespace: ns, Name: name}, wpa)
+	if err != nil && errors.IsNotFound(err) {
+		return nil, fmt.Errorf("WatermarkPodAutoscaler %s/%s not found", ns, name)
+	} else if err != nil {
+		return nil, fmt.Errorf("unable to get WatermarkPodAutoscaler, err: %w", err)
+	}
+	return wpa, nil
+}
+
+func patchWPA(k8sclient client.Client, wpa *v1alpha1.WatermarkPodAutoscaler, dryRun bool) error {
+	newWPA := wpa.DeepCopy()
+	newWPA.Spec.DryRun = dryRun
+
+	patch := client.MergeFrom(wpa)
+	if err := k8sclient.Patch(context.TODO(), newWPA, patch); err != nil {
+		return fmt.Errorf("unable to set dry-run option to %v, err: %w", dryRun, err)
+	}
+
+	return nil
+}
+
+func dryRunString(wpa *v1alpha1.WatermarkPodAutoscaler) string {
+	if wpa.Spec.DryRun {
+		return enabledString
+	}
+	return disabledString
+}
+
+func dryRunBool(input string) bool {
+	switch input {
+	case disabledString:
+		return false
+	case enabledString:
+		return true
+	}
+
+	return false
+}
+
+const (
+	disabledString = "disabled"
+	enabledString  = "enabled"
+)
