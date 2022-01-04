@@ -43,15 +43,18 @@ type dryrunOptions struct {
 	csvFile       string
 	enabledDryRun bool
 	allWPA        bool
+	allNamespaces bool
 }
 
 // newDryrunOptions provides an instance of GetOptions with default values.
 func newDryrunOptions(streams genericclioptions.IOStreams) *dryrunOptions {
-	return &dryrunOptions{
+	o := &dryrunOptions{
 		configFlags: genericclioptions.NewConfigFlags(false),
 
 		IOStreams: streams,
 	}
+
+	return o
 }
 
 // NewCmdDryRun provides a cobra command wrapping dryrunOptions.
@@ -107,6 +110,7 @@ func newCmdDryRunList(streams genericclioptions.IOStreams) *cobra.Command {
 
 	cmd.Flags().StringVarP(&o.labelSelector, "label-selector", "l", "", "Use to select WPA based in their labels")
 	cmd.Flags().BoolVarP(&o.allWPA, "all", "", false, "Use select all existing WPA instances in a cluster")
+	cmd.Flags().BoolVarP(&o.allNamespaces, "all-namespaces", "", false, "Use to search in all namespaces")
 	cmd.Flags().StringVarP(&o.outputFormat, "output", "o", "", "use to change the default output formating (csv)")
 
 	o.configFlags.AddFlags(cmd.Flags())
@@ -138,6 +142,7 @@ func newCmdDryRunEnabled(streams genericclioptions.IOStreams) *cobra.Command {
 
 	cmd.Flags().StringVarP(&o.labelSelector, "label-selector", "l", "", "Use to select WPA based in their labels")
 	cmd.Flags().BoolVarP(&o.allWPA, "all", "", false, "Use select all existing WPA instances in a cluster")
+	cmd.Flags().BoolVarP(&o.allNamespaces, "all-namespaces", "", false, "Use to search in all namespaces")
 	o.configFlags.AddFlags(cmd.Flags())
 
 	return cmd
@@ -167,6 +172,7 @@ func newCmdDryRunDisabled(streams genericclioptions.IOStreams) *cobra.Command {
 
 	cmd.Flags().StringVarP(&o.labelSelector, "label-selector", "l", "", "Use to select WPA based in their labels")
 	cmd.Flags().BoolVarP(&o.allWPA, "all", "", false, "Use select all existing WPA instances in a cluster")
+	cmd.Flags().BoolVarP(&o.allNamespaces, "all-namespaces", "", false, "Use to search in all namespaces")
 	o.configFlags.AddFlags(cmd.Flags())
 
 	return cmd
@@ -197,7 +203,7 @@ func newCmdRevert(streams genericclioptions.IOStreams) *cobra.Command {
 }
 
 // complete sets all information required for processing the command.
-func (o *dryrunOptions) complete(cmd *cobra.Command, args []string) error {
+func (o *dryrunOptions) complete(_ *cobra.Command, args []string) error {
 	o.args = args
 	var err error
 
@@ -208,18 +214,14 @@ func (o *dryrunOptions) complete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("unable to instantiate client, err: %w", err)
 	}
 
-	// Get namespace from the client config or from the parameter
+	// Get namespace from the client config or --all-namespaces
 	o.userNamespace, _, err = clientConfig.Namespace()
 	if err != nil {
 		return err
 	}
 
-	if cmd.Flags().Lookup("namespace").Changed {
-		ns, err2 := cmd.Flags().GetString("namespace")
-		if err2 != nil {
-			return err
-		}
-		o.userNamespace = ns
+	if o.allNamespaces {
+		o.userNamespace = ""
 	}
 
 	// get WPA name from argument
