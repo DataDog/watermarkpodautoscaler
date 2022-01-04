@@ -239,6 +239,13 @@ spec:
                 - type
                 type: object
               type: array
+            minAvailableReplicaPercentage:
+              description: MinAvailableReplicaPercentage indicates the minimum percentage
+                of replicas that need to be available in order for the controller
+                to autoscale the target.
+              format: int32
+              maximum: 100
+              type: integer
             minReplicas:
               format: int32
               minimum: 1

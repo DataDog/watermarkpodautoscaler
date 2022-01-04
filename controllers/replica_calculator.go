@@ -62,10 +62,24 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 	if err != nil {
 		logger.Error(err, "Could not parse the labels of the target")
 	}
-	currentReadyReplicas, err := c.getReadyPodsCount(logger, target, lbl, time.Duration(wpa.Spec.ReadinessDelaySeconds)*time.Second)
+	podList, err := c.podLister.Pods(target.Namespace).List(lbl)
+	if err != nil {
+		return ReplicaCalculation{}, fmt.Errorf("unable to get pods while calculating replica count: %v", err)
+	}
+	if len(podList) == 0 {
+		return ReplicaCalculation{}, fmt.Errorf("no pods returned by selector while calculating replica count")
+	}
+
+	currentReadyReplicas, incorrectTargetPodsCount, err := c.getReadyPodsCount(logger, target.Name, podList, time.Duration(wpa.Spec.ReadinessDelaySeconds)*time.Second)
 	if err != nil {
 		return ReplicaCalculation{}, fmt.Errorf("unable to get the number of ready pods across all namespaces for %v: %s", lbl, err.Error())
 	}
+
+	ratioReadyPods := (100 * currentReadyReplicas / (int32(len(podList)) - incorrectTargetPodsCount))
+	if ratioReadyPods < wpa.Spec.MinAvailableReplicaPercentage {
+		return ReplicaCalculation{}, fmt.Errorf("%d %% of the pods are unready, will not autoscale %s/%s", ratioReadyPods, target.Namespace, target.Name)
+	}
+
 	averaged := 1.0
 	if wpa.Spec.Algorithm == "average" {
 		averaged = float64(currentReadyReplicas)
@@ -156,6 +170,12 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 	readyPods, ignoredPods := groupPods(logger, podList, target.Name, metrics, resourceName, readiness)
 	readyPodCount := len(readyPods)
 
+	ratioReadyPods := int32(100 * readyPodCount / (len(podList) - len(ignoredPods)))
+
+	if ratioReadyPods < wpa.Spec.MinAvailableReplicaPercentage {
+		return ReplicaCalculation{}, fmt.Errorf("%d %% of the pods are unready, will not autoscale %s/%s", ratioReadyPods, target.Namespace, target.Name)
+	}
+
 	removeMetricsForPods(metrics, ignoredPods)
 	if len(metrics) == 0 {
 		return ReplicaCalculation{0, 0, time.Time{}}, fmt.Errorf("did not receive metrics for any ready pods")
@@ -220,20 +240,12 @@ func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas i
 	return replicaCount, utilizationQuantity.MilliValue()
 }
 
-func (c *ReplicaCalculator) getReadyPodsCount(log logr.Logger, target *autoscalingv1.Scale, selector labels.Selector, readinessDelay time.Duration) (int32, error) {
-	podList, err := c.podLister.Pods(target.Namespace).List(selector)
-	if err != nil {
-		return 0, fmt.Errorf("unable to get pods while calculating replica count: %v", err)
-	}
-	if len(podList) == 0 {
-		return 0, fmt.Errorf("no pods returned by selector while calculating replica count")
-	}
-
+func (c *ReplicaCalculator) getReadyPodsCount(log logr.Logger, targetName string, podList []*corev1.Pod, readinessDelay time.Duration) (int32, int32, error) {
 	toleratedAsReadyPodCount := 0
 	var incorrectTargetPodsCount int
 	for _, pod := range podList {
 		// matchLabel might be too broad, use the OwnerRef to scope over the actual target
-		if ok := checkOwnerRef(pod.OwnerReferences, target.Name); !ok {
+		if ok := checkOwnerRef(pod.OwnerReferences, targetName); !ok {
 			incorrectTargetPodsCount++
 			continue
 		}
@@ -253,10 +265,12 @@ func (c *ReplicaCalculator) getReadyPodsCount(log logr.Logger, target *autoscali
 	}
 	log.Info("getReadyPodsCount", "full podList length", len(podList), "toleratedAsReadyPodCount", toleratedAsReadyPodCount, "incorrectly targeted pods", incorrectTargetPodsCount)
 	if toleratedAsReadyPodCount == 0 {
-		return 0, fmt.Errorf("among the %d pods, none is ready. Skipping recommendation", len(podList))
+		return 0, int32(incorrectTargetPodsCount), fmt.Errorf("among the %d pods, none is ready. Skipping recommendation", len(podList))
 	}
-	return int32(toleratedAsReadyPodCount), nil
+
+	return int32(toleratedAsReadyPodCount), int32(incorrectTargetPodsCount), nil
 }
+
 func checkOwnerRef(ownerRef []metav1.OwnerReference, targetName string) bool {
 	for _, o := range ownerRef {
 		if o.Kind != "ReplicaSet" && o.Kind != "StatefulSet" {

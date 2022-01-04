@@ -320,6 +320,13 @@ func schema__api_v1alpha1_WatermarkPodAutoscalerSpec(ref common.ReferenceCallbac
 							Format: "int32",
 						},
 					},
+					"minAvailableReplicaPercentage": {
+						SchemaProps: spec.SchemaProps{
+							Description: "MinAvailableReplicaPercentage indicates the minimum percentage of replicas that need to be available in order for the controller to autoscale the target.",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
 					"maxReplicas": {
 						SchemaProps: spec.SchemaProps{
 							Type:   []string{"integer"},
