@@ -55,6 +55,10 @@ import (
 const (
 	defaultSyncPeriod          = 15 * time.Second
 	logAttributesAnnotationKey = "wpa.datadoghq.com/logs-attributes"
+	scaleNotFoundErr           = "scale not found"
+
+	defaultRequeueDelay       = time.Second
+	scaleNotFoundRequeueDelay = 10 * time.Second
 )
 
 // WatermarkPodAutoscalerReconciler reconciles a WatermarkPodAutoscaler object
@@ -159,8 +163,8 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedProcessWPA, err.Error())
 		setCondition(instance, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedProcessWPA, "Error happened while processing the WPA")
 		// In case of `reconcileWPA` error, we need to requeue the Resource in order to retry to process it again
-		// we put a delay of 1 second in order to not retry directly and limit the number of retries if it only a transient issue.
-		return reconcile.Result{RequeueAfter: time.Second}, nil
+		// we put a delay in order to not retry directly and limit the number of retries if it only a transient issue.
+		return reconcile.Result{RequeueAfter: requeueAfterForWPAErrors(err)}, nil
 	}
 
 	return resRepeat, nil
@@ -189,7 +193,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	}
 
 	currentScale, targetGR, err := r.getScaleForResourceMappings(ctx, wpa.Namespace, wpa.Spec.ScaleTargetRef.Name, mappings)
-	if currentScale == nil && strings.Contains(err.Error(), "not found") {
+	if currentScale == nil && strings.Contains(err.Error(), scaleNotFoundErr) {
 		// it is possible that one of the GK in the mappings was not found, but if we have at least one that works, we can continue reconciling.
 		return err
 	}
@@ -302,6 +306,16 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	return r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa)
 }
 
+func requeueAfterForWPAErrors(err error) time.Duration {
+	// We don't expect this error to be recovered after 1s, so define a longer
+	// delay.
+	if strings.Contains(err.Error(), scaleNotFoundErr) {
+		return scaleNotFoundRequeueDelay
+	}
+
+	return defaultRequeueDelay
+}
+
 // getScaleForResourceMappings attempts to fetch the scale for the
 // resource with the given name and namespace, trying each RESTMapping
 // in turn until a working one is found.  If none work, the first error
@@ -321,7 +335,7 @@ func (r *WatermarkPodAutoscalerReconciler) getScaleForResourceMappings(ctx conte
 		errs = append(errs, fmt.Errorf("could not get scale for the GV %s, error: %v", mapping.GroupVersionKind.GroupVersion().String(), err.Error()))
 	}
 	if scale == nil {
-		errs = append(errs, fmt.Errorf("scale not found"))
+		errs = append(errs, fmt.Errorf(scaleNotFoundErr))
 	}
 	// make sure we handle an empty set of mappings
 	return scale, targetGR, utilerrors.NewAggregate(errs)
