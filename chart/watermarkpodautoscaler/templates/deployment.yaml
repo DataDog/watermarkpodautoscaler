@@ -48,6 +48,10 @@ spec:
           args:
             - --loglevel={{ .Values.logLevel }}
             - --leader-election-resource={{ .Values.leaderElectionResourceLock }}
+            {{- if .Values.ddProfiling.enabled }}
+            - -ddProfilingEnabled
+            {{- end }}
+            - -workers={{ .Values.workers }}
           env:
             - name: WATCH_NAMESPACE
             {{- if .Values.watchAllNamespaces }}
