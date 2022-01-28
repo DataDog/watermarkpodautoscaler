@@ -29,7 +29,8 @@ var dryrunExample = `
 
 var dryrunRevertExample = `
 	# %[1]s reverts to a state specified in a file
-	kubectl %[1]s -f saved_state.csv
+	kubectl wpa dry-run list --all -ocsv > saved_state.csv
+	kubectl wpa %[1]s -f saved_state.csv
 `
 
 // dryrunOptions provides information required to manage WatermarkPodAutoscaler.
@@ -396,9 +397,10 @@ func dryRunBool(input string) bool {
 		return false
 	case enabledString:
 		return true
+	default:
+		fmt.Printf("Warning: Incorrect value for dry-run: %s, defaulting to true \n", input)
+		return true
 	}
-
-	return false
 }
 
 const (
