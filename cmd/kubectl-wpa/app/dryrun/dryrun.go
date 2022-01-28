@@ -70,16 +70,6 @@ func NewCmdDryRun(streams genericclioptions.IOStreams) *cobra.Command {
 		Use:          "dry-run",
 		Short:        "configure WPA(s) dry-run",
 		SilenceUsage: true,
-		RunE: func(c *cobra.Command, args []string) error {
-			if err := o.complete(c, args); err != nil {
-				return err
-			}
-			if err := o.validate(); err != nil {
-				return err
-			}
-
-			return nil
-		},
 	}
 
 	cmd.AddCommand(newCmdDryRunEnabled(streams))
@@ -189,13 +179,13 @@ func newCmdRevert(streams genericclioptions.IOStreams) *cobra.Command {
 	o.enabledDryRun = false
 
 	cmd := &cobra.Command{
-		Use:          "revert",
+		Use:          "revert -f [saved_state_csv_file]",
 		Short:        "revert all WPA instance dry-run configuration from a csv backup file",
 		Example:      fmt.Sprintf(dryrunRevertExample, "dry-run revert"),
 		SilenceUsage: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			if o.csvFile == "" {
-				return fmt.Errorf("the revert command requires a file as input")
+				return fmt.Errorf("the revert command requires a file as input use `--help` for an example")
 			}
 			if err := o.complete(c, args); err != nil {
 				return err
