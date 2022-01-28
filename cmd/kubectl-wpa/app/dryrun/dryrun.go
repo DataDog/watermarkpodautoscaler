@@ -27,6 +27,11 @@ var dryrunExample = `
 	kubectl wpa %[1]s foo
 `
 
+var dryrunRevertExample = `
+	# %[1]s reverts to a state specified in a file
+	kubectl %[1]s -f saved_state.csv
+`
+
 // dryrunOptions provides information required to manage WatermarkPodAutoscaler.
 type dryrunOptions struct {
 	configFlags *genericclioptions.ConfigFlags
@@ -186,9 +191,12 @@ func newCmdRevert(streams genericclioptions.IOStreams) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "revert",
 		Short:        "revert all WPA instance dry-run configuration from a csv backup file",
-		Example:      fmt.Sprintf(dryrunExample, "dry-run disable"),
+		Example:      fmt.Sprintf(dryrunRevertExample, "dry-run revert"),
 		SilenceUsage: true,
 		RunE: func(c *cobra.Command, args []string) error {
+			if o.csvFile == "" {
+				return fmt.Errorf("the revert command requires a file as input")
+			}
 			if err := o.complete(c, args); err != nil {
 				return err
 			}
