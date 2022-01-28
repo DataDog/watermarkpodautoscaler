@@ -61,6 +61,12 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
             {{- end }}
+            {{- if .Values.ddProfiling.enabled }}
+            - name: DD_AGENT_HOST
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            {{- end }}
             - name: POD_NAME
               valueFrom:
                 fieldRef:
