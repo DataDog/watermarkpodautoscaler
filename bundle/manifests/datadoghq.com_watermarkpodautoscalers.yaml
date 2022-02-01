@@ -7,6 +7,12 @@ metadata:
   name: watermarkpodautoscalers.datadoghq.com
 spec:
   additionalPrinterColumns:
+  - JSONPath: .status.conditions[0].type
+    name: condition
+    type: string
+  - JSONPath: .status.conditions[0].status
+    name: condition status
+    type: string
   - JSONPath: .status.currentMetrics[*].external.currentValue..
     name: value
     type: string
@@ -28,6 +34,9 @@ spec:
   - JSONPath: .status.conditions[?(@.type=="DryRun")].status
     name: dry-run
     type: string
+  - JSONPath: .status.lastScaleTime
+    name: last scale
+    type: date
   group: datadoghq.com
   names:
     kind: WatermarkPodAutoscaler
@@ -179,6 +188,11 @@ spec:
                 - type
                 type: object
               type: array
+            minAvailableReplicaPercentage:
+              description: MinAvailableReplicaPercentage indicates the minimum percentage of replicas that need to be available in order for the controller to autoscale the target.
+              format: int32
+              maximum: 100
+              type: integer
             minReplicas:
               format: int32
               minimum: 1
@@ -496,8 +510,6 @@ spec:
               format: int64
               type: integer
           required:
-          - conditions
-          - currentMetrics
           - currentReplicas
           - desiredReplicas
           type: object
