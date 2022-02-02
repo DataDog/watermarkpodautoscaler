@@ -393,6 +393,9 @@ func canScale(logger logr.Logger, backoffUp, backoffDown bool, currentReplicas, 
 
 // setCurrentReplicasInStatus sets the current replica count in the status of the HPA.
 func (r *WatermarkPodAutoscalerReconciler) setCurrentReplicasInStatus(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas int32) {
+	if wpa.Status.CurrentMetrics == nil {
+		wpa.Status.CurrentMetrics = []autoscalingv2.MetricStatus{}
+	}
 	setStatus(wpa, currentReplicas, wpa.Status.DesiredReplicas, wpa.Status.CurrentMetrics, false)
 }
 
