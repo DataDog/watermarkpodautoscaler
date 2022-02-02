@@ -232,6 +232,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 
 		proposedReplicas, metricName, metricStatuses, metricTimestamp, err = r.computeReplicasForMetrics(logger, wpa, currentScale)
 		if err != nil {
+			logger.Info("Error Computing Replicas", "error", err)
 			r.setCurrentReplicasInStatus(wpa, currentReplicas)
 			if err2 := r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa); err2 != nil {
 				r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedUpdateReplicasStatus, err2.Error())
