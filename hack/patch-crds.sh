@@ -18,4 +18,5 @@ do
   do
     $YQ d -i "$ROOT_DIR/$v1beta1/$crd" $path
   done
+  $YQ d -i "$ROOT_DIR/$v1beta1/$crd" 'spec.validation.openAPIV3Schema.properties.spec.properties.tolerance[*]'
 done
