@@ -111,7 +111,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
-
+	log.Info("instance from client", "generation", instance.Generation, "resver", instance.ResourceVersion, "spec dry run", instance.Spec.DryRun, "Status conditions", instance.Status.Conditions)
 	// Attach to the logger the logs-attributes if exist
 	logsAttr, err := GetLogAttrsFromWpa(instance)
 	if err != nil {
