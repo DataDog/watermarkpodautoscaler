@@ -589,7 +589,8 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			if err := r.Client.Get(context.TODO(), types.NamespacedName{Name: tt.args.wpa.Name, Namespace: tt.args.wpa.Namespace}, wpa); err != nil {
 				t.Errorf("unable to get wpa, err: %v", err)
 			}
-			err := r.reconcileWPA(context.TODO(), logf.Log.WithName(tt.name), wpa)
+			originalWPAStatus := wpa.Status.DeepCopy()
+			err := r.reconcileWPA(context.TODO(), logf.Log.WithName(tt.name), originalWPAStatus, wpa)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ReconcileWatermarkPodAutoscaler.Reconcile() error = %v, wantErr %v", err, tt.wantErr)
 				return
