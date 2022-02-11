@@ -153,11 +153,6 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 
 	fillMissingWatermark(log, instance)
 
-	if instance.Spec.DryRun {
-		setCondition(instance, datadoghqv1alpha1.WatermarkPodAutoscalerStatusDryRunCondition, corev1.ConditionTrue, "DryRun mode enabled", "Scaling changes won't be applied")
-	} else {
-		setCondition(instance, datadoghqv1alpha1.WatermarkPodAutoscalerStatusDryRunCondition, corev1.ConditionFalse, "DryRun mode disabled", "Scaling changes can be applied")
-	}
 	if err := r.reconcileWPA(ctx, log, instance); err != nil {
 		log.Info("Error during reconcileWPA", "error", err)
 		r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedProcessWPA, err.Error())
@@ -200,6 +195,15 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	currentReplicas := currentScale.Status.Replicas
 	logger.Info("Target deploy", "replicas", currentReplicas)
 	wpaStatusOriginal := wpa.Status.DeepCopy()
+
+	dryRunMetricValue := 0
+	if wpa.Spec.DryRun {
+		dryRunMetricValue = 1
+		setCondition(wpa, datadoghqv1alpha1.WatermarkPodAutoscalerStatusDryRunCondition, corev1.ConditionTrue, "DryRun mode enabled", "Scaling changes won't be applied")
+	} else {
+		setCondition(wpa, datadoghqv1alpha1.WatermarkPodAutoscalerStatusDryRunCondition, corev1.ConditionFalse, "DryRun mode disabled", "Scaling changes can be applied")
+	}
+	dryRun.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(float64(dryRunMetricValue))
 
 	reference := fmt.Sprintf("%s/%s/%s", wpa.Spec.ScaleTargetRef.Kind, wpa.Namespace, wpa.Spec.ScaleTargetRef.Name)
 	setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, datadoghqv1alpha1.ConditionReasonSuccessfulGetScale, "the WPA controller was able to get the target's current scale")
@@ -402,10 +406,10 @@ func (r *WatermarkPodAutoscalerReconciler) updateStatusIfNeeded(ctx context.Cont
 	if apiequality.Semantic.DeepEqual(wpaStatus, &wpa.Status) {
 		return nil
 	}
-	return r.updateWPA(ctx, wpa)
+	return r.updateWPAStatus(ctx, wpa)
 }
 
-func (r *WatermarkPodAutoscalerReconciler) updateWPA(ctx context.Context, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) error {
+func (r *WatermarkPodAutoscalerReconciler) updateWPAStatus(ctx context.Context, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) error {
 	return r.Client.Status().Update(ctx, wpa)
 }
 
