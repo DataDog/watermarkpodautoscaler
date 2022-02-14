@@ -15,7 +15,6 @@ import (
 
 	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
 	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1/test"
-
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -539,7 +538,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				if wpa.Status.DesiredReplicas != desired {
 					return fmt.Errorf(fmt.Sprintf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas))
 				}
-				if len(wpa.Status.Conditions) != 3 {
+				if len(wpa.Status.Conditions) != 4 {
 					return fmt.Errorf("incomplete reconciliation process, missing conditions")
 				}
 				for _, c := range wpa.Status.Conditions {
@@ -590,7 +589,8 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			if err := r.Client.Get(context.TODO(), types.NamespacedName{Name: tt.args.wpa.Name, Namespace: tt.args.wpa.Namespace}, wpa); err != nil {
 				t.Errorf("unable to get wpa, err: %v", err)
 			}
-			err := r.reconcileWPA(context.TODO(), logf.Log.WithName(tt.name), wpa)
+			originalWPAStatus := wpa.Status.DeepCopy()
+			err := r.reconcileWPA(context.TODO(), logf.Log.WithName(tt.name), originalWPAStatus, wpa)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ReconcileWatermarkPodAutoscaler.Reconcile() error = %v, wantErr %v", err, tt.wantErr)
 				return

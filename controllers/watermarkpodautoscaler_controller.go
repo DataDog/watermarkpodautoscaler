@@ -125,6 +125,8 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		return reconcile.Result{}, err
 	}
 
+	wpaStatusOriginal := instance.Status.DeepCopy()
+
 	if !datadoghqv1alpha1.IsDefaultWatermarkPodAutoscaler(instance) {
 		log.Info("Some configuration options are missing, falling back to the default ones")
 		defaultWPA := datadoghqv1alpha1.DefaultWatermarkPodAutoscaler(instance)
@@ -140,7 +142,6 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		// If the WPA spec is incorrect (most likely, in "metrics" section) stop processing it
 		// When the spec is updated, the wpa will be re-added to the reconcile queue
 		r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedSpecCheck, err.Error())
-		wpaStatusOriginal := instance.Status.DeepCopy()
 		setCondition(instance, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedSpecCheck, "Invalid WPA specification: %s", err)
 		if err = r.updateStatusIfNeeded(ctx, wpaStatusOriginal, instance); err != nil {
 			r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedUpdateStatus, err.Error())
@@ -153,17 +154,16 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 
 	fillMissingWatermark(log, instance)
 
-	if instance.Spec.DryRun {
-		setCondition(instance, datadoghqv1alpha1.WatermarkPodAutoscalerStatusDryRunCondition, corev1.ConditionTrue, "DryRun mode enabled", "Scaling changes won't be applied")
-	} else {
-		setCondition(instance, datadoghqv1alpha1.WatermarkPodAutoscalerStatusDryRunCondition, corev1.ConditionFalse, "DryRun mode disabled", "Scaling changes can be applied")
-	}
-	if err := r.reconcileWPA(ctx, log, instance); err != nil {
+	if err := r.reconcileWPA(ctx, log, wpaStatusOriginal, instance); err != nil {
 		log.Info("Error during reconcileWPA", "error", err)
 		r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedProcessWPA, err.Error())
 		setCondition(instance, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedProcessWPA, "Error happened while processing the WPA")
 		// In case of `reconcileWPA` error, we need to requeue the Resource in order to retry to process it again
 		// we put a delay in order to not retry directly and limit the number of retries if it only a transient issue.
+		if err2 := r.updateStatusIfNeeded(ctx, wpaStatusOriginal, instance); err2 != nil {
+			r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedUpdateStatus, err2.Error())
+			return reconcile.Result{}, err2
+		}
 		return reconcile.Result{RequeueAfter: requeueAfterForWPAErrors(err)}, nil
 	}
 
@@ -171,7 +171,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 }
 
 // reconcileWPA is the core of the controller.
-func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) error {
+func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, logger logr.Logger, wpaStatusOriginal *datadoghqv1alpha1.WatermarkPodAutoscalerStatus, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) error {
 	defer func() {
 		if err1 := recover(); err1 != nil {
 			logger.Error(fmt.Errorf("recover error"), "RunTime error in reconcileWPA", "returnValue", err1)
@@ -199,7 +199,15 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	}
 	currentReplicas := currentScale.Status.Replicas
 	logger.Info("Target deploy", "replicas", currentReplicas)
-	wpaStatusOriginal := wpa.Status.DeepCopy()
+
+	dryRunMetricValue := 0
+	if wpa.Spec.DryRun {
+		dryRunMetricValue = 1
+		setCondition(wpa, datadoghqv1alpha1.WatermarkPodAutoscalerStatusDryRunCondition, corev1.ConditionTrue, "DryRun mode enabled", "Scaling changes won't be applied")
+	} else {
+		setCondition(wpa, datadoghqv1alpha1.WatermarkPodAutoscalerStatusDryRunCondition, corev1.ConditionFalse, "DryRun mode disabled", "Scaling changes can be applied")
+	}
+	dryRun.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(float64(dryRunMetricValue))
 
 	reference := fmt.Sprintf("%s/%s/%s", wpa.Spec.ScaleTargetRef.Kind, wpa.Namespace, wpa.Spec.ScaleTargetRef.Name)
 	setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, datadoghqv1alpha1.ConditionReasonSuccessfulGetScale, "the WPA controller was able to get the target's current scale")
@@ -402,10 +410,10 @@ func (r *WatermarkPodAutoscalerReconciler) updateStatusIfNeeded(ctx context.Cont
 	if apiequality.Semantic.DeepEqual(wpaStatus, &wpa.Status) {
 		return nil
 	}
-	return r.updateWPA(ctx, wpa)
+	return r.updateWPAStatus(ctx, wpa)
 }
 
-func (r *WatermarkPodAutoscalerReconciler) updateWPA(ctx context.Context, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) error {
+func (r *WatermarkPodAutoscalerReconciler) updateWPAStatus(ctx context.Context, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) error {
 	return r.Client.Status().Update(ctx, wpa)
 }
 

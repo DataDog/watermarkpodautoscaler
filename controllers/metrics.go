@@ -179,6 +179,18 @@ var (
 			resourceNamePromLabel,
 			resourceKindPromLabel,
 		})
+	dryRun = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "dry_run",
+			Help:      "Gauge reflecting the WPA dry-run status",
+		},
+		[]string{
+			wpaNamePromLabel,
+			resourceNamespacePromLabel,
+			resourceNamePromLabel,
+			resourceKindPromLabel,
+		})
 	labelsInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
@@ -201,6 +213,7 @@ func init() {
 	sigmetrics.Registry.MustRegister(transitionCountdown)
 	sigmetrics.Registry.MustRegister(replicaMin)
 	sigmetrics.Registry.MustRegister(replicaMax)
+	sigmetrics.Registry.MustRegister(dryRun)
 	sigmetrics.Registry.MustRegister(labelsInfo)
 }
 
@@ -235,6 +248,7 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 			promLabelsInfo[eLabel] = eLabelValue
 		}
 		labelsInfo.Delete(promLabelsInfo)
+		dryRun.Delete(promLabelsForWpa)
 	}
 
 	for _, metricSpec := range wpa.Spec.Metrics {
