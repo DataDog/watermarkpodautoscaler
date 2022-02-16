@@ -47,7 +47,6 @@ type ReplicaCalculator struct {
 
 // NewReplicaCalculator returns a ReplicaCalculator object reference
 func NewReplicaCalculator(metricsClient metricsclient.MetricsClient, podLister corelisters.PodLister) *ReplicaCalculator {
-
 	return &ReplicaCalculator{
 		metricsClient: metricsClient,
 		podLister:     podLister,
@@ -75,6 +74,12 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 		return ReplicaCalculation{}, fmt.Errorf("unable to get the number of ready pods across all namespaces for %v: %s", lbl, err.Error())
 	}
 
+	if currentReadyReplicas > target.Status.Replicas {
+		// if we enter in that condition it means that several Deployment use the same label selector in the same namespace.
+		logger.Info("The number of current ready Pods is higher that the current status.replicas", "currentReadyReplicas", currentReadyReplicas, "targetStatusReplicas", target.Status.Replicas)
+		currentReadyReplicas = target.Status.Replicas
+	}
+
 	ratioReadyPods := (100 * currentReadyReplicas / (int32(len(podList)) - incorrectTargetPodsCount))
 	if ratioReadyPods < wpa.Spec.MinAvailableReplicaPercentage {
 		return ReplicaCalculation{}, fmt.Errorf("%d %% of the pods are unready, will not autoscale %s/%s", ratioReadyPods, target.Namespace, target.Name)
@@ -100,7 +105,8 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 			resourceNamespacePromLabel: wpa.Namespace,
 			resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
 			resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
-			reasonPromLabel:            upscaleCappingPromLabelVal}
+			reasonPromLabel:            upscaleCappingPromLabelVal,
+		}
 		restrictedScaling.Delete(labelsWithReason)
 		labelsWithReason[reasonPromLabel] = downscaleCappingPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
@@ -125,7 +131,6 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 // GetResourceReplicas calculates the desired replica count based on a target resource utilization percentage
 // of the given resource for pods matching the given selector in the given namespace, and the current replica count
 func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *autoscalingv1.Scale, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (ReplicaCalculation, error) {
-
 	resourceName := metric.Resource.Name
 	selector := metric.Resource.MetricSelector
 	labelSelector, err := metav1.LabelSelectorAsSelector(selector)
@@ -142,7 +147,8 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 			resourceNamespacePromLabel: wpa.Namespace,
 			resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
 			resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
-			reasonPromLabel:            upscaleCappingPromLabelVal}
+			reasonPromLabel:            upscaleCappingPromLabelVal,
+		}
 		restrictedScaling.Delete(labelsWithReason)
 		labelsWithReason[reasonPromLabel] = downscaleCappingPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
@@ -271,12 +277,24 @@ func (c *ReplicaCalculator) getReadyPodsCount(log logr.Logger, targetName string
 	return int32(toleratedAsReadyPodCount), int32(incorrectTargetPodsCount), nil
 }
 
+const (
+	replicaSetKind  = "ReplicaSet"
+	statefulSetKind = "StatefulSet"
+)
+
 func checkOwnerRef(ownerRef []metav1.OwnerReference, targetName string) bool {
 	for _, o := range ownerRef {
-		if o.Kind != "ReplicaSet" && o.Kind != "StatefulSet" {
+		if o.Kind != replicaSetKind && o.Kind != statefulSetKind {
 			continue
 		}
-		if strings.HasPrefix(o.Name, targetName) {
+
+		mainOwnerRef := o.Name
+		if o.Kind == replicaSetKind {
+			splitOwnerRefName := strings.Split(o.Name, "-")
+			splitOwnerRefName = splitOwnerRefName[:len(splitOwnerRefName)-1]
+			mainOwnerRef = strings.Join(splitOwnerRefName, "-")
+		}
+		if mainOwnerRef == targetName {
 			return true
 		}
 	}
