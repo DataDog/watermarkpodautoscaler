@@ -8,7 +8,7 @@ package controllers
 import (
 	"fmt"
 	"math"
-	"strings"
+	"regexp"
 	"time"
 
 	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
@@ -76,7 +76,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 
 	if currentReadyReplicas > target.Status.Replicas {
 		// if we enter in that condition it means that several Deployment use the same label selector in the same namespace.
-		logger.Info("The number of current ready Pods is higher that the current status.replicas", "currentReadyReplicas", currentReadyReplicas, "targetStatusReplicas", target.Status.Replicas)
+		logger.Info("To many ready Pods reported. It can be a conflict between Deployment.Spec.Selector", "currentReadyReplicas", currentReadyReplicas, "targetStatusReplicas", target.Status.Replicas, "scale.selector", target.Status.Selector)
 		currentReadyReplicas = target.Status.Replicas
 	}
 
@@ -282,6 +282,8 @@ const (
 	statefulSetKind = "StatefulSet"
 )
 
+var exteractDeploymentNameRegex = regexp.MustCompile("(.*)-.*")
+
 func checkOwnerRef(ownerRef []metav1.OwnerReference, targetName string) bool {
 	for _, o := range ownerRef {
 		if o.Kind != replicaSetKind && o.Kind != statefulSetKind {
@@ -290,9 +292,8 @@ func checkOwnerRef(ownerRef []metav1.OwnerReference, targetName string) bool {
 
 		mainOwnerRef := o.Name
 		if o.Kind == replicaSetKind {
-			splitOwnerRefName := strings.Split(o.Name, "-")
-			splitOwnerRefName = splitOwnerRefName[:len(splitOwnerRefName)-1]
-			mainOwnerRef = strings.Join(splitOwnerRefName, "-")
+			// removes the last section from the replicaSet name to get the deployment name.
+			mainOwnerRef = exteractDeploymentNameRegex.FindStringSubmatch(o.Name)[1]
 		}
 		if mainOwnerRef == targetName {
 			return true
