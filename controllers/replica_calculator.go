@@ -8,7 +8,7 @@ package controllers
 import (
 	"fmt"
 	"math"
-	"regexp"
+	"strings"
 	"time"
 
 	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
@@ -282,8 +282,6 @@ const (
 	statefulSetKind = "StatefulSet"
 )
 
-var exteractDeploymentNameRegex = regexp.MustCompile("(.*)-.*")
-
 func checkOwnerRef(ownerRef []metav1.OwnerReference, targetName string) bool {
 	for _, o := range ownerRef {
 		if o.Kind != replicaSetKind && o.Kind != statefulSetKind {
@@ -293,7 +291,10 @@ func checkOwnerRef(ownerRef []metav1.OwnerReference, targetName string) bool {
 		mainOwnerRef := o.Name
 		if o.Kind == replicaSetKind {
 			// removes the last section from the replicaSet name to get the deployment name.
-			mainOwnerRef = exteractDeploymentNameRegex.FindStringSubmatch(o.Name)[1]
+			lastIndex := strings.LastIndex(o.Name, "-")
+			if lastIndex > -1 {
+				mainOwnerRef = o.Name[:lastIndex]
+			}
 		}
 		if mainOwnerRef == targetName {
 			return true
