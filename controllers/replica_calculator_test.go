@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
-
 	"github.com/DataDog/watermarkpodautoscaler/third_party/kubernetes/pkg/controller/podautoscaler/metrics"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -65,7 +64,6 @@ type replicaCalcTestCase struct {
 
 const (
 	testReplicaSetName  = "foo-bar-123-345"
-	replicaSetKind      = "ReplicaSet"
 	testDeploymentName  = "foo-bar-123"
 	testNamespace       = "test-namespace"
 	podNamePrefix       = "test-pod"
@@ -2108,7 +2106,8 @@ func TestGroupPods(t *testing.T) {
 			sets.NewString(),
 		},
 		{
-			name: "pending pods are ignored",
+			name:       "pending pods are ignored",
+			targetName: testDeploymentName,
 			pods: []*corev1.Pod{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -2128,10 +2127,32 @@ func TestGroupPods(t *testing.T) {
 			expectReadyPodCount: 0,
 			expectIgnoredPods:   sets.NewString("unscheduled"),
 		},
+		{
+			name:       "pods from other Deployments are ignored",
+			targetName: testDeploymentName,
+			pods: []*corev1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "foo-bar-123-base-sdahs",
+						OwnerReferences: []metav1.OwnerReference{{
+							Name: "foo-bar-123-base",
+							Kind: replicaSetKind,
+						}},
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodRunning,
+					},
+				},
+			},
+			metrics:             metrics.PodMetricsInfo{},
+			resource:            corev1.ResourceCPU,
+			expectReadyPodCount: 0,
+			expectIgnoredPods:   sets.NewString(),
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			readyPods, ignoredPods := groupPods(logf.Log, tc.pods, tc.targetName, tc.metrics, tc.resource, time.Duration(readinessDelay)*time.Second)
+			readyPods, ignoredPods := groupPods(logf.Log.WithName(tc.name), tc.pods, tc.targetName, tc.metrics, tc.resource, time.Duration(readinessDelay)*time.Second)
 			readyPodCount := len(readyPods)
 			assert.Equal(t, tc.expectReadyPodCount, readyPodCount, "%s got readyPodCount %d, expected %d", tc.name, readyPodCount, tc.expectReadyPodCount)
 			assert.EqualValues(t, tc.expectIgnoredPods, ignoredPods, "%s got unreadyPods %v, expected %v", tc.name, ignoredPods, tc.expectIgnoredPods)
@@ -2431,5 +2452,76 @@ func TestGetPodCondition(t *testing.T) {
 			assert.EqualValues(t, podCondition, tc.expectPodCondition, "%s got podCondition %v, expected %v", tc.name, podCondition, tc.expectPodCondition)
 		})
 	}
+}
 
+func Test_checkOwnerRef(t *testing.T) {
+	type args struct {
+		ownerRef   []metav1.OwnerReference
+		targetName string
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "stafefulset should match",
+			args: args{
+				ownerRef: []metav1.OwnerReference{
+					{
+						Kind: statefulSetKind,
+						Name: "foo",
+					},
+				},
+				targetName: "foo",
+			},
+			want: true,
+		},
+		{
+			name: "stafefulset should not match",
+			args: args{
+				ownerRef: []metav1.OwnerReference{
+					{
+						Kind: statefulSetKind,
+						Name: "foo-ssdsdd",
+					},
+				},
+				targetName: "foo",
+			},
+			want: false,
+		},
+		{
+			name: "deployment should match",
+			args: args{
+				ownerRef: []metav1.OwnerReference{
+					{
+						Kind: replicaSetKind,
+						Name: "foo-eyruwey",
+					},
+				},
+				targetName: "foo",
+			},
+			want: true,
+		},
+		{
+			name: "deployment should not match",
+			args: args{
+				ownerRef: []metav1.OwnerReference{
+					{
+						Kind: replicaSetKind,
+						Name: "foo-bar-ssdsdd",
+					},
+				},
+				targetName: "foo",
+			},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := checkOwnerRef(tt.args.ownerRef, tt.args.targetName); got != tt.want {
+				t.Errorf("checkOwnerRef() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
