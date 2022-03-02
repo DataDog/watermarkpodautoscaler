@@ -15,8 +15,8 @@ import (
 // WatermarkPodAutoscaler is the Schema for the watermarkpodautoscalers API
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:name="condition",type="string",JSONPath=".status.conditions[0].type"
-// +kubebuilder:printcolumn:name="condition status",type="string",JSONPath=".status.conditions[0].status"
+// +kubebuilder:printcolumn:name="condition",type="string",JSONPath=".status.LastConditionType"
+// +kubebuilder:printcolumn:name="condition status",type="string",JSONPath=".status.LastConditionStatus"
 // +kubebuilder:printcolumn:name="value",type="string",JSONPath=".status.currentMetrics[*].external.currentValue.."
 // +kubebuilder:printcolumn:name="high watermark",type="string",JSONPath=".spec.metrics[*].external.highWatermark.."
 // +kubebuilder:printcolumn:name="low watermark",type="string",JSONPath=".spec.metrics[*].external.lowWatermark.."
@@ -197,6 +197,13 @@ type WatermarkPodAutoscalerStatus struct {
 	// +optional
 	// +listType=set
 	Conditions []autoscalingv2.HorizontalPodAutoscalerCondition `json:"conditions,omitempty"`
+
+	// LastConditionType and LastConditionState are here to provide a clear information in the `kubectl get wpa` output
+
+	// LastConditionType correspond to the last condition type updated in the WPA status during the WPA reconcile state.
+	LastConditionType string `json:"lastConditionType,omitempty"`
+	// LastConditionType correspond to the last condition state (True,False) updated in the WPA status during the WPA reconcile state.
+	LastConditionState string `json:"lastConditionState,omitempty"`
 }
 
 // WatermarkPodAutoscalerStatusDryRunCondition ConditionType used when the WPA is in dry run mode
