@@ -416,6 +416,20 @@ func schema__api_v1alpha1_WatermarkPodAutoscalerStatus(ref common.ReferenceCallb
 							},
 						},
 					},
+					"lastConditionType": {
+						SchemaProps: spec.SchemaProps{
+							Description: "LastConditionType correspond to the last condition type updated in the WPA status during the WPA reconcile state.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"lastConditionState": {
+						SchemaProps: spec.SchemaProps{
+							Description: "LastConditionType correspond to the last condition state (True,False) updated in the WPA status during the WPA reconcile state.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
 				Required: []string{"currentReplicas", "desiredReplicas"},
 			},

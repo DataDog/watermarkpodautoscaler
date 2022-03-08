@@ -561,6 +561,8 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 // not present.
 func setCondition(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, conditionType autoscalingv2.HorizontalPodAutoscalerConditionType, status corev1.ConditionStatus, reason, message string, args ...interface{}) {
 	wpa.Status.Conditions = setConditionInList(wpa.Status.Conditions, conditionType, status, reason, message, args...)
+	wpa.Status.LastConditionState = string(status)
+	wpa.Status.LastConditionType = string(conditionType)
 }
 
 // setConditionInList sets the specific condition type on the given WPA to the specified value with the given
