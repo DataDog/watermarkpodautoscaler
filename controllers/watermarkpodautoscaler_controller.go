@@ -127,6 +127,9 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 
 	wpaStatusOriginal := instance.Status.DeepCopy()
 
+	// default ScalingActive to False. The condition should be updated the True if reconcileWPA went well.
+	setCondition(instance, autoscalingv2.ScalingActive, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedProcessWPA, "Error happened while processing the WPA")
+
 	if !datadoghqv1alpha1.IsDefaultWatermarkPodAutoscaler(instance) {
 		log.Info("Some configuration options are missing, falling back to the default ones")
 		defaultWPA := datadoghqv1alpha1.DefaultWatermarkPodAutoscaler(instance)

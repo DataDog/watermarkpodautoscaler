@@ -7,11 +7,14 @@ metadata:
   name: watermarkpodautoscalers.datadoghq.com
 spec:
   additionalPrinterColumns:
-  - JSONPath: .status.conditions[0].type
+  - JSONPath: .status.conditions[?(@.type=="ScalingActive")].status
+    name: scaling active
+    type: string
+  - JSONPath: .status.lastConditionType
     name: condition
     type: string
-  - JSONPath: .status.conditions[0].status
-    name: condition status
+  - JSONPath: .status.lastConditionState
+    name: condition state
     type: string
   - JSONPath: .status.currentMetrics[*].external.currentValue..
     name: value
@@ -672,6 +675,14 @@ spec:
             desiredReplicas:
               format: int32
               type: integer
+            lastConditionState:
+              description: LastConditionType correspond to the last condition state
+                (True,False) updated in the WPA status during the WPA reconcile state.
+              type: string
+            lastConditionType:
+              description: LastConditionType correspond to the last condition type
+                updated in the WPA status during the WPA reconcile state.
+              type: string
             lastScaleTime:
               format: date-time
               type: string
