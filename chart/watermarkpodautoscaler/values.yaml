@@ -29,6 +29,11 @@ labelsAsTags: []
 podSecurityContext: {}
 # fsGroup: 2000
 
+ddProfiling:
+  enabled: false
+
+workers: 1
+
 # Determines which resource lock to use for leader election
 leaderElectionResourceLock: configmaps
 securityContext: {}

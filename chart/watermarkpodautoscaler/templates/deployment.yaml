@@ -48,6 +48,10 @@ spec:
           args:
             - --loglevel={{ .Values.logLevel }}
             - --leader-election-resource={{ .Values.leaderElectionResourceLock }}
+            {{- if .Values.ddProfiling.enabled }}
+            - -ddProfilingEnabled
+            {{- end }}
+            - -workers={{ .Values.workers }}
           env:
             - name: WATCH_NAMESPACE
             {{- if .Values.watchAllNamespaces }}
@@ -56,6 +60,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            {{- end }}
+            {{- if .Values.ddProfiling.enabled }}
+            - name: DD_AGENT_HOST
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
             {{- end }}
             - name: POD_NAME
               valueFrom:
