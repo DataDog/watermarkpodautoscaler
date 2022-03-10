@@ -15,8 +15,9 @@ import (
 // WatermarkPodAutoscaler is the Schema for the watermarkpodautoscalers API
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:name="condition",type="string",JSONPath=".status.LastConditionType"
-// +kubebuilder:printcolumn:name="condition status",type="string",JSONPath=".status.LastConditionStatus"
+// +kubebuilder:printcolumn:name="scaling active",type="string",JSONPath=".status.conditions[?(@.type==\"ScalingActive\")].status"
+// +kubebuilder:printcolumn:name="condition",type="string",JSONPath=".status.lastConditionType"
+// +kubebuilder:printcolumn:name="condition state",type="string",JSONPath=".status.lastConditionState"
 // +kubebuilder:printcolumn:name="value",type="string",JSONPath=".status.currentMetrics[*].external.currentValue.."
 // +kubebuilder:printcolumn:name="high watermark",type="string",JSONPath=".spec.metrics[*].external.highWatermark.."
 // +kubebuilder:printcolumn:name="low watermark",type="string",JSONPath=".spec.metrics[*].external.lowWatermark.."
@@ -51,7 +52,6 @@ type CrossVersionObjectReference struct {
 // WatermarkPodAutoscalerSpec defines the desired state of WatermarkPodAutoscaler
 // +k8s:openapi-gen=true
 type WatermarkPodAutoscalerSpec struct {
-
 	// part of HorizontalController, see comments in the k8s repo: pkg/controller/podautoscaler/horizontal.go
 	// +kubebuilder:validation:Minimum=1
 	DownscaleForbiddenWindowSeconds int32 `json:"downscaleForbiddenWindowSeconds,omitempty"`
