@@ -423,13 +423,9 @@ func (r *WatermarkPodAutoscalerReconciler) updateWPAStatus(ctx context.Context, 
 // setStatus recreates the status of the given WPA, updating the current and
 // desired replicas, as well as the metric statuses
 func setStatus(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, desiredReplicas int32, metricStatuses []autoscalingv2.MetricStatus, rescale bool) {
-	wpa.Status = datadoghqv1alpha1.WatermarkPodAutoscalerStatus{
-		CurrentReplicas: currentReplicas,
-		DesiredReplicas: desiredReplicas,
-		CurrentMetrics:  metricStatuses,
-		LastScaleTime:   wpa.Status.LastScaleTime,
-		Conditions:      wpa.Status.Conditions,
-	}
+	wpa.Status.CurrentReplicas = currentReplicas
+	wpa.Status.DesiredReplicas = desiredReplicas
+	wpa.Status.CurrentMetrics = metricStatuses
 
 	if rescale {
 		now := metav1.NewTime(time.Now())
