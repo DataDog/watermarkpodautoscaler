@@ -89,7 +89,7 @@ type WatermarkPodAutoscalerSpec struct {
 	ScaleTargetRef CrossVersionObjectReference `json:"scaleTargetRef"`
 	// specifications that will be used to calculate the desired replica count
 	// +optional
-	// +listType=set
+	// +listType=atomic
 	Metrics []MetricSpec `json:"metrics,omitempty"`
 	// +kubebuilder:validation:Minimum=1
 	MinReplicas *int32 `json:"minReplicas,omitempty"`
@@ -192,10 +192,10 @@ type WatermarkPodAutoscalerStatus struct {
 	CurrentReplicas    int32        `json:"currentReplicas"`
 	DesiredReplicas    int32        `json:"desiredReplicas"`
 	// +optional
-	// +listType=set
+	// +listType=atomic
 	CurrentMetrics []autoscalingv2.MetricStatus `json:"currentMetrics,omitempty"`
 	// +optional
-	// +listType=set
+	// +listType=atomic
 	Conditions []autoscalingv2.HorizontalPodAutoscalerCondition `json:"conditions,omitempty"`
 
 	// LastConditionType and LastConditionState are here to provide a clear information in the `kubectl get wpa` output
