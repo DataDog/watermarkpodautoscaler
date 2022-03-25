@@ -102,6 +102,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 		// When we add official support for several metrics, move this Delete to only occur if no metric is available at all.
 		labelsWithReason := prometheus.Labels{
 			wpaNamePromLabel:           wpa.Name,
+			wpaNamespacePromLabel:      wpa.Namespace,
 			resourceNamespacePromLabel: wpa.Namespace,
 			resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
 			resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
@@ -144,6 +145,7 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 		// When we add official support for several metrics, move this Delete to only occur if no metric is available at all.
 		labelsWithReason := prometheus.Labels{
 			wpaNamePromLabel:           wpa.Name,
+			wpaNamespacePromLabel:      wpa.Namespace,
 			resourceNamespacePromLabel: wpa.Namespace,
 			resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
 			resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
@@ -207,8 +209,8 @@ func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas i
 	adjustedHM := float64(highMark.MilliValue() + highMark.MilliValue()*wpa.Spec.Tolerance.MilliValue()/1000)
 	adjustedLM := float64(lowMark.MilliValue() - lowMark.MilliValue()*wpa.Spec.Tolerance.MilliValue()/1000)
 
-	labelsWithReason := prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reasonPromLabel: withinBoundsPromLabelVal}
-	labelsWithMetricName := prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, metricNamePromLabel: name}
+	labelsWithReason := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reasonPromLabel: withinBoundsPromLabelVal}
+	labelsWithMetricName := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, metricNamePromLabel: name}
 
 	switch {
 	case adjustedUsage > adjustedHM:

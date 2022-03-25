@@ -20,6 +20,7 @@ const (
 	subsystem = "wpa_controller"
 	// Label keys
 	wpaNamePromLabel           = "wpa_name"
+	wpaNamespacePromLabel      = "wpa_namespace"
 	resourceNamePromLabel      = "resource_name"
 	resourceKindPromLabel      = "resource_kind"
 	resourceNamespacePromLabel = "resource_namespace"
@@ -47,6 +48,7 @@ var (
 		},
 		[]string{
 			wpaNamePromLabel,
+			wpaNamespacePromLabel,
 			metricNamePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
@@ -60,6 +62,7 @@ var (
 		},
 		[]string{
 			wpaNamePromLabel,
+			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
 			resourceKindPromLabel,
@@ -73,6 +76,7 @@ var (
 		},
 		[]string{
 			wpaNamePromLabel,
+			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
 			resourceKindPromLabel,
@@ -86,6 +90,7 @@ var (
 		},
 		[]string{
 			wpaNamePromLabel,
+			wpaNamespacePromLabel,
 			transitionPromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
@@ -99,6 +104,7 @@ var (
 		},
 		[]string{
 			wpaNamePromLabel,
+			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
 			resourceKindPromLabel,
@@ -112,6 +118,7 @@ var (
 		},
 		[]string{
 			wpaNamePromLabel,
+			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
 			resourceKindPromLabel,
@@ -125,6 +132,7 @@ var (
 		},
 		[]string{
 			wpaNamePromLabel,
+			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
 			resourceKindPromLabel,
@@ -138,6 +146,7 @@ var (
 		},
 		[]string{
 			wpaNamePromLabel,
+			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
 			resourceKindPromLabel,
@@ -150,6 +159,7 @@ var (
 		},
 		[]string{
 			wpaNamePromLabel,
+			wpaNamespacePromLabel,
 			reasonPromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
@@ -163,6 +173,7 @@ var (
 		},
 		[]string{
 			wpaNamePromLabel,
+			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
 			resourceKindPromLabel,
@@ -175,6 +186,7 @@ var (
 		},
 		[]string{
 			wpaNamePromLabel,
+			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
 			resourceKindPromLabel,
@@ -187,6 +199,7 @@ var (
 		},
 		[]string{
 			wpaNamePromLabel,
+			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
 			resourceKindPromLabel,
@@ -197,7 +210,7 @@ var (
 			Name:      "labels_info",
 			Help:      "Info metric for additional labels to associate to metrics as tags",
 		},
-		append(extraPromLabels, wpaNamePromLabel, resourceNamespacePromLabel),
+		append(extraPromLabels, wpaNamePromLabel, wpaNamespacePromLabel, resourceNamespacePromLabel),
 	)
 )
 
@@ -220,6 +233,7 @@ func init() {
 func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onlyMetricsSpecific bool) {
 	promLabelsForWpa := prometheus.Labels{
 		wpaNamePromLabel:           wpa.Name,
+		wpaNamespacePromLabel:      wpa.Namespace,
 		resourceNamespacePromLabel: wpa.Namespace,
 		resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
 		resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
@@ -242,7 +256,7 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 		transitionCountdown.Delete(promLabelsForWpa)
 		delete(promLabelsForWpa, transitionPromLabel)
 
-		promLabelsInfo := prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace}
+		promLabelsInfo := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace}
 		for _, eLabel := range extraPromLabels {
 			eLabelValue := wpa.Labels[eLabel]
 			promLabelsInfo[eLabel] = eLabelValue
