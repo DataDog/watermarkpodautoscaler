@@ -27,28 +27,24 @@ const (
 	metricNamePromLabel        = "metric_name"
 	reasonPromLabel            = "reason"
 	transitionPromLabel        = "transition"
-	reconcileErrPromLabel      = "reconcile_err"
 	// Label values
 	downscaleCappingPromLabelVal      = "downscale_capping"
 	upscaleCappingPromLabelVal        = "upscale_capping"
 	withinBoundsPromLabelVal          = "within_bounds"
-	nullPromLabelVal                  = "null"
+	invalidWPAPromLabelVal            = "invalid_wpa_spec"
 	scaleNotFoundPromLabelVal         = "scale_not_found"
 	invalidAPIVersionPromLabelVal     = "invalid_api_version"
 	unknownResourcePromLabelVal       = "unknown_resource"
 	failedUpdateReplicasPromLabelVal  = "failed_update_replicas"
 	failedComputeReplicasPromLabelVal = "failed_compute_replicas"
 	failedScalePromLabelVal           = "failed_scale"
-
-	promSuccessValue = 1.0
-	promFailureValue = 0.0
 )
 
 // reasonValues contains the 3 possible values of the 'reason' label
 var reasonValues = []string{downscaleCappingPromLabelVal, upscaleCappingPromLabelVal, withinBoundsPromLabelVal}
 
-// reconcileReasonValues contains possible `reconcile_err` label values
-var reconcileReasonValues = []string{nullPromLabelVal, scaleNotFoundPromLabelVal, invalidAPIVersionPromLabelVal, unknownResourcePromLabelVal, failedUpdateReplicasPromLabelVal, failedComputeReplicasPromLabelVal, failedScalePromLabelVal}
+// reconcileErrorReasonValues contains possible `reason` label values for reconcile errors
+var reconcileErrorReasonValues = []string{invalidWPAPromLabelVal, scaleNotFoundPromLabelVal, invalidAPIVersionPromLabelVal, unknownResourcePromLabelVal, failedUpdateReplicasPromLabelVal, failedComputeReplicasPromLabelVal, failedScalePromLabelVal}
 
 // Labels to add to an info metric and join on (with wpaNamePromLabel) in the Datadog prometheus check
 var extraPromLabels = strings.Fields(os.Getenv("DD_LABELS_AS_TAGS"))
@@ -226,6 +222,20 @@ var (
 		},
 		append(extraPromLabels, wpaNamePromLabel, wpaNamespacePromLabel, resourceNamespacePromLabel),
 	)
+	reconcileError = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "reconcile_error",
+			Help:      "Gauge indicating whether the last recorded reconcile gave an error",
+		},
+		[]string{
+			wpaNamePromLabel,
+			wpaNamespacePromLabel,
+			resourceNamespacePromLabel,
+			resourceNamePromLabel,
+			resourceKindPromLabel,
+			reasonPromLabel,
+		})
 	reconcileSuccess = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
@@ -234,19 +244,7 @@ var (
 		},
 		[]string{
 			wpaNamePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			resourceKindPromLabel,
-			reconcileErrPromLabel,
-		})
-	wpaValid = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Subsystem: subsystem,
-			Name:      "wpa_valid",
-			Help:      "Gauge indicating whether the wpa spec is valid",
-		},
-		[]string{
-			wpaNamePromLabel,
+			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
 			resourceKindPromLabel,
@@ -267,8 +265,8 @@ func init() {
 	sigmetrics.Registry.MustRegister(replicaMax)
 	sigmetrics.Registry.MustRegister(dryRun)
 	sigmetrics.Registry.MustRegister(labelsInfo)
+	sigmetrics.Registry.MustRegister(reconcileError)
 	sigmetrics.Registry.MustRegister(reconcileSuccess)
-	sigmetrics.Registry.MustRegister(wpaValid)
 }
 
 func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onlyMetricsSpecific bool) {
@@ -304,12 +302,12 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 		}
 		labelsInfo.Delete(promLabelsInfo)
 		dryRun.Delete(promLabelsForWpa)
-		for _, reason := range reconcileReasonValues {
-			promLabelsForWpa[reconcileErrPromLabel] = reason
-			reconcileSuccess.Delete(promLabelsForWpa)
+		for _, reason := range reconcileErrorReasonValues {
+			promLabelsForWpa[reasonPromLabel] = reason
+			reconcileError.Delete(promLabelsForWpa)
 		}
-		delete(promLabelsForWpa, reconcileErrPromLabel)
-		wpaValid.Delete(promLabelsForWpa)
+		delete(promLabelsForWpa, reasonPromLabel)
+		reconcileSuccess.Delete(promLabelsForWpa)
 	}
 
 	for _, metricSpec := range wpa.Spec.Metrics {

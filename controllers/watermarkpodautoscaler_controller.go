@@ -142,16 +142,21 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 	}
 	promLabels := prometheus.Labels{
 		wpaNamePromLabel:           instance.Name,
+		wpaNamespacePromLabel:      instance.Namespace,
 		resourceNamespacePromLabel: instance.Namespace,
 		resourceNamePromLabel:      instance.Spec.ScaleTargetRef.Name,
 		resourceKindPromLabel:      instance.Spec.ScaleTargetRef.Kind,
 	}
-	wpaValid.Delete(promLabels)
+	for _, reason := range reconcileErrorReasonValues {
+		promLabels[reasonPromLabel] = reason
+		reconcileError.Delete(promLabels)
+	}
 	if err = datadoghqv1alpha1.CheckWPAValidity(instance); err != nil {
 		log.Info("Got an invalid WPA spec", "Instance", request.NamespacedName.String(), "error", err)
 		// If the WPA spec is incorrect (most likely, in "metrics" section) stop processing it
 		// When the spec is updated, the wpa will be re-added to the reconcile queue
-		wpaValid.With(promLabels).Set(promFailureValue)
+		reconcileError.With(prometheus.Labels{wpaNamePromLabel: instance.Name, wpaNamespacePromLabel: instance.Namespace, resourceNamespacePromLabel: instance.Namespace, resourceNamePromLabel: instance.Spec.ScaleTargetRef.Name, resourceKindPromLabel: instance.Spec.ScaleTargetRef.Kind, reasonPromLabel: invalidWPAPromLabelVal}).Set(1)
+		reconcileSuccess.With(prometheus.Labels{wpaNamePromLabel: instance.Name, wpaNamespacePromLabel: instance.Namespace, resourceNamespacePromLabel: instance.Namespace, resourceNamePromLabel: instance.Spec.ScaleTargetRef.Name, resourceKindPromLabel: instance.Spec.ScaleTargetRef.Kind}).Set(0)
 		r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedSpecCheck, err.Error())
 		setCondition(instance, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedSpecCheck, "Invalid WPA specification: %s", err)
 		if err = r.updateStatusIfNeeded(ctx, wpaStatusOriginal, instance); err != nil {
@@ -162,14 +167,8 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		// and if the user updates the WPA.Spec the update event will requeue the resource.
 		return reconcile.Result{}, nil
 	}
-	wpaValid.With(promLabels).Set(promSuccessValue)
 
 	fillMissingWatermark(log, instance)
-
-	for _, reason := range reconcileReasonValues {
-		promLabels[reconcileErrPromLabel] = reason
-		reconcileSuccess.Delete(promLabels)
-	}
 
 	if err := r.reconcileWPA(ctx, log, wpaStatusOriginal, instance); err != nil {
 		log.Info("Error during reconcileWPA", "error", err)
@@ -198,7 +197,8 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	// the following line are here to retrieve the GVK of the target ref
 	targetGV, err := schema.ParseGroupVersion(wpa.Spec.ScaleTargetRef.APIVersion)
 	if err != nil {
-		reconcileSuccess.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reconcileErrPromLabel: invalidAPIVersionPromLabelVal}).Set(promFailureValue)
+		reconcileError.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reasonPromLabel: invalidAPIVersionPromLabelVal}).Set(1)
+		reconcileSuccess.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(0)
 		return fmt.Errorf("invalid API version in scale target reference: %v", err)
 	}
 	targetGK := schema.GroupKind{
@@ -207,14 +207,16 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	}
 	mappings, err := r.restMapper.RESTMappings(targetGK)
 	if err != nil {
-		reconcileSuccess.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reconcileErrPromLabel: unknownResourcePromLabelVal}).Set(promFailureValue)
+		reconcileError.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reasonPromLabel: unknownResourcePromLabelVal}).Set(1)
+		reconcileSuccess.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(0)
 		return fmt.Errorf("unable to determine resource for scale target reference: %v", err)
 	}
 
 	currentScale, targetGR, err := r.getScaleForResourceMappings(ctx, wpa.Namespace, wpa.Spec.ScaleTargetRef.Name, mappings)
 	if currentScale == nil && strings.Contains(err.Error(), scaleNotFoundErr) {
 		// it is possible that one of the GK in the mappings was not found, but if we have at least one that works, we can continue reconciling.
-		reconcileSuccess.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reconcileErrPromLabel: scaleNotFoundPromLabelVal}).Set(promFailureValue)
+		reconcileError.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reasonPromLabel: scaleNotFoundPromLabelVal}).Set(1)
+		reconcileSuccess.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(0)
 		return err
 	}
 	currentReplicas := currentScale.Status.Replicas
@@ -265,12 +267,14 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 				r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedUpdateReplicasStatus, err2.Error())
 				setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedUpdateReplicasStatus, "the WPA controller was unable to update the number of replicas: %v", err)
 				logger.Info("The WPA controller was unable to update the number of replicas", "error", err2)
-				reconcileSuccess.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reconcileErrPromLabel: failedUpdateReplicasPromLabelVal}).Set(promFailureValue)
+				reconcileError.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reasonPromLabel: failedUpdateReplicasPromLabelVal}).Set(1)
+				reconcileSuccess.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(0)
 				return nil
 			}
 			r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedComputeMetricsReplicas", err.Error())
 			logger.Info("Failed to compute desired number of replicas based on listed metrics.", "reference", reference, "error", err)
-			reconcileSuccess.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reconcileErrPromLabel: failedComputeReplicasPromLabelVal}).Set(promFailureValue)
+			reconcileError.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reasonPromLabel: failedComputeReplicasPromLabelVal}).Set(1)
+			reconcileSuccess.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(0)
 			return nil
 		}
 		logger.Info("Proposing replicas", "proposedReplicas", proposedReplicas, "metricName", metricName, "reference", reference, "metric timestamp", metricTimestamp.Format(time.RFC1123))
@@ -309,10 +313,12 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 			if err := r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa); err != nil {
 				r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedUpdateReplicasStatus, err.Error())
 				setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedUpdateReplicasStatus, "the WPA controller was unable to update the number of replicas: %v", err)
-				reconcileSuccess.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reconcileErrPromLabel: failedUpdateReplicasPromLabelVal}).Set(promFailureValue)
+				reconcileError.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reasonPromLabel: failedUpdateReplicasPromLabelVal}).Set(1)
+				reconcileSuccess.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(0)
 				return nil
 			}
-			reconcileSuccess.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reconcileErrPromLabel: failedScalePromLabelVal}).Set(promFailureValue)
+			reconcileError.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reasonPromLabel: failedScalePromLabelVal}).Set(1)
+			reconcileSuccess.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(0)
 			return nil
 		}
 		setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, datadoghqv1alpha1.ConditionReasonSuccessfulScale, "the WPA controller was able to update the target scale to %d", desiredReplicas)
@@ -324,7 +330,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 		desiredReplicas = currentReplicas
 	}
 
-	reconcileSuccess.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reconcileErrPromLabel: nullPromLabelVal}).Set(promSuccessValue)
+	reconcileSuccess.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(1)
 	replicaEffective.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(float64(desiredReplicas))
 
 	// add additional labels to info metric
