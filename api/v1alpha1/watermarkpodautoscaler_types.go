@@ -63,7 +63,7 @@ type WatermarkPodAutoscalerSpec struct {
 	UpscaleForbiddenWindowSeconds int32 `json:"upscaleForbiddenWindowSeconds,omitempty"`
 
 	// +kubebuilder:validation:Minimum=0
-	UpEvaluateUpWatermarkSeconds int32 `json:"upEvaluateUpWatermarkSeconds,omitempty"`
+	UpscaleEvaluateAboveWatermarkSeconds int32 `json:"upscaleEvaluateAboveWatermarkSeconds,omitempty"`
 
 	// Percentage of replicas that can be added in an upscale event.
 	// Parameter used to be a float, in order to support the transition seamlessly, we validate that it is [0;100] in the code.

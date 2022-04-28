@@ -1046,6 +1046,89 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 			},
 			shoudScale: true,
 		},
+
+		// DownscaleEvaluateBelowWatermarkSeconds cases.
+		{
+			name: "Downscale allowed due to now()-lastTimeAboveLowWatermark > DownscaleEvaluateBelowWatermarkSeconds",
+			args: args{
+				currentReplicas: 10,
+				desiredReplicas: 8,
+				timestamp:       time.Unix(20, 0),
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						UpscaleForbiddenWindowSeconds:          1,
+						DownscaleForbiddenWindowSeconds:        1,
+						DownscaleEvaluateBelowWatermarkSeconds: 10,
+					},
+					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
+						LastScaleTime: &metav1.Time{Time: time.Unix(10, 0)},
+					},
+				}),
+				lastTimeAboveLowWatermark: time.Unix(9, 0),
+			},
+			shoudScale: true,
+		},
+		{
+			name: "Downscale forbidden due to now()-lastTimeAboveLowWatermark < DownscaleEvaluateBelowWatermarkSeconds",
+			args: args{
+				currentReplicas: 10,
+				desiredReplicas: 8,
+				timestamp:       time.Unix(20, 0),
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						UpscaleForbiddenWindowSeconds:          1,
+						DownscaleForbiddenWindowSeconds:        1,
+						DownscaleEvaluateBelowWatermarkSeconds: 10,
+					},
+					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
+						LastScaleTime: &metav1.Time{Time: time.Unix(10, 0)},
+					},
+				}),
+				lastTimeAboveLowWatermark: time.Unix(18, 0),
+			},
+			shoudScale: false,
+		},
+
+		{
+			name: "Upscale allowed due to now()-lastTimeBelowHighWatermark > UpscaleEvaluateAboveWatermarkSeconds",
+			args: args{
+				currentReplicas: 8,
+				desiredReplicas: 10,
+				timestamp:       time.Unix(20, 0),
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						UpscaleForbiddenWindowSeconds:        1,
+						DownscaleForbiddenWindowSeconds:      1,
+						UpscaleEvaluateAboveWatermarkSeconds: 10,
+					},
+					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
+						LastScaleTime: &metav1.Time{Time: time.Unix(10, 0)},
+					},
+				}),
+				lastTimeBelowHighWatermark: time.Unix(9, 0),
+			},
+			shoudScale: true,
+		},
+		{
+			name: "Upscale forbidden due to now()-lastTimeBelowHighWatermark < UpscaleEvaluateAboveWatermarkSeconds",
+			args: args{
+				currentReplicas: 8,
+				desiredReplicas: 10,
+				timestamp:       time.Unix(20, 0),
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						UpscaleForbiddenWindowSeconds:        1,
+						DownscaleForbiddenWindowSeconds:      1,
+						UpscaleEvaluateAboveWatermarkSeconds: 10,
+					},
+					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
+						LastScaleTime: &metav1.Time{Time: time.Unix(10, 0)},
+					},
+				}),
+				lastTimeBelowHighWatermark: time.Unix(18, 0),
+			},
+			shoudScale: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -378,7 +378,13 @@ func shouldScale(
 		evaluateBelowLowWatermarkWindow    = time.Duration(wpa.Spec.DownscaleEvaluateBelowWatermarkSeconds) * time.Second
 		evaluateBelowLowWatermarkCountdown = lastTimeAboveLowWatermark.Add(evaluateBelowLowWatermarkWindow).Sub(now).Seconds()
 	)
-	if downscaleCountdown > 0 || (evaluateBelowWatermarkEnabled && evaluateBelowLowWatermarkCountdown > 0) {
+
+	downscaleForbidden := downscaleCountdown > 0
+	if evaluateBelowWatermarkEnabled {
+		downscaleForbidden = evaluateBelowLowWatermarkCountdown > 0
+	}
+
+	if downscaleForbidden {
 		transitionCountdown.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, transitionPromLabel: "downscale", resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(downscaleCountdown)
 		setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonBackOffDownscale, "the time since the previous scale is still within the downscale forbidden window")
 		backoffDown = true
@@ -390,9 +396,18 @@ func shouldScale(
 	var (
 		upscaleForbiddenWindow = time.Duration(wpa.Spec.UpscaleForbiddenWindowSeconds) * time.Second
 		upscaleCountdown       = wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow).Sub(now).Seconds()
+
+		evaluateAboveWatermarkEnabled       = wpa.Spec.UpscaleEvaluateAboveWatermarkSeconds > 0
+		evaluateAboveHighWatermarkWindow    = time.Duration(wpa.Spec.UpscaleEvaluateAboveWatermarkSeconds) * time.Second
+		evaluateAboveHighWatermarkCountdown = lastTimeBelowHighWatermark.Add(evaluateAboveHighWatermarkWindow).Sub(now).Seconds()
 	)
-	// Only upscale if there was no rescaling in the last upscaleForbiddenWindow
-	if upscaleCountdown > 0 {
+
+	upscaleForbidden := upscaleCountdown > 0
+	if evaluateAboveWatermarkEnabled {
+		upscaleForbidden = evaluateAboveHighWatermarkCountdown > 0
+	}
+
+	if upscaleForbidden {
 		transitionCountdown.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, transitionPromLabel: "upscale", resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(upscaleCountdown)
 		backoffUp = true
 		logger.Info("Too early to upscale", "lastScaleTime", wpa.Status.LastScaleTime, "nextUpscaleTimestamp", metav1.Time{Time: wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow)}, "lastMetricsTimestamp", metav1.Time{Time: now})
@@ -406,6 +421,8 @@ func shouldScale(
 		transitionCountdown.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, transitionPromLabel: "upscale", resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(0)
 	}
 
+	fmt.Println("backoffDown", backoffDown)
+	fmt.Println("canScale", !backoffDown && desiredReplicas < currentReplicas)
 	return canScale(logger, backoffUp, backoffDown, currentReplicas, desiredReplicas)
 }
 
