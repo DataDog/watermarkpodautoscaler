@@ -945,12 +945,10 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 	logf.SetLogger(zap.New())
 
 	type args struct {
-		wpa                        *v1alpha1.WatermarkPodAutoscaler
-		currentReplicas            int32
-		desiredReplicas            int32
-		timestamp                  time.Time
-		lastTimeAboveLowWatermark  time.Time
-		lastTimeBelowHighWatermark time.Time
+		wpa             *v1alpha1.WatermarkPodAutoscaler
+		currentReplicas int32
+		desiredReplicas int32
+		timestamp       time.Time
 	}
 
 	tests := []struct {
@@ -1061,10 +1059,10 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 						DownscaleEvaluateBelowWatermarkSeconds: 10,
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
-						LastScaleTime: &metav1.Time{Time: time.Unix(10, 0)},
+						LastScaleTime:             &metav1.Time{Time: time.Unix(10, 0)},
+						LastTimeAboveLowWatermark: &metav1.Time{Time: time.Unix(9, 0)},
 					},
 				}),
-				lastTimeAboveLowWatermark: time.Unix(9, 0),
 			},
 			shoudScale: true,
 		},
@@ -1081,10 +1079,10 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 						DownscaleEvaluateBelowWatermarkSeconds: 10,
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
-						LastScaleTime: &metav1.Time{Time: time.Unix(10, 0)},
+						LastScaleTime:             &metav1.Time{Time: time.Unix(10, 0)},
+						LastTimeAboveLowWatermark: &metav1.Time{Time: time.Unix(18, 0)},
 					},
 				}),
-				lastTimeAboveLowWatermark: time.Unix(18, 0),
 			},
 			shoudScale: false,
 		},
@@ -1102,10 +1100,10 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 						UpscaleEvaluateAboveWatermarkSeconds: 10,
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
-						LastScaleTime: &metav1.Time{Time: time.Unix(10, 0)},
+						LastScaleTime:              &metav1.Time{Time: time.Unix(10, 0)},
+						LastTimeBelowHighWatermark: &metav1.Time{Time: time.Unix(9, 0)},
 					},
 				}),
-				lastTimeBelowHighWatermark: time.Unix(9, 0),
 			},
 			shoudScale: true,
 		},
@@ -1122,10 +1120,10 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 						UpscaleEvaluateAboveWatermarkSeconds: 10,
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
-						LastScaleTime: &metav1.Time{Time: time.Unix(10, 0)},
+						LastScaleTime:              &metav1.Time{Time: time.Unix(10, 0)},
+						LastTimeBelowHighWatermark: &metav1.Time{Time: time.Unix(18, 0)},
 					},
 				}),
-				lastTimeBelowHighWatermark: time.Unix(18, 0),
 			},
 			shoudScale: false,
 		},
@@ -1137,9 +1135,7 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 				tt.args.wpa,
 				tt.args.currentReplicas,
 				tt.args.desiredReplicas,
-				tt.args.timestamp,
-				tt.args.lastTimeAboveLowWatermark,
-				tt.args.lastTimeBelowHighWatermark)
+				tt.args.timestamp)
 			if scale != tt.shoudScale {
 				t.Error("Incorrect scale")
 			}

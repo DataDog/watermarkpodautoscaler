@@ -270,8 +270,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 
 		desiredReplicas = normalizeDesiredReplicas(logger, wpa, currentReplicas, desiredReplicas)
 		logger.Info("Normalized Desired replicas", "desiredReplicas", desiredReplicas)
-		// TODO: Fix me.
-		rescale = shouldScale(logger, wpa, currentReplicas, desiredReplicas, now, time.Time{}, time.Time{})
+		rescale = shouldScale(logger, wpa, currentReplicas, desiredReplicas, now)
 	}
 
 	if rescale {
@@ -353,14 +352,14 @@ func (r *WatermarkPodAutoscalerReconciler) getScaleForResourceMappings(ctx conte
 	return scale, targetGR, utilerrors.NewAggregate(errs)
 }
 
+// TODO: Make separate nice setCondition calls for the new functionality to make debugging easier.
+// TODO: More logging.
 func shouldScale(
 	logger logr.Logger,
 	wpa *datadoghqv1alpha1.WatermarkPodAutoscaler,
 	currentReplicas,
 	desiredReplicas int32,
 	now time.Time,
-	lastTimeAboveLowWatermark time.Time,
-	lastTimeBelowHighWatermark time.Time,
 ) bool {
 	if wpa.Status.LastScaleTime == nil {
 		logger.Info("No timestamp for the lastScale event")
@@ -374,13 +373,14 @@ func shouldScale(
 		downscaleForbiddenWindow = time.Duration(wpa.Spec.DownscaleForbiddenWindowSeconds) * time.Second
 		downscaleCountdown       = wpa.Status.LastScaleTime.Add(downscaleForbiddenWindow).Sub(now).Seconds()
 
-		evaluateBelowWatermarkEnabled      = wpa.Spec.DownscaleEvaluateBelowWatermarkSeconds > 0
-		evaluateBelowLowWatermarkWindow    = time.Duration(wpa.Spec.DownscaleEvaluateBelowWatermarkSeconds) * time.Second
-		evaluateBelowLowWatermarkCountdown = lastTimeAboveLowWatermark.Add(evaluateBelowLowWatermarkWindow).Sub(now).Seconds()
+		evaluateBelowWatermarkEnabled   = wpa.Spec.DownscaleEvaluateBelowWatermarkSeconds > 0
+		evaluateBelowLowWatermarkWindow = time.Duration(wpa.Spec.DownscaleEvaluateBelowWatermarkSeconds) * time.Second
+		lastTimeAboveLowWatermark       = wpa.Status.LastTimeAboveLowWatermark // may be nil
 	)
 
 	downscaleForbidden := downscaleCountdown > 0
-	if evaluateBelowWatermarkEnabled {
+	if evaluateBelowWatermarkEnabled && lastTimeAboveLowWatermark != nil {
+		evaluateBelowLowWatermarkCountdown := lastTimeAboveLowWatermark.Add(evaluateBelowLowWatermarkWindow).Sub(now).Seconds()
 		downscaleForbidden = evaluateBelowLowWatermarkCountdown > 0
 	}
 
@@ -388,7 +388,11 @@ func shouldScale(
 		transitionCountdown.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, transitionPromLabel: "downscale", resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(downscaleCountdown)
 		setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonBackOffDownscale, "the time since the previous scale is still within the downscale forbidden window")
 		backoffDown = true
-		logger.Info("Too early to downscale", "lastScaleTime", wpa.Status.LastScaleTime, "nextDownscaleTimestamp", metav1.Time{Time: wpa.Status.LastScaleTime.Add(downscaleForbiddenWindow)}, "lastMetricsTimestamp", metav1.Time{Time: now})
+		logger.Info(
+			"Too early to downscale",
+			"lastScaleTime", wpa.Status.LastScaleTime,
+			"nextDownscaleTimestamp", metav1.Time{Time: wpa.Status.LastScaleTime.Add(downscaleForbiddenWindow)},
+			"lastMetricsTimestamp", metav1.Time{Time: now})
 	} else {
 		transitionCountdown.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, transitionPromLabel: "downscale", resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(0)
 	}
@@ -397,20 +401,25 @@ func shouldScale(
 		upscaleForbiddenWindow = time.Duration(wpa.Spec.UpscaleForbiddenWindowSeconds) * time.Second
 		upscaleCountdown       = wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow).Sub(now).Seconds()
 
-		evaluateAboveWatermarkEnabled       = wpa.Spec.UpscaleEvaluateAboveWatermarkSeconds > 0
-		evaluateAboveHighWatermarkWindow    = time.Duration(wpa.Spec.UpscaleEvaluateAboveWatermarkSeconds) * time.Second
-		evaluateAboveHighWatermarkCountdown = lastTimeBelowHighWatermark.Add(evaluateAboveHighWatermarkWindow).Sub(now).Seconds()
+		evaluateAboveWatermarkEnabled    = wpa.Spec.UpscaleEvaluateAboveWatermarkSeconds > 0
+		evaluateAboveHighWatermarkWindow = time.Duration(wpa.Spec.UpscaleEvaluateAboveWatermarkSeconds) * time.Second
+		lastTimeBelowHighWatermark       = wpa.Status.LastTimeBelowHighWatermark // may be nil
 	)
 
 	upscaleForbidden := upscaleCountdown > 0
-	if evaluateAboveWatermarkEnabled {
+	if evaluateAboveWatermarkEnabled && lastTimeBelowHighWatermark != nil {
+		evaluateAboveHighWatermarkCountdown := lastTimeBelowHighWatermark.Add(evaluateAboveHighWatermarkWindow).Sub(now).Seconds()
 		upscaleForbidden = evaluateAboveHighWatermarkCountdown > 0
 	}
 
 	if upscaleForbidden {
 		transitionCountdown.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, transitionPromLabel: "upscale", resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(upscaleCountdown)
 		backoffUp = true
-		logger.Info("Too early to upscale", "lastScaleTime", wpa.Status.LastScaleTime, "nextUpscaleTimestamp", metav1.Time{Time: wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow)}, "lastMetricsTimestamp", metav1.Time{Time: now})
+		logger.Info(
+			"Too early to upscale",
+			"lastScaleTime", wpa.Status.LastScaleTime,
+			"nextUpscaleTimestamp", metav1.Time{Time: wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow)},
+			"lastMetricsTimestamp", metav1.Time{Time: now})
 
 		if backoffDown {
 			setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonBackOff, "the time since the previous scale is still within both the downscale and upscale forbidden windows")

@@ -193,10 +193,12 @@ type MetricSpec struct {
 // WatermarkPodAutoscalerStatus defines the observed state of WatermarkPodAutoscaler
 // +k8s:openapi-gen=true
 type WatermarkPodAutoscalerStatus struct {
-	ObservedGeneration *int64       `json:"observedGeneration,omitempty"`
-	LastScaleTime      *metav1.Time `json:"lastScaleTime,omitempty"`
-	CurrentReplicas    int32        `json:"currentReplicas"`
-	DesiredReplicas    int32        `json:"desiredReplicas"`
+	ObservedGeneration         *int64       `json:"observedGeneration,omitempty"`
+	LastScaleTime              *metav1.Time `json:"lastScaleTime,omitempty"`
+	LastTimeAboveLowWatermark  *metav1.Time `json:"lastTimeAboveLowWatermark,omitempty"`
+	LastTimeBelowHighWatermark *metav1.Time `json:"lastTimeBelowHighWatermark,omitempty"`
+	CurrentReplicas            int32        `json:"currentReplicas"`
+	DesiredReplicas            int32        `json:"desiredReplicas"`
 	// +optional
 	// +listType=atomic
 	CurrentMetrics []autoscalingv2.MetricStatus `json:"currentMetrics,omitempty"`
