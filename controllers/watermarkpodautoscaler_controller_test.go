@@ -945,10 +945,12 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 	logf.SetLogger(zap.New())
 
 	type args struct {
-		wpa             *v1alpha1.WatermarkPodAutoscaler
-		currentReplicas int32
-		desiredReplicas int32
-		timestamp       time.Time
+		wpa                        *v1alpha1.WatermarkPodAutoscaler
+		currentReplicas            int32
+		desiredReplicas            int32
+		timestamp                  time.Time
+		lastTimeAboveLowWatermark  time.Time
+		lastTimeBelowHighWatermark time.Time
 	}
 
 	tests := []struct {
@@ -1047,7 +1049,14 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			scale := shouldScale(logf.Log.WithName(tt.name), tt.args.wpa, tt.args.currentReplicas, tt.args.desiredReplicas, tt.args.timestamp)
+			scale := shouldScale(
+				logf.Log.WithName(tt.name),
+				tt.args.wpa,
+				tt.args.currentReplicas,
+				tt.args.desiredReplicas,
+				tt.args.timestamp,
+				tt.args.lastTimeAboveLowWatermark,
+				tt.args.lastTimeBelowHighWatermark)
 			if scale != tt.shoudScale {
 				t.Error("Incorrect scale")
 			}
