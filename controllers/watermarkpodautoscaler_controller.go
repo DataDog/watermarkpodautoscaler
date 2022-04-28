@@ -215,14 +215,19 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	reference := fmt.Sprintf("%s/%s/%s", wpa.Spec.ScaleTargetRef.Kind, wpa.Namespace, wpa.Spec.ScaleTargetRef.Name)
 	setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, datadoghqv1alpha1.ConditionReasonSuccessfulGetScale, "the WPA controller was able to get the target's current scale")
 
-	metricStatuses := wpaStatusOriginal.CurrentMetrics
-	proposedReplicas := int32(0)
-	metricName := ""
+	var (
+		metricStatuses   = wpaStatusOriginal.CurrentMetrics
+		proposedReplicas = int32(0)
+		metricName       = ""
 
-	desiredReplicas := int32(0)
-	rescaleReason := ""
-	now := time.Now()
-	rescale := true
+		desiredReplicas = int32(0)
+		rescaleReason   = ""
+		now             = time.Now()
+		rescale         = true
+
+		isAboveLowWatermark  = false
+		isBelowHighWatermark = false
+	)
 	switch {
 	case currentScale.Spec.Replicas == 0:
 		// Autoscaling is disabled for this resource
@@ -261,11 +266,18 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 			desiredReplicas = proposedReplicas
 			rescaleMetric = metricName
 		}
-		if desiredReplicas > currentReplicas {
+
+		if desiredReplicas == currentReplicas {
+			isBelowHighWatermark = true
+			isAboveLowWatermark = true
+		} else if desiredReplicas > currentReplicas {
 			rescaleReason = fmt.Sprintf("%s above target", rescaleMetric)
-		}
-		if desiredReplicas < currentReplicas {
+			isBelowHighWatermark = false
+			isAboveLowWatermark = true
+		} else if desiredReplicas < currentReplicas {
 			rescaleReason = "All metrics below target"
+			isBelowHighWatermark = true
+			isAboveLowWatermark = false
 		}
 
 		desiredReplicas = normalizeDesiredReplicas(logger, wpa, currentReplicas, desiredReplicas)
@@ -277,7 +289,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 		setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, datadoghqv1alpha1.ConditionReasonReadyForScale, "the last scaling time was sufficiently old as to warrant a new scale")
 		if wpa.Spec.DryRun {
 			logger.Info("DryRun mode: scaling change was inhibited", "currentReplicas", currentReplicas, "desiredReplicas", desiredReplicas)
-			setStatus(wpa, currentReplicas, desiredReplicas, metricStatuses, rescale)
+			setStatus(wpa, currentReplicas, desiredReplicas, metricStatuses, rescale, isAboveLowWatermark, isBelowHighWatermark)
 			return r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa)
 		}
 
@@ -313,7 +325,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	}
 	labelsInfo.With(promLabels).Set(1)
 
-	setStatus(wpa, currentReplicas, desiredReplicas, metricStatuses, rescale)
+	setStatus(wpa, currentReplicas, desiredReplicas, metricStatuses, rescale, isAboveLowWatermark, isBelowHighWatermark)
 	return r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa)
 }
 
@@ -430,8 +442,6 @@ func shouldScale(
 		transitionCountdown.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, transitionPromLabel: "upscale", resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(0)
 	}
 
-	fmt.Println("backoffDown", backoffDown)
-	fmt.Println("canScale", !backoffDown && desiredReplicas < currentReplicas)
 	return canScale(logger, backoffUp, backoffDown, currentReplicas, desiredReplicas)
 }
 
@@ -447,7 +457,7 @@ func canScale(logger logr.Logger, backoffUp, backoffDown bool, currentReplicas, 
 
 // setCurrentReplicasInStatus sets the current replica count in the status of the HPA.
 func (r *WatermarkPodAutoscalerReconciler) setCurrentReplicasInStatus(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas int32) {
-	setStatus(wpa, currentReplicas, wpa.Status.DesiredReplicas, wpa.Status.CurrentMetrics, false)
+	wpa.Status.CurrentReplicas = currentReplicas
 }
 
 // updateStatusIfNeeded calls updateStatus only if the status of the new HPA is not the same as the old status
@@ -465,7 +475,14 @@ func (r *WatermarkPodAutoscalerReconciler) updateWPAStatus(ctx context.Context, 
 
 // setStatus recreates the status of the given WPA, updating the current and
 // desired replicas, as well as the metric statuses
-func setStatus(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, desiredReplicas int32, metricStatuses []autoscalingv2.MetricStatus, rescale bool) {
+func setStatus(
+	wpa *datadoghqv1alpha1.WatermarkPodAutoscaler,
+	currentReplicas, desiredReplicas int32,
+	metricStatuses []autoscalingv2.MetricStatus,
+	rescale bool,
+	isAboveLowWatermark bool,
+	isBelowHighWatermark bool,
+) {
 	wpa.Status.CurrentReplicas = currentReplicas
 	wpa.Status.DesiredReplicas = desiredReplicas
 	wpa.Status.CurrentMetrics = metricStatuses
