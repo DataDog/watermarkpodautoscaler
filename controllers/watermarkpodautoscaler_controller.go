@@ -240,8 +240,9 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 		desiredReplicas = 1
 	default:
 		var metricTimestamp time.Time
+		readyReplicas := int32(0)
 
-		proposedReplicas, metricName, metricStatuses, metricTimestamp, err = r.computeReplicasForMetrics(logger, wpa, currentScale)
+		proposedReplicas, metricName, metricStatuses, metricTimestamp, readyReplicas, err = r.computeReplicasForMetrics(logger, wpa, currentScale)
 		if err != nil {
 			r.setCurrentReplicasInStatus(wpa, currentReplicas)
 			if err2 := r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa); err2 != nil {
@@ -268,7 +269,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 			rescaleReason = "All metrics below target"
 		}
 
-		desiredReplicas = normalizeDesiredReplicas(logger, wpa, currentReplicas, desiredReplicas)
+		desiredReplicas = normalizeDesiredReplicas(logger, wpa, currentReplicas, desiredReplicas, readyReplicas)
 		logger.Info("Normalized Desired replicas", "desiredReplicas", desiredReplicas)
 		rescale = shouldScale(logger, wpa, currentReplicas, desiredReplicas, now)
 	}
@@ -433,7 +434,7 @@ func setStatus(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, d
 	}
 }
 
-func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, err error) {
+func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, readyReplicas int32, err error) {
 	statuses = make([]autoscalingv2.MetricStatus, len(wpa.Spec.Metrics))
 
 	labels := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}
@@ -453,6 +454,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 		var utilizationProposal int64
 		var timestampProposal time.Time
 		var metricNameProposal string
+		var readyReplicasProposal int32
 		switch metricSpec.Type {
 		case datadoghqv1alpha1.ExternalMetricSourceType:
 			if metricSpec.External.HighWatermark != nil && metricSpec.External.LowWatermark != nil {
@@ -472,11 +474,12 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 					replicaProposal.Delete(promLabelsForWpaWithMetricName)
 					r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedGetExternalMetrics, errMetricsServer.Error())
 					setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedGetExternalMetrics, "the WPA was unable to compute the replica count: %v", errMetricsServer)
-					return 0, "", nil, time.Time{}, fmt.Errorf("failed to compute replicas based on external metric %s: %v", metricSpec.External.MetricName, errMetricsServer)
+					return 0, "", nil, time.Time{}, 0, fmt.Errorf("failed to compute replicas based on external metric %s: %w", metricSpec.External.MetricName, errMetricsServer)
 				}
 				replicaCountProposal = replicaCalculation.replicaCount
 				utilizationProposal = replicaCalculation.utilization
 				timestampProposal = replicaCalculation.timestamp
+				readyReplicasProposal = replicaCalculation.readyReplicas
 
 				lowwm.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.External.LowWatermark.MilliValue()))
 				lowwmV2.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.External.LowWatermark.MilliValue()))
@@ -496,7 +499,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 				errMsg := "invalid external metric source: the high watermark and the low watermark are required"
 				r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedGetExternalMetric", errMsg)
 				setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedGetExternalMetrics, "the WPA was unable to compute the replica count: %v", err)
-				return 0, "", nil, time.Time{}, fmt.Errorf(errMsg)
+				return 0, "", nil, time.Time{}, 0, fmt.Errorf(errMsg)
 			}
 		case datadoghqv1alpha1.ResourceMetricSourceType:
 			if metricSpec.Resource.HighWatermark != nil && metricSpec.Resource.LowWatermark != nil {
@@ -515,11 +518,12 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 					replicaProposal.Delete(promLabelsForWpaWithMetricName)
 					r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedGetResourceMetric, errMetricsServer.Error())
 					setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedGetResourceMetric, "the WPA was unable to compute the replica count: %v", errMetricsServer)
-					return 0, "", nil, time.Time{}, fmt.Errorf("failed to get resource metric %s: %v", metricSpec.Resource.Name, errMetricsServer)
+					return 0, "", nil, time.Time{}, 0, fmt.Errorf("failed to get resource metric %s: %w", metricSpec.Resource.Name, errMetricsServer)
 				}
 				replicaCountProposal = replicaCalculation.replicaCount
 				utilizationProposal = replicaCalculation.utilization
 				timestampProposal = replicaCalculation.timestamp
+				readyReplicasProposal = replicaCalculation.readyReplicas
 
 				lowwm.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.Resource.LowWatermark.MilliValue()))
 				lowwmV2.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.Resource.LowWatermark.MilliValue()))
@@ -534,27 +538,27 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 						CurrentAverageValue: *resource.NewMilliQuantity(utilizationProposal, resource.DecimalSI),
 					},
 				}
-
 			} else {
 				errMsg := "invalid resource metric source: the high watermark and the low watermark are required"
 				r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedGetResourceMetric, errMsg)
 				setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedGetResourceMetric, "the WPA was unable to compute the replica count: %v", err)
-				return 0, "", nil, time.Time{}, fmt.Errorf(errMsg)
+				return 0, "", nil, time.Time{}, 0, fmt.Errorf(errMsg)
 			}
 
 		default:
-			return 0, "", nil, time.Time{}, fmt.Errorf("metricSpec.Type:%s not supported", metricSpec.Type)
+			return 0, "", nil, time.Time{}, 0, fmt.Errorf("metricSpec.Type:%s not supported", metricSpec.Type)
 		}
 		// replicas will end up being the max of the replicaCountProposal if there are several metrics
 		if replicas == 0 || replicaCountProposal > replicas {
 			timestamp = timestampProposal
 			replicas = replicaCountProposal
 			metric = metricNameProposal
+			readyReplicas = readyReplicasProposal
 		}
 	}
 	setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionTrue, datadoghqv1alpha1.ConditionValidMetricFound, "the HPA was able to successfully calculate a replica count from %s", metric)
 
-	return replicas, metric, statuses, timestamp, nil
+	return replicas, metric, statuses, timestamp, readyReplicas, nil
 }
 
 // setCondition sets the specific condition type on the given WPA to the specified value with the given reason
@@ -606,7 +610,7 @@ func setConditionInList(inputList []autoscalingv2.HorizontalPodAutoscalerConditi
 
 // normalizeDesiredReplicas takes the metrics desired replicas value and normalizes it based on the appropriate conditions (i.e. < maxReplicas, >
 // minReplicas, etc...)
-func normalizeDesiredReplicas(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas int32, prenormalizedDesiredReplicas int32) int32 {
+func normalizeDesiredReplicas(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas int32, prenormalizedDesiredReplicas int32, readyReplicas int32) int32 {
 	var minReplicas int32
 	if wpa.Spec.MinReplicas != nil {
 		minReplicas = *wpa.Spec.MinReplicas
@@ -614,7 +618,7 @@ func normalizeDesiredReplicas(logger logr.Logger, wpa *datadoghqv1alpha1.Waterma
 		minReplicas = 0
 	}
 
-	desiredReplicas, condition, reason := convertDesiredReplicasWithRules(logger, wpa, currentReplicas, prenormalizedDesiredReplicas, minReplicas, wpa.Spec.MaxReplicas)
+	desiredReplicas, condition, reason := convertDesiredReplicasWithRules(logger, wpa, currentReplicas, prenormalizedDesiredReplicas, minReplicas, wpa.Spec.MaxReplicas, readyReplicas)
 
 	if desiredReplicas == prenormalizedDesiredReplicas {
 		setCondition(wpa, autoscalingv2.ScalingLimited, corev1.ConditionFalse, condition, reason)
@@ -626,7 +630,7 @@ func normalizeDesiredReplicas(logger logr.Logger, wpa *datadoghqv1alpha1.Waterma
 }
 
 // convertDesiredReplicas performs the actual normalization, without depending on the `WatermarkPodAutoscaler`
-func convertDesiredReplicasWithRules(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, desiredReplicas, wpaMinReplicas, wpaMaxReplicas int32) (int32, string, string) {
+func convertDesiredReplicasWithRules(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, desiredReplicas, wpaMinReplicas, wpaMaxReplicas int32, readyReplicas int32) (int32, string, string) {
 	var minimumAllowedReplicas int32
 	var maximumAllowedReplicas int32
 	var possibleLimitingCondition string
@@ -651,6 +655,10 @@ func convertDesiredReplicasWithRules(logger logr.Logger, wpa *datadoghqv1alpha1.
 		possibleLimitingCondition = "ScaleDownLimit"
 		possibleLimitingReason = "the desired replica count is decreasing faster than the maximum scale rate"
 		logger.Info("Downscaling rate higher than limit set by `scaleDownLimitFactor`, capping the maximum downscale to 'minimumAllowedReplicas'", "scaleDownLimitFactor", fmt.Sprintf("%.1f", float64(wpa.Spec.ScaleDownLimitFactor.MilliValue()/1000)), "wpaMinReplicas", wpaMinReplicas, "minimumAllowedReplicas", minimumAllowedReplicas)
+		if readyReplicas < minimumAllowedReplicas && readyReplicas > 0 {
+			logger.Info("Maximum downscale recommendation is higher than current number of ready replicas, aborting", "readyReplicas", readyReplicas, "currentReplicas", currentReplicas, "minimumAllowedReplicas", minimumAllowedReplicas)
+			minimumAllowedReplicas = currentReplicas
+		}
 	case desiredReplicas >= scaleDownLimit:
 		minimumAllowedReplicas = wpaMinReplicas
 		restrictedScaling.With(promLabelsForWpa).Set(0)

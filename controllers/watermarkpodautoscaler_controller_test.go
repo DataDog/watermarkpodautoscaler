@@ -498,7 +498,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				replicaCalculatorFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 					// With 3 replicas, we simulate wanting to have 8 replicas
 					// The metric's ts is old, using it as a reference would make it seem like LastScaleTime is in the future.
-					return ReplicaCalculation{8, 20, time.Now().Add(-60 * time.Second)}, nil
+					return ReplicaCalculation{8, 20, time.Now().Add(-60 * time.Second), 3}, nil
 				},
 				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
 					Labels: map[string]string{"foo-key": "bar-value"},
@@ -664,7 +664,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 			},
 			wantFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 				// With 8 replicas, the avg algo and an external value returned of 100 we have 10 replicas and the utilization of 10
-				return ReplicaCalculation{10, 10, time.Time{}}, nil
+				return ReplicaCalculation{10, 10, time.Time{}, 8}, nil
 			},
 			err: nil,
 		},
@@ -697,7 +697,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 			},
 			wantFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 				// With 8 replicas, the avg algo and an external value returned of 100 we have 10 replicas and the utilization of 10
-				return ReplicaCalculation{0, 0, time.Time{}}, fmt.Errorf("unable to fetch metrics from external metrics API")
+				return ReplicaCalculation{0, 0, time.Time{},0}, fmt.Errorf("unable to fetch metrics from external metrics API")
 			},
 			err: fmt.Errorf("failed to compute replicas based on external metric deadbeef: unable to fetch metrics from external metrics API"),
 		},
@@ -743,9 +743,9 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 			wantFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 				// With 8 replicas, the avg algo and an external value returned of 100 we have 10 replicas and the utilization of 10
 				if metric.External.MetricName == "deadbeef" {
-					return ReplicaCalculation{10, 10, time.Time{}}, nil
+					return ReplicaCalculation{10, 10, time.Time{}, 8}, nil
 				}
-				return ReplicaCalculation{8, 5, time.Time{}}, nil
+				return ReplicaCalculation{8, 5, time.Time{}, 8}, nil
 			},
 			err: nil,
 		},
@@ -761,7 +761,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 			}
 			// If we have 2 metrics, we can assert on the two statuses
 			// We can also use the returned replica, metric etc that is from the highest scaling event
-			replicas, metric, statuses, _, err := r.computeReplicasForMetrics(logf.Log.WithName(tt.name), tt.args.wpa, tt.args.scale)
+			replicas, metric, statuses, _, _, err := r.computeReplicasForMetrics(logf.Log.WithName(tt.name), tt.args.wpa, tt.args.scale)
 			if err != nil && err.Error() != tt.err.Error() {
 				t.Errorf("Unexpected error %v", err)
 			}
@@ -786,14 +786,14 @@ func (f *fakeReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, ta
 	if f.replicasFunc != nil {
 		return f.replicasFunc(metric, wpa)
 	}
-	return ReplicaCalculation{0, 0, time.Time{}}, nil
+	return ReplicaCalculation{0, 0, time.Time{}, 0}, nil
 }
 
 func (f *fakeReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *autoscalingv1.Scale, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 	if f.replicasFunc != nil {
 		return f.replicasFunc(metric, wpa)
 	}
-	return ReplicaCalculation{0, 0, time.Time{}}, nil
+	return ReplicaCalculation{0, 0, time.Time{}, 0}, nil
 }
 
 func TestDefaultWatermarkPodAutoscaler(t *testing.T) {
@@ -1174,6 +1174,7 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 		desiredReplicas           int32
 		normalizedReplicas        int32
 		currentReplicas           int32
+		readyReplicas             int32
 	}{
 		{
 			name:                      "desiredReplicas < wpaMinReplicas < scaleDownLimit",
@@ -1182,6 +1183,7 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 			desiredReplicas:           10,
 			currentReplicas:           50,
 			normalizedReplicas:        45,
+			readyReplicas:             50,
 			wpa:                       makeWPASpec(15, 80, 30, 10),
 		},
 		{
@@ -1191,6 +1193,7 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 			desiredReplicas:           10,
 			currentReplicas:           50,
 			normalizedReplicas:        30,
+			readyReplicas:             50,
 			wpa:                       makeWPASpec(30, 80, 30, 70),
 		},
 		{
@@ -1200,6 +1203,7 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 			desiredReplicas:           15,
 			currentReplicas:           50,
 			normalizedReplicas:        35,
+			readyReplicas:             50,
 			wpa:                       makeWPASpec(10, 6, 30, 30),
 		},
 		{
@@ -1209,6 +1213,7 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 			desiredReplicas:           40,
 			currentReplicas:           50,
 			normalizedReplicas:        40,
+			readyReplicas:             50,
 			wpa:                       makeWPASpec(10, 80, 30, 30),
 		},
 		{
@@ -1218,6 +1223,7 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 			desiredReplicas:           80,
 			currentReplicas:           50,
 			normalizedReplicas:        60,
+			readyReplicas:             50,
 			wpa:                       makeWPASpec(3, 60, 20, 0),
 		},
 		{
@@ -1227,6 +1233,7 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 			desiredReplicas:           65,
 			currentReplicas:           50,
 			normalizedReplicas:        60,
+			readyReplicas:             50,
 			wpa:                       makeWPASpec(3, 60, 40, 0),
 		},
 		{
@@ -1236,12 +1243,23 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 			desiredReplicas:           55,
 			currentReplicas:           50,
 			normalizedReplicas:        55,
+			readyReplicas:             50,
 			wpa:                       makeWPASpec(3, 60, 40, 0),
+		},
+		{
+			name:                      "desiredReplicas < readyReplicas < minimumAllowedReplicas", // minimumAllowdReplicas = 43
+			possibleLimitingCondition: "ScaleDownLimit",
+			possibleLimitingReason:    "the desired replica count is decreasing faster than the maximum scale rate",
+			desiredReplicas:           10,
+			currentReplicas:           50,
+			normalizedReplicas:        50,
+			readyReplicas:             40,
+			wpa:                       makeWPASpec(3, 60, 15, 15),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			des, cond, rea := convertDesiredReplicasWithRules(logf.Log.WithName(tt.name), tt.wpa, tt.currentReplicas, tt.desiredReplicas, *tt.wpa.Spec.MinReplicas, tt.wpa.Spec.MaxReplicas)
+			des, cond, rea := convertDesiredReplicasWithRules(logf.Log.WithName(tt.name), tt.wpa, tt.currentReplicas, tt.desiredReplicas, *tt.wpa.Spec.MinReplicas, tt.wpa.Spec.MaxReplicas, tt.readyReplicas)
 			require.Equal(t, tt.normalizedReplicas, des)
 			require.Equal(t, tt.possibleLimitingCondition, cond)
 			require.Equal(t, tt.possibleLimitingReason, rea)
