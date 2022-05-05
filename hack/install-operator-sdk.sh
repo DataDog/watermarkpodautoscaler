@@ -28,9 +28,8 @@ binary_available () {
   return 1
 }
 
-if [ $(binary_available $OS $ARCH) ]; then
-  curl -L "${REPO}/releases/download/v${VERSION}/operator-sdk_${OS}_${ARCH}" | tar -xz -C $WORK_DIR
-  mv $WORK_DIR/operator-sdk_${OS}_${ARCH} $ROOT/bin/operator-sdk
+if binary_available $OS $ARCH; then
+  curl -L "${REPO}/releases/download/v${VERSION}/operator-sdk_${OS}_${ARCH}" -o $ROOT/bin/operator-sdk
 else
   curl -L "${REPO}/archive/refs/tags/v${VERSION}.tar.gz" | tar -xz -C $WORK_DIR
   cd $WORK_DIR/operator-sdk-${VERSION}

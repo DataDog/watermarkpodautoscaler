@@ -8,7 +8,7 @@ REPO="https://github.com/golangci/golangci-lint"
 
 if [ -z "$VERSION" ];
 then
-  echo "usage: hack/install-operator-sdk.sh <version>"
+  echo "usage: hack/install-golangci-lint.sh <version>"
   exit 1
 fi
 
@@ -31,9 +31,9 @@ binary_available () {
   return 1
 }
 
-if [ $(binary_available $OS $ARCH) ]; then
+if binary_available $OS $ARCH; then
   curl -L "${REPO}/releases/download/v${VERSION}/golangci-lint-${VERSION}-${OS}-${ARCH}.tar.gz" | tar -xz -C $WORK_DIR
-  mv $WORK_DIR/golangci-lint_${OS}_${ARCH} $ROOT/bin/golangci-lint
+  mv $WORK_DIR/golangci-lint-${VERSION}-${OS}-${ARCH}/golangci-lint $ROOT/bin/
 else
   curl -L "${REPO}/archive/refs/tags/v${VERSION}.tar.gz" | tar -xz -C $WORK_DIR
   cd $WORK_DIR/golangci-lint-${VERSION}

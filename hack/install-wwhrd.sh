@@ -31,7 +31,7 @@ binary_available () {
 
 TARBALL="wwhrd_${VERSION}_${OS}_${ARCH}.tar.gz"
 
-if [ $(binary_available $OS $ARCH) ]; then
+if binary_available $OS $ARCH; then
   cd $WORK_DIR
   curl -Lo ${TARBALL} https://github.com/frapposelli/wwhrd/releases/download/v${VERSION}/${TARBALL} && tar -C . -xzf $TARBALL
 
