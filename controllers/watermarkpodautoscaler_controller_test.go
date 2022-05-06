@@ -1307,6 +1307,45 @@ func TestSetCondition(t *testing.T) {
 	}
 }
 
+func TestGetCondition(t *testing.T) {
+	now := time.Now()
+	tests := []struct {
+		name              string
+		currentConditions []v2beta1.HorizontalPodAutoscalerCondition
+		conditionType     v2beta1.HorizontalPodAutoscalerConditionType
+		expectState       corev1.ConditionStatus
+		expectedTime      metav1.Time
+		err               error
+	}{
+		{
+			name: "has been below watermark for 37 minutes",
+			currentConditions: []v2beta1.HorizontalPodAutoscalerCondition{
+				{
+					Type:               v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark,
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: metav1.Time{Time: now.Add(-37 * time.Minute)},
+				},
+			},
+			conditionType: v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark,
+			expectState:   corev1.ConditionTrue,
+			expectedTime:  metav1.Time{Time: now.Add(-37 * time.Minute)},
+			err:           nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wpa := makeWPASpec(1, 10, 2, 2)
+			wpa.Status.Conditions = tt.currentConditions
+
+			cond, time, err := getCondition(&wpa.Status, tt.conditionType)
+			assert.Equal(t, tt.expectState, cond)
+			assert.Equal(t, tt.expectedTime, time)
+			assert.Equal(t, tt.err, err)
+		})
+	}
+}
+
 func newScaleForDeployment(replicasStatus int32) *autoscalingv1.Scale {
 	return &autoscalingv1.Scale{
 		TypeMeta: metav1.TypeMeta{Kind: "Scale"},
