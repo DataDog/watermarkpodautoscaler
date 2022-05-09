@@ -239,7 +239,7 @@ func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas i
 		}
 		logger.Info("Value is below lowMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "tolerance (%)", float64(wpa.Spec.Tolerance.MilliValue())/10, "adjustedLM", adjustedLM, "adjustedUsage", adjustedUsage)
 
-		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark, corev1.ConditionFalse, "Value below High Watermark", "Allow downscaling if the value stays over the Watermark")
+		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark, corev1.ConditionFalse, "Value below High Watermark", "Allow upscaling if the value stays over the Watermark")
 		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark, corev1.ConditionTrue, "Value below Low Watermark", "Allow downscaling if the value stays under the Watermark")
 
 	default:

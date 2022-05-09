@@ -393,33 +393,32 @@ func shouldScale(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 
 	hasBeenAbove, aboveSince, err := getCondition(&wpa.Status, datadoghqv1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark)
 	if err != nil {
-		logger.Error(err, "could not fetch Above Watermark Annotation from the status")
+		logger.Info("Could not retrieve condition about the time above Watermark, blocking potential scaling event", "error", err)
 		hasBeenAbove = corev1.ConditionFalse
 	}
 	if desiredReplicas > currentReplicas {
-		return canScaleTmp(logger, backoffUp, hasBeenAbove, aboveSince, wpa.Spec.UpscaleEvaluateAboveWatermarkSeconds)
+		return canScale(logger, backoffUp, hasBeenAbove, aboveSince, wpa.Spec.UpscaleEvaluateAboveWatermarkSeconds)
 	}
 
 	hasBeenBelow, belowSince, err := getCondition(&wpa.Status, datadoghqv1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark)
 	if err != nil {
-		logger.Error(err, "could not fetch Above Watermark Annotation from the status")
+		logger.Info("Could not retrieve condition about the time above Watermark, blocking potential scaling event", "error", err)
 		hasBeenBelow = corev1.ConditionFalse
 	}
 	if desiredReplicas < currentReplicas {
-		return canScaleTmp(logger, backoffDown, hasBeenBelow, belowSince, wpa.Spec.DownscaleEvaluateBelowWatermarkSeconds)
+		return canScale(logger, backoffDown, hasBeenBelow, belowSince, wpa.Spec.DownscaleEvaluateBelowWatermarkSeconds)
 	}
 	return false
-
 }
 
-func canScaleTmp(logger logr.Logger, isBackoff bool, wasOutOfBounds corev1.ConditionStatus, since metav1.Time, decisionDelay int32) bool {
+func canScale(logger logr.Logger, isBackoff bool, wasOutOfBounds corev1.ConditionStatus, since metav1.Time, decisionDelay int32) bool {
 	now := metav1.Now()
 	canScaleDelay := decisionDelay - int32(now.Sub(since.Time).Seconds())
 	if canScaleDelay > 0 || wasOutOfBounds != corev1.ConditionTrue {
-		logger.Info("Will not scale: value has not been out of bounds for long enough", "timeLeft", canScaleDelay)
+		logger.Info("Will not scale: value has not been out of bounds for long enough", "time_left", canScaleDelay)
 		return false
 	}
-	return isBackoff
+	return !isBackoff
 }
 
 // setCurrentReplicasInStatus sets the current replica count in the status of the HPA.
