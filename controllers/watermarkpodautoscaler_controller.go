@@ -411,9 +411,9 @@ func shouldScale(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 	return false
 }
 
-func canScale(logger logr.Logger, isBackoff bool, wasOutOfBounds autoscalingv2.HorizontalPodAutoscalerCondition, decisionDelay uint32) bool {
+func canScale(logger logr.Logger, isBackoff bool, wasOutOfBounds autoscalingv2.HorizontalPodAutoscalerCondition, decisionDelay int32) bool {
 	now := metav1.Now()
-	canScaleDelay := decisionDelay - uint32(now.Sub(wasOutOfBounds.LastTransitionTime.Time).Seconds())
+	canScaleDelay := decisionDelay - int32(now.Sub(wasOutOfBounds.LastTransitionTime.Time).Seconds())
 	if canScaleDelay > 0 || wasOutOfBounds.Status != corev1.ConditionTrue {
 		logger.Info("Will not scale: value has not been out of bounds for long enough", "time_left", canScaleDelay)
 		return false

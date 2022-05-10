@@ -257,7 +257,7 @@ func schema__api_v1alpha1_WatermarkPodAutoscalerSpec(ref common.ReferenceCallbac
 					"upscaleDelayAboveWatermarkSeconds": {
 						SchemaProps: spec.SchemaProps{
 							Type:   []string{"integer"},
-							Format: "int64",
+							Format: "int32",
 						},
 					},
 					"scaleDownLimitFactor": {
@@ -269,7 +269,7 @@ func schema__api_v1alpha1_WatermarkPodAutoscalerSpec(ref common.ReferenceCallbac
 					"downscaleDelayBelowWatermarkSeconds": {
 						SchemaProps: spec.SchemaProps{
 							Type:   []string{"integer"},
-							Format: "int64",
+							Format: "int32",
 						},
 					},
 					"replicaScalingAbsoluteModulo": {
