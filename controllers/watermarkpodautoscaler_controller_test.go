@@ -604,13 +604,13 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 						},
 					},
 					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
-						ScaleTargetRef:                         testCrossVersionObjectRef,
-						MaxReplicas:                            5,
-						ScaleUpLimitFactor:                     resource.NewQuantity(150, resource.DecimalSI),
-						UpscaleForbiddenWindowSeconds:          30,
-						DownscaleForbiddenWindowSeconds:        45,
-						DownscaleEvaluateBelowWatermarkSeconds: 60, // we block downscaling events until the metric has been under the watermark for at least 60s
-						MinReplicas:                            getReplicas(1),
+						ScaleTargetRef:                      testCrossVersionObjectRef,
+						MaxReplicas:                         5,
+						ScaleUpLimitFactor:                  resource.NewQuantity(150, resource.DecimalSI),
+						UpscaleForbiddenWindowSeconds:       30,
+						DownscaleForbiddenWindowSeconds:     45,
+						DownscaleDelayBelowWatermarkSeconds: 60, // we block downscaling events until the metric has been under the watermark for at least 60s
+						MinReplicas:                         getReplicas(1),
 						Metrics: []v1alpha1.MetricSpec{
 							{
 								Type: v1alpha1.ExternalMetricSourceType,
@@ -1205,9 +1205,9 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 				timestamp:       time.Unix(1232599, 0), // TODO FIXME
 				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
 					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
-						UpscaleForbiddenWindowSeconds:          60,
-						DownscaleForbiddenWindowSeconds:        60,
-						DownscaleEvaluateBelowWatermarkSeconds: 120,
+						UpscaleForbiddenWindowSeconds:       60,
+						DownscaleForbiddenWindowSeconds:     60,
+						DownscaleDelayBelowWatermarkSeconds: 120,
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
@@ -1517,9 +1517,9 @@ func TestGetCondition(t *testing.T) {
 			wpa := makeWPASpec(1, 10, 2, 2)
 			wpa.Status.Conditions = tt.currentConditions
 
-			cond, time, err := getCondition(&wpa.Status, tt.conditionType)
-			assert.Equal(t, tt.expectState, cond)
-			assert.Equal(t, tt.expectedTime, time)
+			cond, err := getCondition(&wpa.Status, tt.conditionType)
+			assert.Equal(t, tt.expectState, cond.Status)
+			assert.Equal(t, tt.expectedTime, cond.LastTransitionTime)
 			assert.Equal(t, tt.err, err)
 		})
 	}

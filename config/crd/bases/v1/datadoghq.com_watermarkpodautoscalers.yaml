@@ -76,7 +76,7 @@ spec:
               algorithm:
                 description: 'computed values take the # of replicas into account'
                 type: string
-              downscaleEvaluateBelowWatermarkSeconds:
+              downscaleDelayBelowWatermarkSeconds:
                 format: int32
                 minimum: 0
                 type: integer
@@ -325,7 +325,7 @@ spec:
                   transition seamlessly, we validate that it is ]0;1[ in the code.
                 pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                 x-kubernetes-int-or-string: true
-              upscaleEvaluateAboveWatermarkSeconds:
+              upscaleDelayAboveWatermarkSeconds:
                 format: int32
                 minimum: 0
                 type: integer

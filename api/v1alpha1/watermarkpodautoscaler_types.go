@@ -65,7 +65,7 @@ type WatermarkPodAutoscalerSpec struct {
 	ScaleUpLimitFactor *resource.Quantity `json:"scaleUpLimitFactor,omitempty"`
 
 	// +kubebuilder:validation:Minimum=0
-	UpscaleEvaluateAboveWatermarkSeconds int32 `json:"upscaleEvaluateAboveWatermarkSeconds,omitempty"`
+	UpscaleDelayAboveWatermarkSeconds uint32 `json:"upscaleDelayAboveWatermarkSeconds,omitempty"`
 
 	// Percentage of replicas that can be removed in an downscale event.
 	// Parameter used to be a float, in order to support the transition seamlessly, we validate that it is [0;100[ in the code.
@@ -73,7 +73,7 @@ type WatermarkPodAutoscalerSpec struct {
 	ScaleDownLimitFactor *resource.Quantity `json:"scaleDownLimitFactor,omitempty"`
 
 	// +kubebuilder:validation:Minimum=0
-	DownscaleEvaluateBelowWatermarkSeconds int32 `json:"downscaleEvaluateBelowWatermarkSeconds,omitempty"`
+	DownscaleDelayBelowWatermarkSeconds uint32 `json:"downscaleDelayBelowWatermarkSeconds,omitempty"`
 
 	// Number of replicas to scale by at a time. When set, replicas added or removed must be a multiple of this parameter.
 	// Allows for special scaling patterns, for instance when an application requires a certain number of pods in multiple

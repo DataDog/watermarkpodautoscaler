@@ -25,6 +25,13 @@ import (
 	corelisters "k8s.io/client-go/listers/core/v1"
 )
 
+const (
+	aboveHighWatermarkAllowedMessage = "Allow upscaling if the value stays over the Watermark"
+	belowLowWatermarkAllowedMessage  = "Allow downscaling if the value stays under the Watermark"
+	aboveHighWatermarkReason         = "Value above High Watermark"
+	belowLowWatermarkReason          = "Value above Low Watermark"
+)
+
 // ReplicaCalculation is used to compute the scaling recommendation.
 type ReplicaCalculation struct {
 	replicaCount int32
@@ -226,8 +233,8 @@ func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas i
 			replicaCount = currentReplicas
 		}
 
-		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark, corev1.ConditionTrue, "Value above High Watermark", "Allow upscaling if the value stays over the Watermark")
-		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark, corev1.ConditionFalse, "Value above Low Watermark", "Allow downscaling if the value stays under the Watermark")
+		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark, corev1.ConditionTrue, aboveHighWatermarkReason, aboveHighWatermarkAllowedMessage)
+		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark, corev1.ConditionFalse, belowLowWatermarkReason, belowLowWatermarkAllowedMessage)
 
 	case adjustedUsage < adjustedLM:
 		replicaCount = int32(math.Floor(float64(currentReadyReplicas) * adjustedUsage / (float64(lowMark.MilliValue()))))
@@ -239,16 +246,16 @@ func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas i
 		}
 		logger.Info("Value is below lowMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "tolerance (%)", float64(wpa.Spec.Tolerance.MilliValue())/10, "adjustedLM", adjustedLM, "adjustedUsage", adjustedUsage)
 
-		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark, corev1.ConditionFalse, "Value below High Watermark", "Allow upscaling if the value stays over the Watermark")
-		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark, corev1.ConditionTrue, "Value below Low Watermark", "Allow downscaling if the value stays under the Watermark")
+		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark, corev1.ConditionFalse, aboveHighWatermarkReason, aboveHighWatermarkAllowedMessage)
+		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark, corev1.ConditionTrue, belowLowWatermarkReason, belowLowWatermarkAllowedMessage)
 
 	default:
 		restrictedScaling.With(labelsWithReason).Set(1)
 		value.With(labelsWithMetricName).Set(adjustedUsage)
 		logger.Info("Within bounds of the watermarks", "value", utilizationQuantity.String(), "currentReadyReplicas", currentReadyReplicas, "tolerance (%)", float64(wpa.Spec.Tolerance.MilliValue())/10, "adjustedLM", adjustedLM, "adjustedHM", adjustedHM, "adjustedUsage", adjustedUsage)
 
-		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark, corev1.ConditionFalse, "Value below High Watermark", "Allow downscaling if the value stays over the Watermark")
-		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark, corev1.ConditionFalse, "Value above Low Watermark", "Allow downscaling if the value stays under the Watermark")
+		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark, corev1.ConditionFalse, aboveHighWatermarkReason, aboveHighWatermarkAllowedMessage)
+		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark, corev1.ConditionFalse, belowLowWatermarkReason, belowLowWatermarkAllowedMessage)
 
 		// returning the currentReplicas instead of the count of healthy ones to be consistent with the upstream behavior.
 		return currentReplicas, utilizationQuantity.MilliValue()

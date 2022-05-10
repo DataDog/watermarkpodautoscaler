@@ -74,7 +74,7 @@ spec:
             algorithm:
               description: 'computed values take the # of replicas into account'
               type: string
-            downscaleEvaluateBelowWatermarkSeconds:
+            downscaleDelayBelowWatermarkSeconds:
               format: int32
               minimum: 0
               type: integer
@@ -308,7 +308,7 @@ spec:
                 == 0 means that upscaling will not be allowed for the target.
               pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
             tolerance: {}
-            upscaleEvaluateAboveWatermarkSeconds:
+            upscaleDelayAboveWatermarkSeconds:
               format: int32
               minimum: 0
               type: integer
