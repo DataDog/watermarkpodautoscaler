@@ -498,12 +498,19 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				replicaCalculatorFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 					// With 3 replicas, we simulate wanting to have 8 replicas
 					// The metric's ts is old, using it as a reference would make it seem like LastScaleTime is in the future.
-					return ReplicaCalculation{8, 20, time.Now().Add(-60 * time.Second)}, nil
+					return ReplicaCalculation{8, 128, time.Now().Add(-60 * time.Second)}, nil
 				},
 				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
 					Labels: map[string]string{"foo-key": "bar-value"},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Now().Add(-30 * time.Second)},
+						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+							{
+								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
+								Status:             corev1.ConditionTrue,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-30 * time.Second)},
+							},
+						},
 					},
 					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
 						ScaleTargetRef:                  testCrossVersionObjectRef,
@@ -538,7 +545,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				if wpa.Status.DesiredReplicas != desired {
 					return fmt.Errorf(fmt.Sprintf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas))
 				}
-				if len(wpa.Status.Conditions) != 4 {
+				if len(wpa.Status.Conditions) != 5 {
 					return fmt.Errorf("incomplete reconciliation process, missing conditions")
 				}
 				for _, c := range wpa.Status.Conditions {
@@ -555,6 +562,98 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 					case v2beta1.ScalingLimited:
 						if c.Message != "the desired replica count is increasing faster than the maximum scale rate" {
 							return fmt.Errorf("scaling incorrectly throttled")
+						}
+					case v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark:
+						if c.Status != corev1.ConditionTrue {
+							return fmt.Errorf("status of the aboveWatermark condition is incorrect")
+						}
+					}
+				}
+				return nil
+			},
+		},
+		{
+			name: "Downscale blocked because the metric has not been under the watermark for long enough",
+			fields: fields{
+				client:        fake.NewClientBuilder().Build(),
+				scaleclient:   &fakescale.FakeScaleClient{},
+				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
+				scheme:        s,
+				eventRecorder: eventRecorder,
+			},
+			args: args{
+				replicaCalculatorFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
+					// utilization is low enough to warrant downscaling to 1 replica
+					return ReplicaCalculation{1, 20, time.Now().Add(-60 * time.Second)}, nil
+				},
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Labels: map[string]string{"foo-key": "bar-value"},
+					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
+						LastScaleTime: &metav1.Time{Time: time.Now().Add(-90 * time.Second)},
+						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+							{
+								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
+								Status:             corev1.ConditionFalse,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-30 * time.Second)},
+							},
+							{
+								Type:               v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark,
+								Status:             corev1.ConditionTrue,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-45 * time.Second)}, // metric has been under the watermark for 45s
+							},
+						},
+					},
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						ScaleTargetRef:                      testCrossVersionObjectRef,
+						MaxReplicas:                         5,
+						ScaleUpLimitFactor:                  resource.NewQuantity(150, resource.DecimalSI),
+						UpscaleForbiddenWindowSeconds:       30,
+						DownscaleForbiddenWindowSeconds:     45,
+						DownscaleDelayBelowWatermarkSeconds: 60, // we block downscaling events until the metric has been under the watermark for at least 60s
+						MinReplicas:                         getReplicas(1),
+						Metrics: []v1alpha1.MetricSpec{
+							{
+								Type: v1alpha1.ExternalMetricSourceType,
+								External: &v1alpha1.ExternalMetricSource{
+									MetricName:     "deadbeef",
+									MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}},
+									HighWatermark:  resource.NewMilliQuantity(80, resource.DecimalSI),
+									LowWatermark:   resource.NewMilliQuantity(70, resource.DecimalSI),
+								},
+							},
+						},
+					},
+				}),
+				wantReplicasCount: 3,
+				scale:             newScaleForDeployment(3),
+				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) {
+					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
+					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
+					_ = c.Create(context.TODO(), wpa)
+				},
+			},
+			wantErr: false,
+			wantFunc: func(c client.Client, desired int32, wpa *v1alpha1.WatermarkPodAutoscaler) error {
+				if wpa.Status.DesiredReplicas != desired {
+					return fmt.Errorf(fmt.Sprintf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas))
+				}
+				if len(wpa.Status.Conditions) != 6 {
+					return fmt.Errorf("incomplete reconciliation process, missing conditions")
+				}
+				for _, c := range wpa.Status.Conditions {
+					switch c.Type {
+					case v2beta1.AbleToScale:
+						if c.Status != corev1.ConditionTrue {
+							// TODO we need more granularity on this condition to reflect that we are in not allowed to downscale.
+							return fmt.Errorf("should be able to scale")
+						}
+					case v2beta1.ScalingLimited:
+						if c.Message != "the desired replica count is decreasing faster than the maximum scale rate" {
+							return fmt.Errorf("scaling incorrectly throttled")
+						}
+					case v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark:
+						if c.Status != corev1.ConditionTrue {
+							return fmt.Errorf("scale down should have been blocked")
 						}
 					}
 				}
@@ -968,6 +1067,13 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
+						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+							{
+								Type:               v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark,
+								Status:             corev1.ConditionTrue,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-30 * time.Second)},
+							},
+						},
 					},
 				}),
 			},
@@ -985,6 +1091,13 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
+						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+							{
+								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
+								Status:             corev1.ConditionTrue,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-30 * time.Second)}, // upscale is not blocked by the metric above watermark duration
+							},
+						},
 					},
 				}),
 			},
@@ -1003,6 +1116,7 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
+						// no need to check canScaleDelay as we keep the same number of replicas
 					},
 				}),
 			},
@@ -1021,6 +1135,13 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
+						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+							{
+								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
+								Status:             corev1.ConditionTrue,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-30 * time.Second)},
+							},
+						},
 					},
 				}),
 			},
@@ -1039,10 +1160,68 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
+						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+							{
+								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
+								Status:             corev1.ConditionTrue,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-30 * time.Second)},
+							},
+						},
 					},
 				}),
 			},
 			shoudScale: true,
+		},
+		{
+			name: "scale blocked as metric was not out of bounds previously",
+			args: args{
+				currentReplicas: 8,
+				desiredReplicas: 10,
+				timestamp:       time.Unix(1232599, 0), // TODO FIXME
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						UpscaleForbiddenWindowSeconds:   60,
+						DownscaleForbiddenWindowSeconds: 60,
+					},
+					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
+						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
+						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+							{
+								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
+								Status:             corev1.ConditionFalse,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-30 * time.Second)},
+							},
+						},
+					},
+				}),
+			},
+			shoudScale: false,
+		},
+		{
+			name: "scale blocked as metric was not out of bounds for long enough",
+			args: args{
+				currentReplicas: 8,
+				desiredReplicas: 6,
+				timestamp:       time.Unix(1232599, 0), // TODO FIXME
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						UpscaleForbiddenWindowSeconds:       60,
+						DownscaleForbiddenWindowSeconds:     60,
+						DownscaleDelayBelowWatermarkSeconds: 120,
+					},
+					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
+						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
+						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+							{
+								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
+								Status:             corev1.ConditionTrue,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-90 * time.Second)}, // 90s is not enough as we block for 120s
+							},
+						},
+					},
+				}),
+			},
+			shoudScale: false,
 		},
 	}
 	for _, tt := range tests {
@@ -1303,6 +1482,45 @@ func TestSetCondition(t *testing.T) {
 			}
 
 			assert.Equal(t, tt.expectedOrder, resultSortedTypes)
+		})
+	}
+}
+
+func TestGetCondition(t *testing.T) {
+	now := time.Now()
+	tests := []struct {
+		name              string
+		currentConditions []v2beta1.HorizontalPodAutoscalerCondition
+		conditionType     v2beta1.HorizontalPodAutoscalerConditionType
+		expectState       corev1.ConditionStatus
+		expectedTime      metav1.Time
+		err               error
+	}{
+		{
+			name: "has been below watermark for 37 minutes",
+			currentConditions: []v2beta1.HorizontalPodAutoscalerCondition{
+				{
+					Type:               v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark,
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: metav1.Time{Time: now.Add(-37 * time.Minute)},
+				},
+			},
+			conditionType: v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark,
+			expectState:   corev1.ConditionTrue,
+			expectedTime:  metav1.Time{Time: now.Add(-37 * time.Minute)},
+			err:           nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wpa := makeWPASpec(1, 10, 2, 2)
+			wpa.Status.Conditions = tt.currentConditions
+
+			cond, err := getCondition(&wpa.Status, tt.conditionType)
+			assert.Equal(t, tt.expectState, cond.Status)
+			assert.Equal(t, tt.expectedTime, cond.LastTransitionTime)
+			assert.Equal(t, tt.err, err)
 		})
 	}
 }
