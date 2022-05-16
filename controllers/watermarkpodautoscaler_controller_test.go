@@ -584,7 +584,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			args: args{
 				replicaCalculatorFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 					// utilization is low enough to warrant downscaling to 1 replica
-					return ReplicaCalculation{1, 20, time.Now().Add(-60 * time.Second)}, nil
+					return ReplicaCalculation{1, 20, time.Now().Add(-60 * time.Second), 3}, nil
 				},
 				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
 					Labels: map[string]string{"foo-key": "bar-value"},
