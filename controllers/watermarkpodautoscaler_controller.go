@@ -390,17 +390,36 @@ func shouldScale(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 		transitionCountdown.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, transitionPromLabel: "upscale", resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(0)
 	}
 
-	return canScale(logger, backoffUp, backoffDown, currentReplicas, desiredReplicas)
+	logger.Info("Cooldown status", "backoffUp", backoffUp, "backoffDown", backoffDown, "desiredReplicas", desiredReplicas, "currentReplicas", currentReplicas)
+
+	hasBeenAbove, err := getCondition(&wpa.Status, datadoghqv1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark)
+	if err != nil {
+		logger.V(2).Info("Cqould not retrieve condition about the time above Watermark, blocking potential scaling event", "error", err)
+		hasBeenAbove.Status = corev1.ConditionFalse
+	}
+	if desiredReplicas > currentReplicas {
+		return canScale(logger, backoffUp, hasBeenAbove, wpa.Spec.UpscaleDelayAboveWatermarkSeconds)
+	}
+
+	hasBeenBelow, err := getCondition(&wpa.Status, datadoghqv1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark)
+	if err != nil {
+		logger.V(2).Info("Could not retrieve condition about the time above Watermark, blocking potential scaling event", "error", err)
+		hasBeenBelow.Status = corev1.ConditionFalse
+	}
+	if desiredReplicas < currentReplicas {
+		return canScale(logger, backoffDown, hasBeenBelow, wpa.Spec.DownscaleDelayBelowWatermarkSeconds)
+	}
+	return false
 }
 
-// canScale ensures that we only scale under the right conditions.
-func canScale(logger logr.Logger, backoffUp, backoffDown bool, currentReplicas, desiredReplicas int32) bool {
-	if desiredReplicas == currentReplicas {
-		logger.Info("Will not scale: number of replicas has not changed")
+func canScale(logger logr.Logger, isBackoff bool, wasOutOfBounds autoscalingv2.HorizontalPodAutoscalerCondition, decisionDelay int32) bool {
+	now := metav1.Now()
+	canScaleDelay := decisionDelay - int32(now.Sub(wasOutOfBounds.LastTransitionTime.Time).Seconds())
+	if canScaleDelay > 0 || wasOutOfBounds.Status != corev1.ConditionTrue {
+		logger.Info("Will not scale: value has not been out of bounds for long enough", "time_left", canScaleDelay)
 		return false
 	}
-	logger.Info("Cooldown status", "backoffUp", backoffUp, "backoffDown", backoffDown, "desiredReplicas", desiredReplicas, "currentReplicas", currentReplicas)
-	return !backoffUp && desiredReplicas > currentReplicas || !backoffDown && desiredReplicas < currentReplicas
+	return !isBackoff
 }
 
 // setCurrentReplicasInStatus sets the current replica count in the status of the HPA.
@@ -568,6 +587,17 @@ func setCondition(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, conditionType a
 	wpa.Status.Conditions = setConditionInList(wpa.Status.Conditions, conditionType, status, reason, message, args...)
 	wpa.Status.LastConditionState = string(status)
 	wpa.Status.LastConditionType = string(conditionType)
+}
+
+// getCondition returns the desired condition's state and last update.
+// This method can be used to make a decision based on the previous state.
+func getCondition(wpaStatus *datadoghqv1alpha1.WatermarkPodAutoscalerStatus, conditionType autoscalingv2.HorizontalPodAutoscalerConditionType) (autoscalingv2.HorizontalPodAutoscalerCondition, error) {
+	for _, condition := range wpaStatus.Conditions {
+		if condition.Type == conditionType {
+			return condition, nil
+		}
+	}
+	return autoscalingv2.HorizontalPodAutoscalerCondition{}, fmt.Errorf("condition %s is not stored in the status", conditionType)
 }
 
 // setConditionInList sets the specific condition type on the given WPA to the specified value with the given

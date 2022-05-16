@@ -74,6 +74,10 @@ spec:
             algorithm:
               description: 'computed values take the # of replicas into account'
               type: string
+            downscaleDelayBelowWatermarkSeconds:
+              format: int32
+              minimum: 0
+              type: integer
             downscaleForbiddenWindowSeconds:
               description: 'part of HorizontalController, see comments in the k8s
                 repo: pkg/controller/podautoscaler/horizontal.go'
@@ -304,6 +308,10 @@ spec:
                 == 0 means that upscaling will not be allowed for the target.
               pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
             tolerance: {}
+            upscaleDelayAboveWatermarkSeconds:
+              format: int32
+              minimum: 0
+              type: integer
             upscaleForbiddenWindowSeconds:
               format: int32
               minimum: 1

@@ -254,10 +254,22 @@ func schema__api_v1alpha1_WatermarkPodAutoscalerSpec(ref common.ReferenceCallbac
 							Ref:         ref("k8s.io/apimachinery/pkg/api/resource.Quantity"),
 						},
 					},
+					"upscaleDelayAboveWatermarkSeconds": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"integer"},
+							Format: "int32",
+						},
+					},
 					"scaleDownLimitFactor": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Percentage of replicas that can be removed in an downscale event. Parameter used to be a float, in order to support the transition seamlessly, we validate that it is [0;100[ in the code. ScaleDownLimitFactor == 0 means that downscaling will not be allowed for the target.",
 							Ref:         ref("k8s.io/apimachinery/pkg/api/resource.Quantity"),
+						},
+					},
+					"downscaleDelayBelowWatermarkSeconds": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"integer"},
+							Format: "int32",
 						},
 					},
 					"replicaScalingAbsoluteModulo": {
