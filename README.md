@@ -89,7 +89,7 @@ To use the Watermark Pod Autoscaler, deploy it in your Kubernetes cluster:
 
 #### kubectl plugin
 
-The WatermarkPodAutoscaler Controler comes with a kubectl plugin providing a set of helper utilities. more information on the dedicated documentation page: [docs/kubect-plugin.md](docs/kubect-plugin.md)
+The WatermarkPodAutoscaler Controler comes with a kubectl plugin providing a set of helper utilities. more information on the dedicated documentation page: [docs/kubectl-plugin.md](docs/kubectl-plugin.md)
 
 
 ### The process
