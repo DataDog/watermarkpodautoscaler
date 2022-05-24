@@ -16,7 +16,7 @@ import (
 func initTestConfig() *testConfigOptions {
 	return &testConfigOptions{
 		useExistingCluster: true,
-		crdVersion:         "v1beta1",
+		crdVersion:         "v1",
 		namespace:          fmt.Sprintf("wpa-%d", time.Now().Unix()),
 	}
 }

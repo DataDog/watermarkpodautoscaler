@@ -11,7 +11,7 @@ package controllers
 func initTestConfig() *testConfigOptions {
 	return &testConfigOptions{
 		useExistingCluster: false,
-		crdVersion:         "v1beta1",
+		crdVersion:         "v1",
 		namespace:          defaultNamespace,
 	}
 }
