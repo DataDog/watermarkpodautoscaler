@@ -40,3 +40,17 @@
   max-per-linter = 0
   max-same-issues = 0
   exclude = []
+
+  # Exclude the following lint error:
+  # /home/runner/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.11.2/pkg/manager/manager.go:54:2:
+  # Start redeclared (typecheck)
+  [[issues.exclude-rules]]
+    linters = ["typecheck"]
+    text = "Start redeclared"
+
+  # Exclude the following lint error:
+  # /home/runner/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.11.2/pkg/manager/manager.go:87:2:
+  # other declaration of Start (typecheck)
+  [[issues.exclude-rules]]
+    linters = ["typecheck"]
+    text = "other declaration of Start"
