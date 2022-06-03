@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
+source $(dirname "$0")/install-common.sh
+
 set -e
 
 set -o errexit
 set -o nounset
 set -o pipefail
 
-ROOT=$(git rev-parse --show-toplevel)
-WORK_DIR=`mktemp -d`
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap "cleanup" EXIT SIGINT
+VERSION=$1
 
-VERSION=3.3.0
-BINARY="yq_$(uname)_amd64"
+if [ -z "$VERSION" ];
+then
+  echo "usage: hack/install-yq.sh <version>"
+  exit 1
+fi
+
+BINARY="yq_${OS}_${ARCH}"
 
 cd $WORK_DIR
 curl -Lo ${BINARY} https://github.com/mikefarah/yq/releases/download/$VERSION/$BINARY
