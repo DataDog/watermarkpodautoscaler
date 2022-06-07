@@ -413,6 +413,11 @@ func shouldScale(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 }
 
 func canScale(logger logr.Logger, isBackoff bool, wasOutOfBounds autoscalingv2.HorizontalPodAutoscalerCondition, decisionDelay int32) bool {
+	// feature is disabled
+	if decisionDelay == 0 {
+		return !isBackoff
+	}
+
 	now := metav1.Now()
 	canScaleDelay := decisionDelay - int32(now.Sub(wasOutOfBounds.LastTransitionTime.Time).Seconds())
 	if canScaleDelay > 0 || wasOutOfBounds.Status != corev1.ConditionTrue {
