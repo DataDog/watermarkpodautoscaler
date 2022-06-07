@@ -6,6 +6,19 @@ The WatermarkPodAutoscaler Controler comes with a kubectl plugin providing a set
 
 ### With krew
 
+#### From github release artifact
+
+this solution is interesting to also use release condidate version.
+
+```console
+export VERSION=0.4.0
+k krew install --manifest-url https://github.com/DataDog/watermarkpodautoscaler/releases/download/$VERSION/wpa-plugin.yaml` 
+```
+
+### From krew public index
+
+:warning: the `wpa` plugin is not yet available inthe krew index
+
 To install, use the [krew plugin manager](https://krew.sigs.k8s.io/).
 
 ```console
@@ -21,7 +34,7 @@ Installed plugin: wpa
 ```
 
 
-### from source
+### From source
 
 ```console
 $ make kubectl-wpa
