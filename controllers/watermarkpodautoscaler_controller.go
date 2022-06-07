@@ -394,11 +394,11 @@ func shouldScale(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 
 	hasBeenAbove, err := getCondition(&wpa.Status, datadoghqv1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark)
 	if err != nil {
-		logger.V(2).Info("Cqould not retrieve condition about the time above Watermark, blocking potential scaling event", "error", err)
+		logger.V(2).Info("Could not retrieve condition about the time above Watermark, blocking potential scaling event", "error", err)
 		hasBeenAbove.Status = corev1.ConditionFalse
 	}
 	if desiredReplicas > currentReplicas {
-		return canScale(logger, backoffUp, hasBeenAbove, wpa.Spec.UpscaleDelayAboveWatermarkSeconds)
+		return canScaleAfterDelay(logger, backoffUp, hasBeenAbove, wpa.Spec.UpscaleDelayAboveWatermarkSeconds)
 	}
 
 	hasBeenBelow, err := getCondition(&wpa.Status, datadoghqv1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark)
@@ -407,21 +407,24 @@ func shouldScale(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 		hasBeenBelow.Status = corev1.ConditionFalse
 	}
 	if desiredReplicas < currentReplicas {
-		return canScale(logger, backoffDown, hasBeenBelow, wpa.Spec.DownscaleDelayBelowWatermarkSeconds)
+		return canScaleAfterDelay(logger, backoffDown, hasBeenBelow, wpa.Spec.DownscaleDelayBelowWatermarkSeconds)
 	}
+	logger.Info("Will not scale: number of replicas has not changed")
 	return false
 }
 
-func canScale(logger logr.Logger, isBackoff bool, wasOutOfBounds autoscalingv2.HorizontalPodAutoscalerCondition, decisionDelay int32) bool {
+// canScaleAfterDelay allows scaling events if the metric has been out of bounds for longer than specified in the spec.
+// Does not block if the feature is disabled.
+func canScaleAfterDelay(logger logr.Logger, isBackoff bool, wasOutOfBounds autoscalingv2.HorizontalPodAutoscalerCondition, decisionDelay int32) bool {
 	// feature is disabled
 	if decisionDelay == 0 {
 		return !isBackoff
 	}
 
 	now := metav1.Now()
-	canScaleDelay := decisionDelay - int32(now.Sub(wasOutOfBounds.LastTransitionTime.Time).Seconds())
-	if canScaleDelay > 0 || wasOutOfBounds.Status != corev1.ConditionTrue {
-		logger.Info("Will not scale: value has not been out of bounds for long enough", "time_left", canScaleDelay)
+	scaleDelay := decisionDelay - int32(now.Sub(wasOutOfBounds.LastTransitionTime.Time).Seconds())
+	if scaleDelay > 0 || wasOutOfBounds.Status != corev1.ConditionTrue {
+		logger.Info("Will not scale: value has not been out of bounds for long enough", "time_left", scaleDelay)
 		return false
 	}
 	return !isBackoff
@@ -580,7 +583,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 			readyReplicas = readyReplicasProposal
 		}
 	}
-	setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionTrue, datadoghqv1alpha1.ConditionValidMetricFound, "the HPA was able to successfully calculate a replica count from %s", metric)
+	setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionTrue, datadoghqv1alpha1.ConditionValidMetricFound, "the WPA was able to successfully calculate a replica count from %s", metric)
 
 	return replicas, metric, statuses, timestamp, readyReplicas, nil
 }

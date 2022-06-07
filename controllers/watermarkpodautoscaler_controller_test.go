@@ -1214,7 +1214,7 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
-						// no need to check canScaleDelay as we keep the same number of replicas
+						// no need to check scaleDelay as we keep the same number of replicas
 					},
 				}),
 			},
@@ -1278,8 +1278,9 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 				timestamp:       time.Unix(1232599, 0), // TODO FIXME
 				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
 					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
-						UpscaleForbiddenWindowSeconds:   60,
-						DownscaleForbiddenWindowSeconds: 60,
+						UpscaleForbiddenWindowSeconds:     60,
+						DownscaleForbiddenWindowSeconds:   60,
+						UpscaleDelayAboveWatermarkSeconds: 10, // non null to make sure the feature is activated
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
