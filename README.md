@@ -58,7 +58,7 @@ The WPA controller will use `math.Floor` if the value is under the lower waterma
 
 To use the Watermark Pod Autoscaler, deploy it in your Kubernetes cluster:
 
-1. Download the [Watermark Pod Autoscaler project zip ball][https://github.com/DataDog/watermarkpodautoscaler/archive/main.zip]. Source code can be found at [`DataDog/watermarkpodautoscaler`][https://github.com/DataDog/watermarkpodautoscaler].
+1. Download the [Watermark Pod Autoscaler project zip file](https://github.com/DataDog/watermarkpodautoscaler/archive/main.zip). Source code can be found at [`DataDog/watermarkpodautoscaler`](https://github.com/DataDog/watermarkpodautoscaler).
 2. Unzip the project, and go into the `./watermarkpodautoscaler` folder.
 3. Define your namespace and Watermark Pod Autoscaler controller:
 
