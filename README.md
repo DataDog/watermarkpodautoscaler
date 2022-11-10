@@ -180,12 +180,13 @@ If all the conditions are met, the controller will scale the targeted object in 
 {"level":"info","ts":1566327479.866722,"logger":"wpa_controller","msg":"DryRun mode: scaling change was inhibited currentReplicas:8 desiredReplicas:12"}
 ```
 
+* **
+
 ## Limitations
 
 - Only for external metrics.
 - Only officially supports one metric per WPA.
 - Does not take CPU into account to normalize the number of replicas.
-- Does not consider the readiness of pods in the targeted deployment.
 - Similar to the HPA, the controller polls the External Metrics Provider every 15 seconds, which refreshes metrics every 30 seconds.
 
 ## Troubleshooting
@@ -349,7 +350,7 @@ kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/<your_ns>/me
 
 Requirements:
 
-* golang >= 1.13
+* golang >= 1.18
 * make
 * docker
 * git
