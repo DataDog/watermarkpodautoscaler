@@ -74,6 +74,11 @@ spec:
             algorithm:
               description: 'computed values take the # of replicas into account'
               type: string
+            convergeTowardsWatermark:
+              description: Try to make the usage converge towards High Watermark to
+                save resources. This will slowly downscale by `ReplicaScalingAbsoluteModulo`
+                if the predicted usage stays bellow the high watermarks.
+              type: string
             downscaleDelayBelowWatermarkSeconds:
               format: int32
               minimum: 0

@@ -3,6 +3,8 @@ vendor
 # Temporary Build Files
 build/_output
 build/_test
+controllers/__debug_bin
+errors
 cmd/kubectl-wpa/kubectl-wpa
 # Vendor folder
 /controller
