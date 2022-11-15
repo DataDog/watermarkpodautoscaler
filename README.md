@@ -11,40 +11,44 @@ The Watermark Pod Autoscaler (WPA) Controller is a custom controller that extend
 - Set high and low bounds to prevent autoscaling events.
 - Specify scaling velocity.
 - Specify windows of time to restrict upscale or downscale events.
+- Add delays to avoid scaling on bursts.
 - Different algorithms to compute the desired number of replicas.
 
 ### The goal
 
-This project is meant to solve the internal limitations faced with the upstream pod autoscaler controller.
-Many teams expend a lot of manual effort to autoscale. They can't rely on the HPA, as the logic is too simple.
-
-The WPA extends the HPA. We believe that many of, if not all of, the features of the WPA controller should be in the HPA.
-
-While we do use the WPA internally, we also want to submit a [KEP](https://github.com/kubernetes/enhancements/tree/master/keps) to suggest upstreaming the features and making them available to the community.
+The Watermark Pod Autoscaler Controller is an alternative controller to the upstream Horizontal Pod Autoscaler Controller.
 
 ### When to use it
 
 If you want to autoscale some of your applications, but:
 - The single threshold logic of the HPA is not enough.
-- You need to specify forbidden windows specific to your application.
-- You want to limit the scaling velocity.
-
-The WPA is intended to offset the limitations of the HPA.
+- If you need to have granular configuration the autoscaling controller.
 
 ## Usage
 
 ### The algorithm
 
-There are two options to compute the desired number of replicas. Depending on your use case, you might want to consider one of the following:
+e.g.
+
+```yaml
+apiVersion: datadoghq.com/v1alpha1
+kind: WatermarkPodAutoscaler
+[...]
+spec:
+  algorithm: absolute
+[...]
+```
+
+There are two options to compute the desired number of replicas:
 
 1. `average`
-    The ratio `value from the external metrics provider` / `current number of replicas`, and is compared to the watermarks. The recommended number of replicas is `value from the external metrics provider` / `watermark` (low or high depending on the current value).
+    The controller will use the ratio `value from the external metrics provider` / `current number of replicas`, and will compare it to the watermarks. The recommended number of replicas is `value from the external metrics provider` / `watermark` (low or high depending on the current value).
 
     The `average` algorithm is a good fit if you use a metric that does not depend on the number of replicas. Typically, the number of requests received by an ELB can indicate how many webservers we want to have, given that we know that a single webserver should handle `n` rq/s.
-    Adding a replica will not increase or decrease the number of requests received.
+    Adding a replica will not increase or decrease the number of requests received by the load balancer.
 
 2. `absolute`
-    The default value is `absolute`. We compare the raw **avg** metric from the external metrics provider and consider it the utilization ratio. The recommended number of replicas is computed as `current number of replicas` * `value from the external metrics provider` / `watermark`.
+    The default value is `absolute`. An **average** metric should be used. The recommended number of replicas is computed as `current number of replicas` * `value from the external metrics provider` / `watermark`.
 
     The `absolute` algorithm is the default, as it represents the most common use case. For example, if you want your application to run between 60% and 80% of CPU, and `avg:cpu.usage` is at 85%, you need to scale up. The metric has to be correlated to the number of replicas.
 
@@ -75,14 +79,6 @@ To use the Watermark Pod Autoscaler, deploy it in your Kubernetes cluster:
 
 5. Install the Watermark Pod Autoscaler controller with Helm:
 
-   - Helm v2:
-
-   ```shell
-   helm install --name $DD_NAMEWPA -n $DD_NAMESPACE ./chart/watermarkpodautoscaler
-   ```
-
-   - Helm v3:
-
    ```shell
    helm install $DD_NAMEWPA -n $DD_NAMESPACE ./chart/watermarkpodautoscaler
    ```
@@ -109,7 +105,9 @@ metadata:
   name: example-watermarkpodautoscaler
 spec:
   downscaleForbiddenWindowSeconds: 60
+  downscaleDelayBelowWatermarkSeconds: 300
   upscaleForbiddenWindowSeconds: 30
+  upscaleDelayAboveWatermarkSeconds: 30
   scaleDownLimitFactor: 30
   scaleUpLimitFactor: 50
   minReplicas: 4
@@ -131,6 +129,11 @@ spec:
     type: External
   tolerance: "0.01"
 ```
+
+* **Metric types**
+
+Both the `External` and the `Resource` metric types are supported. The WPA controller uses the same format as the HPA.
+More information [here](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#support-for-metrics-apis).
 
 * **Bounds**
 
@@ -165,6 +168,28 @@ Finally, the last options available are `downscaleForbiddenWindowSeconds` and `u
 In the following example, we can see that the recommended number of replicas is ignored if we are in a cooldown period. The downscale cooldown period can be visualized with `watermarkpodautoscaler.wpa_controller_transition_countdown{transition:downscale}`, and is represented in yellow on the graph below. We can see that it is significantly higher than the upscale cooldown period (`transition:upscale`) in orange on our graph. Once we are recommended to scale, we will only scale if the appropriate cooldown window is over. This will reset both countdowns.
 <img width="911" alt="Forbidden Windows" src="https://user-images.githubusercontent.com/7433560/63389864-a14cf300-c39c-11e9-9ad5-8308af5442ad.png">
 
+* **Scaling Delay**
+<a name="delay"></a>
+
+In order to avoid scaling from bursts you can use the following features: `downscaleDelayBelowWatermarkSeconds` and/or `upscaleDelayAboveWatermarkSeconds`. These options are specified as integers. The metric has to remain above or under its respective watermark for the configured duration.
+You can keep track of how much time is left in the status of the WPA:
+
+```
+  - lastTransitionTime: "2022-11-15T02:02:09Z"
+    message: Allow downscaling if the value stays under the Watermark
+    reason: Value below Low Watermark
+    status: "False"
+    type: BelowLowWatermark
+```
+
+Or in the logs of the controller:
+
+```
+{"level":"info","ts":1668481092517.446,"logger":"controllers.WatermarkPodAutoscaler","msg":"Will not scale: value has not been out of bounds for long enough","watermarkpodautoscaler":"datadog/example-watermarkpodautoscaler","wpa_name":"example-watermarkpodautoscaler","wpa_namespace":"datadog","time_left":3209}
+```
+
+**Note:** This feauture does not support using multiple metrics. 
+
 * **Precedence**
 <a name="precedence"></a>
 
@@ -172,7 +197,14 @@ As we retrieve the value of the external metric, we will first compare it to the
 If we are outside of the bounds, we compute the recommended number of replicas. We then compare this value to the current number of replicas to potentially cap the recommended number of replicas also according to `minReplicas` and `maxReplicas`.
 Finally, we look at if we are allowed to scale, given the `downscaleForbiddenWindowSeconds` and `upscaleForbiddenWindowSeconds`.
 
-* **Scaling**
+* **Pod Lifecycle**
+
+In order to have more granular controller over the conditions under which a target can be scaled, you can use the following features:
+- `minAvailableReplicaPercentage`: Indicates the minimum percentage of replicas that need to be available in order for the controller to autoscale the target. For instance, if set at 50 and less than half of the pods behind the target are in an Available state, the target will not be scaled by the controller.
+
+- `readinessDelaySeconds`: Specifies how much time replicas need to be running for, prior to be taken into account in the scaling decisions.
+
+* **Simulation** 
 
 If all the conditions are met, the controller will scale the targeted object in `scaleTargetRef` to the recommended number of replicas only if the `dryRun` flag is not set to `true`. It will indicate this by logging:
 
@@ -184,10 +216,8 @@ If all the conditions are met, the controller will scale the targeted object in 
 
 ## Limitations
 
-- Only for external metrics.
 - Only officially supports one metric per WPA.
 - Does not take CPU into account to normalize the number of replicas.
-- Similar to the HPA, the controller polls the External Metrics Provider every 15 seconds, which refreshes metrics every 30 seconds.
 
 ## Troubleshooting
 
@@ -247,11 +277,12 @@ In addition to the metrics mentioned above, these are logs that will help you be
 Every 15 seconds, we retrieve the metric listed in the `metrics` section of the spec from Datadog.
 
 ```json
-{"level":"info","ts":1566327479.866722,"logger":"wpa_controller","msg":"Target deploy: {namespace1/my-application replicas:6}"}
-{"level":"info","ts":1566327479.8844478,"logger":"wpa_controller","msg":"Metrics from the External Metrics Provider: [127]"}
-{"level":"info","ts":1566327479.8844907,"logger":"wpa_controller","msg":"About to compare utilization 127 vs LWM 150 and HWM 400"}
-{"level":"info","ts":1566327479.8844962,"logger":"wpa_controller","msg":"Value is below lowMark. Usage: 127 ReplicaCount 5"}
-{"level":"info","ts":1566327479.8845394,"logger":"wpa_controller","msg":"Proposing 5 replicas: Based on cutom_metric.max{map[kubernetes_cluster:my-cluster service:my-service short_image:my-image]} at 18:57:59 targeting: Deployment/namespace1/my-application"}
+{"level":"info","ts":1668484420515.7678,"logger":"controllers.WatermarkPodAutoscaler","msg":"Metrics from the External Metrics Provider","watermarkpodautoscaler":"datadog/example-watermarkpodautoscaler","wpa_name":"example-watermarkpodautoscaler","wpa_namespace":"datadog","metrics":[33959]}
+{"level":"info","ts":1668484420515.8203,"logger":"controllers.WatermarkPodAutoscaler","msg":"Value is below lowMark","watermarkpodautoscaler":"datadog/example-watermarkpodautoscaler","wpa_name":"example-watermarkpodautoscaler","wpa_namespace":"datadog","usage":"33959m","replicaCount":7,"currentReadyReplicas":8,"tolerance (%)":1,"adjustedLM":34650,"adjustedUsage":33959}
+{"level":"info","ts":1668484420515.8906,"logger":"controllers.WatermarkPodAutoscaler","msg":"Proposing replicas","watermarkpodautoscaler":"datadog/example-watermarkpodautoscaler","wpa_name":"example-watermarkpodautoscaler","wpa_namespace":"datadog","proposedReplicas":7,"metricName":"datadogmetric@datadog:example-watermarkpodautoscaler-utilization-metric{map[kube_container_name:my-container service:my-target]}","reference":"Deployment/datadog/example-watermarkpodautoscaler","metric timestamp":"Tue, 15 Nov 2022 03:53:20 UTC"}
+{"level":"info","ts":1668484420515.9324,"logger":"controllers.WatermarkPodAutoscaler","msg":"Normalized Desired replicas","watermarkpodautoscaler":"datadog/example-watermarkpodautoscaler","wpa_name":"example-watermarkpodautoscaler","wpa_namespace":"datadog","desiredReplicas":7}
+{"level":"info","ts":1668484420515.946,"logger":"controllers.WatermarkPodAutoscaler","msg":"Cooldown status","watermarkpodautoscaler":"datadog/example-watermarkpodautoscaler","wpa_name":"example-watermarkpodautoscaler","wpa_namespace":"datadog","backoffUp":false,"backoffDown":false,"desiredReplicas":7,"currentReplicas":8}
+{"level":"info","ts":1668484420515.9563,"logger":"controllers.WatermarkPodAutoscaler","msg":"Will not scale: value has not been out of bounds for long enough","watermarkpodautoscaler":"datadog/example-watermarkpodautoscaler","wpa_name":"example-watermarkpodautoscaler","wpa_namespace":"datadog","time_left":2335}
 ```
 
 Here, the current number of replicas seen in the target deployment is six.
@@ -321,8 +352,8 @@ Finally, we have verification that the deployment was correctly autoscaled:
 - **What is the footprint of the controller?**
 
     From our testing, it is a factor of the number of deployments in the cluster.
-    * 500+ deployments, 65MB - 10mCores
-    * 1600+ deployments, 105MB - 5mCores
+    * 500+ deployments, 1GB - 30mCores
+    * 1000+ deployments, 2.3GB - 100mCores
     **Note:** When the API server restarts, the controller runtime caches the old state and the new one for a second and then merges everything. This makes the memory usage shoot up and can OOM the controller.
 
 - **Is the controller stateless?**
