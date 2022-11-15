@@ -26,10 +26,12 @@ import (
 )
 
 const (
-	aboveHighWatermarkAllowedMessage = "Allow upscaling if the value stays over the Watermark"
-	belowLowWatermarkAllowedMessage  = "Allow downscaling if the value stays under the Watermark"
-	aboveHighWatermarkReason         = "Value above High Watermark"
-	belowLowWatermarkReason          = "Value above Low Watermark"
+	aboveHighWatermarkAllowedMessage      = "Allow upscaling if the value stays over the Watermark"
+	belowLowWatermarkAllowedMessage       = "Allow downscaling if the value stays under the Watermark"
+	convergeToHighWatermarkAllowedMessage = "Allow downscaling to convert to the High Watermark"
+	aboveHighWatermarkReason              = "Value above High Watermark"
+	belowLowWatermarkReason               = "Value above Low Watermark"
+	convergeToHighWatermarkAllowedReason  = "Value between Watermarks"
 )
 
 // ReplicaCalculation is used to compute the scaling recommendation.
@@ -212,6 +214,89 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp, int32(readyPodCount)}, nil
 }
 
+func Max(x, y int32) int32 {
+	if x < y {
+		return y
+	}
+	return x
+}
+
+func getReplicaCountUpscale(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, highMark *resource.Quantity) (replicaCount int32) {
+	replicaCount = int32(math.Ceil(float64(currentReadyReplicas) * adjustedUsage / (float64(highMark.MilliValue()))))
+	// Scale up the computed replica count so that it is evenly divisible by the ReplicaScalingAbsoluteModulo.
+	if replicaScalingAbsoluteModuloRemainder := int32(math.Mod(float64(replicaCount), float64(*wpa.Spec.ReplicaScalingAbsoluteModulo))); replicaScalingAbsoluteModuloRemainder > 0 {
+		replicaCount += *wpa.Spec.ReplicaScalingAbsoluteModulo - replicaScalingAbsoluteModuloRemainder
+	}
+
+	if replicaCount < currentReplicas {
+		logger.Info("Recommendation is lower than current number of replicas while attempting to upscale, aborting", "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas)
+		replicaCount = currentReplicas
+	}
+
+	setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark, corev1.ConditionTrue, aboveHighWatermarkReason, aboveHighWatermarkAllowedMessage)
+	setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark, corev1.ConditionFalse, belowLowWatermarkReason, belowLowWatermarkAllowedMessage)
+	setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusConvergeToHighWatermark, corev1.ConditionFalse, convergeToHighWatermarkAllowedMessage, convergeToHighWatermarkAllowedReason)
+
+	return replicaCount
+}
+
+func getReplicaCountDownscale(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, lowMark *resource.Quantity) (replicaCount int32) {
+	replicaCount = int32(math.Floor(float64(currentReadyReplicas) * adjustedUsage / (float64(lowMark.MilliValue()))))
+	// Keep a minimum of 1 replica
+	replicaCount = Max(replicaCount, 1)
+	if replicaScalingAbsoluteModuloRemainder := int32(math.Mod(float64(replicaCount), float64(*wpa.Spec.ReplicaScalingAbsoluteModulo))); replicaScalingAbsoluteModuloRemainder > 0 {
+		// Scale up the computed replica count so that it is evenly divisible by the ReplicaScalingAbsoluteModulo.
+		replicaCount += *wpa.Spec.ReplicaScalingAbsoluteModulo - replicaScalingAbsoluteModuloRemainder
+	}
+
+	if replicaCount > currentReplicas {
+		logger.Info("Recommendation is higher than current number of replicas while attempting to downscale, aborting", "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas)
+		replicaCount = currentReplicas
+	}
+
+	setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark, corev1.ConditionFalse, aboveHighWatermarkReason, aboveHighWatermarkAllowedMessage)
+	setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark, corev1.ConditionTrue, belowLowWatermarkReason, belowLowWatermarkAllowedMessage)
+	setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusConvergeToHighWatermark, corev1.ConditionFalse, convergeToHighWatermarkAllowedMessage, convergeToHighWatermarkAllowedReason)
+
+	return replicaCount
+}
+
+func getReplicaCountWithinBounds(currentReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCount int32) {
+
+	setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark, corev1.ConditionFalse, aboveHighWatermarkReason, aboveHighWatermarkAllowedMessage)
+	setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark, corev1.ConditionFalse, belowLowWatermarkReason, belowLowWatermarkAllowedMessage)
+	setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusConvergeToHighWatermark, corev1.ConditionFalse, convergeToHighWatermarkAllowedMessage, convergeToHighWatermarkAllowedReason)
+
+	// returning the currentReplicas instead of the count of healthy ones to be consistent with the upstream behavior.
+	return currentReplicas
+}
+
+// tryToConvergeToHw will try to make the replicaCount slowly converge to high watermark but make sure that it does
+//
+//	not trigger a downscale that would put usage above HW
+func tryToConvergeToHw(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, lowMark, highMark *resource.Quantity) (replicaCount int32) {
+
+	downScaleBy := *wpa.Spec.ReplicaScalingAbsoluteModulo
+	currentReplicasAfterDownscale := Max(currentReplicas-downScaleBy, 1)
+	currentReadyReplicasAfterDownscale := Max(currentReadyReplicas-downScaleBy, 0)
+
+	adjustedUsageAfterDownscale := int64(math.Ceil(adjustedUsage * float64(currentReadyReplicas) / float64(currentReadyReplicasAfterDownscale)))
+
+	if adjustedUsageAfterDownscale > highMark.MilliValue() {
+		// This would result in a downscale, give up
+		logger.Info("Scaling down would likely make usage go above HW", "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "currentReadyReplicasAfterDownscale", currentReadyReplicasAfterDownscale, "adjustedUsageAfterDownscale", adjustedUsageAfterDownscale, "highMark", highMark.MilliValue())
+		return getReplicaCountWithinBounds(currentReplicas, wpa)
+	}
+
+	setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark, corev1.ConditionFalse, aboveHighWatermarkReason, aboveHighWatermarkAllowedMessage)
+	setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark, corev1.ConditionFalse, belowLowWatermarkReason, belowLowWatermarkAllowedMessage)
+	setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusConvergeToHighWatermark, corev1.ConditionTrue, convergeToHighWatermarkAllowedMessage, convergeToHighWatermarkAllowedReason)
+
+	// This should stay under HW
+	logger.Info("Trying to scale down to convert to HW", "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "currentReplicasAfterDownscale", currentReplicasAfterDownscale, "currentReadyReplicasAfterDownscale", currentReadyReplicasAfterDownscale, "adjustedUsageAfterDownscale", adjustedUsageAfterDownscale, "highMark", highMark.MilliValue())
+	return currentReplicasAfterDownscale
+}
+
 func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, name string, adjustedUsage float64, lowMark, highMark *resource.Quantity) (replicaCount int32, utilization int64) {
 	utilizationQuantity := resource.NewMilliQuantity(int64(adjustedUsage), resource.DecimalSI)
 	adjustedHM := float64(highMark.MilliValue() + highMark.MilliValue()*wpa.Spec.Tolerance.MilliValue()/1000)
@@ -220,54 +305,34 @@ func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas i
 	labelsWithReason := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reasonPromLabel: withinBoundsPromLabelVal}
 	labelsWithMetricName := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, metricNamePromLabel: name}
 
+	value.With(labelsWithMetricName).Set(adjustedUsage)
+	msg := ""
+
 	switch {
+	// Upscale if usage > hw
 	case adjustedUsage > adjustedHM:
-		replicaCount = int32(math.Ceil(float64(currentReadyReplicas) * adjustedUsage / (float64(highMark.MilliValue()))))
-		// Scale up the computed replica count so that it is evenly divisible by the ReplicaScalingAbsoluteModulo.
-		if replicaScalingAbsoluteModuloRemainder := int32(math.Mod(float64(replicaCount), float64(*wpa.Spec.ReplicaScalingAbsoluteModulo))); replicaScalingAbsoluteModuloRemainder > 0 {
-			replicaCount += *wpa.Spec.ReplicaScalingAbsoluteModulo - replicaScalingAbsoluteModuloRemainder
-		}
-		// tolerance: milliValue/10 to represent the %.
-		logger.Info("Value is above highMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "tolerance (%)", float64(wpa.Spec.Tolerance.MilliValue())/10, "adjustedHM", adjustedHM, "adjustedUsage", adjustedUsage)
-		if replicaCount < currentReplicas {
-			logger.Info("Recommendation is lower than current number of replicas while attempting to upscale, aborting", "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas)
-			replicaCount = currentReplicas
-		}
-
-		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark, corev1.ConditionTrue, aboveHighWatermarkReason, aboveHighWatermarkAllowedMessage)
-		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark, corev1.ConditionFalse, belowLowWatermarkReason, belowLowWatermarkAllowedMessage)
-
+		msg = "Value is above highMark"
+		restrictedScaling.With(labelsWithReason).Set(0)
+		replicaCount = getReplicaCountUpscale(logger, currentReplicas, currentReadyReplicas, wpa, adjustedUsage, highMark)
+	// Downscale if usage < lw
 	case adjustedUsage < adjustedLM:
-		replicaCount = int32(math.Floor(float64(currentReadyReplicas) * adjustedUsage / (float64(lowMark.MilliValue()))))
-		// Keep a minimum of 1 replica
-		replicaCount = int32(math.Max(float64(replicaCount), 1))
-		if replicaScalingAbsoluteModuloRemainder := int32(math.Mod(float64(replicaCount), float64(*wpa.Spec.ReplicaScalingAbsoluteModulo))); replicaScalingAbsoluteModuloRemainder > 0 {
-			// Scale up the computed replica count so that it is evenly divisible by the ReplicaScalingAbsoluteModulo.
-			replicaCount += *wpa.Spec.ReplicaScalingAbsoluteModulo - replicaScalingAbsoluteModuloRemainder
-		}
-		logger.Info("Value is below lowMark", "usage", utilizationQuantity.String(), "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "tolerance (%)", float64(wpa.Spec.Tolerance.MilliValue())/10, "adjustedLM", adjustedLM, "adjustedUsage", adjustedUsage)
-		if replicaCount > currentReplicas {
-			logger.Info("Recommendation is higher than current number of replicas while attempting to downscale, aborting", "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas)
-			replicaCount = currentReplicas
-		}
-
-		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark, corev1.ConditionFalse, aboveHighWatermarkReason, aboveHighWatermarkAllowedMessage)
-		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark, corev1.ConditionTrue, belowLowWatermarkReason, belowLowWatermarkAllowedMessage)
-
+		msg = "Value is below lowMark"
+		restrictedScaling.With(labelsWithReason).Set(0)
+		replicaCount = getReplicaCountDownscale(logger, currentReplicas, currentReadyReplicas, wpa, adjustedUsage, lowMark)
+	// Do nothing if within bounds
 	default:
-		restrictedScaling.With(labelsWithReason).Set(1)
-		value.With(labelsWithMetricName).Set(adjustedUsage)
-		logger.Info("Within bounds of the watermarks", "value", utilizationQuantity.String(), "currentReadyReplicas", currentReadyReplicas, "tolerance (%)", float64(wpa.Spec.Tolerance.MilliValue())/10, "adjustedLM", adjustedLM, "adjustedHM", adjustedHM, "adjustedUsage", adjustedUsage)
-
-		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark, corev1.ConditionFalse, aboveHighWatermarkReason, aboveHighWatermarkAllowedMessage)
-		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark, corev1.ConditionFalse, belowLowWatermarkReason, belowLowWatermarkAllowedMessage)
-
-		// returning the currentReplicas instead of the count of healthy ones to be consistent with the upstream behavior.
-		return currentReplicas, utilizationQuantity.MilliValue()
+		msg = "Within bounds of the watermarks"
+		if wpa.Spec.ConvergeTowardsHighWatermark == true {
+			logger.Info("Trying to converge towards HW")
+			msg = msg + " and trying to converge towards HW"
+			replicaCount = tryToConvergeToHw(logger, currentReplicas, currentReadyReplicas, wpa, adjustedUsage, lowMark, highMark)
+		} else {
+			restrictedScaling.With(labelsWithReason).Set(1)
+			replicaCount = getReplicaCountWithinBounds(currentReplicas, wpa)
+		}
 	}
 
-	restrictedScaling.With(labelsWithReason).Set(0)
-	value.With(labelsWithMetricName).Set(adjustedUsage)
+	logger.Info(msg, "usage", utilizationQuantity.String(), "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "tolerance (%)", float64(wpa.Spec.Tolerance.MilliValue())/10, "adjustedLM", adjustedLM, "adjustedHM", adjustedHM, "adjustedUsage", adjustedUsage)
 
 	return replicaCount, utilizationQuantity.MilliValue()
 }

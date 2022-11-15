@@ -80,6 +80,10 @@ type WatermarkPodAutoscalerSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	ReplicaScalingAbsoluteModulo *int32 `json:"replicaScalingAbsoluteModulo,omitempty"`
 
+	// Try to make the usage converge towards High Watermark to save resources. This will slowly downscale by `ReplicaScalingAbsoluteModulo`
+	// if the predicted usage stays bellow the high watermarks.
+	ConvergeTowardsHighWatermark bool `json:"convergeTowardsHighWatermark,omitempty"`
+
 	// Parameter used to be a float, in order to support the transition seamlessly, we validate that it is ]0;1[ in the code.
 	Tolerance resource.Quantity `json:"tolerance,omitempty"`
 
@@ -220,6 +224,9 @@ const WatermarkPodAutoscalerStatusBelowLowWatermark autoscalingv2.HorizontalPodA
 
 // WatermarkPodAutoscalerStatusAboveHighWatermark ConditionType used when the value is above the high watermark
 const WatermarkPodAutoscalerStatusAboveHighWatermark autoscalingv2.HorizontalPodAutoscalerConditionType = "AboveHighWatermark"
+
+// WatermarkPodAutoscalerStatusConvergeToHighWatermark ConditionType used when the value is within bound and we're trying to converge to the high watermark
+const WatermarkPodAutoscalerStatusConvergeToHighWatermark autoscalingv2.HorizontalPodAutoscalerConditionType = "ConvergeToHighWatermark"
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 

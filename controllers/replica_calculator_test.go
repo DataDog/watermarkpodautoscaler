@@ -430,6 +430,74 @@ func TestScaleIntervalReplicaCalcNoScale(t *testing.T) {
 	tc.runTest(t)
 }
 
+func TestScaleIntervalReplicaCalcConvergeNoScaleDown(t *testing.T) {
+	logf.SetLogger(zap.New())
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ResourceMetricSourceType,
+		Resource: &v1alpha1.ResourceMetricSource{
+			Name:           corev1.ResourceCPU,
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
+			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
+		},
+	}
+
+	tc := replicaCalcTestCase{
+		expectedReplicas: 3, // We're not going to scale down because that would bring the utilization to 40500 which would be above HW
+		readyReplicas:    3,
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				Algorithm:                    "absolute",
+				Tolerance:                    *resource.NewMilliQuantity(25, resource.DecimalSI), // 25m represents 2.5%
+				Metrics:                      []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
+				ConvergeTowardsHighWatermark: true,
+			},
+		},
+		metric: &metricInfo{
+			spec:                metric1,
+			levels:              []int64{9000, 9000, 9000}, // We are between the high and low watermarks.
+			expectedUtilization: 27000,
+		},
+	}
+	tc.runTest(t)
+}
+
+func TestScaleIntervalReplicaCalcConvergeScaleDown(t *testing.T) {
+	logf.SetLogger(zap.New())
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ResourceMetricSourceType,
+		Resource: &v1alpha1.ResourceMetricSource{
+			Name:           corev1.ResourceCPU,
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
+			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
+		},
+	}
+
+	tc := replicaCalcTestCase{
+		expectedReplicas: 2,
+		readyReplicas:    3,
+		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				Algorithm:                    "absolute",
+				Tolerance:                    *resource.NewMilliQuantity(25, resource.DecimalSI), // 25m represents 2.5%
+				Metrics:                      []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
+				ConvergeTowardsHighWatermark: true,
+			},
+		},
+		metric: &metricInfo{
+			spec:                metric1,
+			levels:              []int64{8000, 8000, 8000}, // We are between the high and low watermarks.
+			expectedUtilization: 27000,
+		},
+	}
+	tc.runTest(t)
+}
+
 func TestReplicaCalcAbsoluteScaleDown(t *testing.T) {
 	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{

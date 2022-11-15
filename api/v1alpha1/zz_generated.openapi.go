@@ -280,6 +280,13 @@ func schema__api_v1alpha1_WatermarkPodAutoscalerSpec(ref common.ReferenceCallbac
 							Format:      "int32",
 						},
 					},
+					"convergeTowardsHighWatermark": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Try to make the usage converge towards High Watermark to save resources. This will slowly downscale by `ReplicaScalingAbsoluteModulo` if the predicted usage stays bellow the high watermarks.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
 					"tolerance": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Parameter used to be a float, in order to support the transition seamlessly, we validate that it is ]0;1[ in the code.",
