@@ -22,7 +22,7 @@ The Watermark Pod Autoscaler Controller is an alternative controller to the upst
 
 If you want to autoscale some of your applications, but:
 - The single threshold logic of the HPA is not enough.
-- If you need to have granular configuration the autoscaling controller.
+- If you need to have granular configuration for the autoscaling controller.
 
 ## Usage
 
@@ -199,7 +199,7 @@ Finally, we look at if we are allowed to scale, given the `downscaleForbiddenWin
 
 * **Pod Lifecycle**
 
-In order to have more granular controller over the conditions under which a target can be scaled, you can use the following features:
+In order to have more granular control over the conditions under which a target can be scaled, you can use the following features:
 - `minAvailableReplicaPercentage`: Indicates the minimum percentage of replicas that need to be available in order for the controller to autoscale the target. For instance, if set at 50 and less than half of the pods behind the target are in an Available state, the target will not be scaled by the controller.
 
 - `readinessDelaySeconds`: Specifies how much time replicas need to be running for, prior to be taken into account in the scaling decisions.
