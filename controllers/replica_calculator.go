@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
+	"github.com/DataDog/watermarkpodautoscaler/pkg/math32"
 
 	metricsclient "github.com/DataDog/watermarkpodautoscaler/third_party/kubernetes/pkg/controller/podautoscaler/metrics"
 	"github.com/go-logr/logr"
@@ -214,15 +215,8 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp, int32(readyPodCount)}, nil
 }
 
-func Max(x, y int32) int32 {
-	if x < y {
-		return y
-	}
-	return x
-}
-
 func getReplicaCountUpscale(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, highMark *resource.Quantity) (replicaCount int32) {
-	replicaCount = int32(math.Ceil(float64(currentReadyReplicas) * adjustedUsage / (float64(highMark.MilliValue()))))
+	replicaCount = math32.Ceil(float64(currentReadyReplicas) * adjustedUsage / (float64(highMark.MilliValue())))
 	// Scale up the computed replica count so that it is evenly divisible by the ReplicaScalingAbsoluteModulo.
 	if replicaScalingAbsoluteModuloRemainder := int32(math.Mod(float64(replicaCount), float64(*wpa.Spec.ReplicaScalingAbsoluteModulo))); replicaScalingAbsoluteModuloRemainder > 0 {
 		replicaCount += *wpa.Spec.ReplicaScalingAbsoluteModulo - replicaScalingAbsoluteModuloRemainder
@@ -241,10 +235,10 @@ func getReplicaCountUpscale(logger logr.Logger, currentReplicas, currentReadyRep
 }
 
 func getReplicaCountDownscale(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, lowMark *resource.Quantity) (replicaCount int32) {
-	replicaCount = int32(math.Floor(float64(currentReadyReplicas) * adjustedUsage / (float64(lowMark.MilliValue()))))
+	replicaCount = math32.Floor(float64(currentReadyReplicas) * adjustedUsage / (float64(lowMark.MilliValue())))
 	// Keep a minimum of 1 replica
-	replicaCount = Max(replicaCount, 1)
-	if replicaScalingAbsoluteModuloRemainder := int32(math.Mod(float64(replicaCount), float64(*wpa.Spec.ReplicaScalingAbsoluteModulo))); replicaScalingAbsoluteModuloRemainder > 0 {
+	replicaCount = math32.Max(replicaCount, 1)
+	if replicaScalingAbsoluteModuloRemainder := math32.Mod(replicaCount, *wpa.Spec.ReplicaScalingAbsoluteModulo); replicaScalingAbsoluteModuloRemainder > 0 {
 		// Scale up the computed replica count so that it is evenly divisible by the ReplicaScalingAbsoluteModulo.
 		replicaCount += *wpa.Spec.ReplicaScalingAbsoluteModulo - replicaScalingAbsoluteModuloRemainder
 	}
@@ -277,12 +271,12 @@ func getReplicaCountWithinBounds(currentReplicas int32, wpa *v1alpha1.WatermarkP
 func tryToConvergeToHw(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, lowMark, highMark *resource.Quantity) (replicaCount int32) {
 
 	downScaleBy := *wpa.Spec.ReplicaScalingAbsoluteModulo
-	currentReplicasAfterDownscale := Max(currentReplicas-downScaleBy, 1)
-	currentReadyReplicasAfterDownscale := Max(currentReadyReplicas-downScaleBy, 0)
+	currentReplicasAfterDownscale := math32.Max(currentReplicas-downScaleBy, 1)
+	currentReadyReplicasAfterDownscale := math32.Max(currentReadyReplicas-downScaleBy, 0)
 
-	adjustedUsageAfterDownscale := int64(math.Ceil(adjustedUsage * float64(currentReadyReplicas) / float64(currentReadyReplicasAfterDownscale)))
+	adjustedUsageAfterDownscale := math.Ceil(adjustedUsage * float64(currentReadyReplicas) / float64(currentReadyReplicasAfterDownscale))
 
-	if adjustedUsageAfterDownscale > highMark.MilliValue() {
+	if int64(adjustedUsageAfterDownscale) > highMark.MilliValue() {
 		// This would result in a downscale, give up
 		logger.Info("Scaling down would likely make usage go above HW", "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "currentReadyReplicasAfterDownscale", currentReadyReplicasAfterDownscale, "adjustedUsageAfterDownscale", adjustedUsageAfterDownscale, "highMark", highMark.MilliValue())
 		return getReplicaCountWithinBounds(currentReplicas, wpa)
@@ -299,8 +293,8 @@ func tryToConvergeToHw(logger logr.Logger, currentReplicas, currentReadyReplicas
 
 func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, name string, adjustedUsage float64, lowMark, highMark *resource.Quantity) (replicaCount int32, utilization int64) {
 	utilizationQuantity := resource.NewMilliQuantity(int64(adjustedUsage), resource.DecimalSI)
-	adjustedHM := float64(highMark.MilliValue() + highMark.MilliValue()*wpa.Spec.Tolerance.MilliValue()/1000)
-	adjustedLM := float64(lowMark.MilliValue() - lowMark.MilliValue()*wpa.Spec.Tolerance.MilliValue()/1000)
+	adjustedHM := float64(highMark.MilliValue() + highMark.MilliValue()*wpa.Spec.Tolerance.MilliValue()/1000.)
+	adjustedLM := float64(lowMark.MilliValue() - lowMark.MilliValue()*wpa.Spec.Tolerance.MilliValue()/1000.)
 
 	labelsWithReason := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reasonPromLabel: withinBoundsPromLabelVal}
 	labelsWithMetricName := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, metricNamePromLabel: name}

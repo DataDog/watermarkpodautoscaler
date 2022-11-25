@@ -492,7 +492,7 @@ func TestScaleIntervalReplicaCalcConvergeScaleDown(t *testing.T) {
 		metric: &metricInfo{
 			spec:                metric1,
 			levels:              []int64{8000, 8000, 8000}, // We are between the high and low watermarks.
-			expectedUtilization: 27000,
+			expectedUtilization: 24000,
 		},
 	}
 	tc.runTest(t)
