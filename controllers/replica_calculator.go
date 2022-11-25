@@ -266,8 +266,7 @@ func getReplicaCountWithinBounds(currentReplicas int32, wpa *v1alpha1.WatermarkP
 }
 
 // tryToConvergeToHw will try to make the replicaCount slowly converge to high watermark but make sure that it does
-//
-//	not trigger a downscale that would put usage above HW
+// not trigger a downscale that would put usage above HW
 func tryToConvergeToHw(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, lowMark, highMark *resource.Quantity) (replicaCount int32) {
 
 	downScaleBy := *wpa.Spec.ReplicaScalingAbsoluteModulo
