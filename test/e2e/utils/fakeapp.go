@@ -3,6 +3,7 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
 // Copyright 2016-present Datadog, Inc.
 
+// Package utils container testing helper to deploy a fake app and a fake hpa
 package utils
 
 import (
@@ -39,8 +40,10 @@ func NewFakeAppDeployment(ns, name string, options *NewFakeAppDeploymentOptions)
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{{
-						Image: "k8s.gcr.io/pause:latest",
-						Name:  "main",
+						Image:   "ubuntu:latest",
+						Command: []string{"sleep"},
+						Args:    []string{"infinity"},
+						Name:    "main",
 						Ports: []corev1.ContainerPort{{
 							ContainerPort: 80,
 							Name:          "http",

@@ -3,12 +3,13 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
 // Copyright 2016-present Datadog, Inc.
 
+// Package metricsserver contains metricsserver deployment function and manifest files.
 package metricsserver
 
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -21,7 +22,7 @@ import (
 
 // InitMetricsServerFiles used to initialize the fake-custom-metrics-server
 func InitMetricsServerFiles(r io.Writer, deployDir, namespace string) ([]client.Object, error) {
-	files, err := ioutil.ReadDir(deployDir)
+	files, err := os.ReadDir(deployDir)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +43,7 @@ func InitMetricsServerFiles(r io.Writer, deployDir, namespace string) ([]client.
 		fmt.Fprintf(r, "metrics-server resource: %s", file.Name())
 
 		var bytes []byte
-		bytes, err = ioutil.ReadFile(filepath.Join(deployDir, file.Name()))
+		bytes, err = os.ReadFile(filepath.Join(deployDir, file.Name()))
 		if err != nil {
 			return nil, err
 		}

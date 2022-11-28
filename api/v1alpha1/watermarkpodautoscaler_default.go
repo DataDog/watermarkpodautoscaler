@@ -56,7 +56,6 @@ func DefaultWatermarkPodAutoscaler(wpa *WatermarkPodAutoscaler) *WatermarkPodAut
 
 // IsDefaultWatermarkPodAutoscaler is used to know if a WatermarkPodAutoscaler has default values
 func IsDefaultWatermarkPodAutoscaler(wpa *WatermarkPodAutoscaler) bool {
-
 	if wpa.Spec.MinReplicas == nil {
 		return false
 	}

@@ -11,7 +11,7 @@ spec:
   homepage: https://github.com/DataDog/watermarkpodautoscaler
   platforms:
   - uri: https://github.com/DataDog/watermarkpodautoscaler/releases/download/PLACEHOLDER_TAG/kubectl-wpa_PLACEHOLDER_VERSION_darwin_amd64.zip
-    sha256: "PLACEHOLDER_SHA_DARWIN"
+    sha256: "PLACEHOLDER_SHA_AMD_DARWIN"
     bin: kubectl-wpa
     files:
     - from: kubectl-wpa
@@ -23,7 +23,7 @@ spec:
         os: darwin
         arch: amd64
   - uri: https://github.com/DataDog/watermarkpodautoscaler/releases/download/PLACEHOLDER_TAG/kubectl-wpa_PLACEHOLDER_VERSION_linux_amd64.zip
-    sha256: "PLACEHOLDER_SHA_LINUX"
+    sha256: "PLACEHOLDER_SHA_AMD_LINUX"
     bin: kubectl-wpa
     files:
     - from: kubectl-wpa
@@ -35,7 +35,7 @@ spec:
         os: linux
         arch: amd64
   - uri: https://github.com/DataDog/watermarkpodautoscaler/releases/download/PLACEHOLDER_TAG/kubectl-wpa_PLACEHOLDER_VERSION_windows_amd64.zip
-    sha256: "PLACEHOLDER_SHA_WINDOWS"
+    sha256: "PLACEHOLDER_SHA_AMD_WINDOWS"
     bin: kubectl-wpa.exe
     files:
     - from: kubectl-wpa.exe
@@ -46,3 +46,39 @@ spec:
       matchLabels:
         os: windows
         arch: amd64
+  - uri: https://github.com/DataDog/watermarkpodautoscaler/releases/download/PLACEHOLDER_TAG/kubectl-wpa_PLACEHOLDER_VERSION_darwin_arm64.zip
+    sha256: "PLACEHOLDER_SHA_ARM_DARWIN"
+    bin: kubectl-wpa
+    files:
+    - from: kubectl-wpa
+      to: .
+    - from: LICENSE
+      to: .
+    selector:
+      matchLabels:
+        os: darwin
+        arch: arm64
+  - uri: https://github.com/DataDog/watermarkpodautoscaler/releases/download/PLACEHOLDER_TAG/kubectl-wpa_PLACEHOLDER_VERSION_linux_arm64.zip
+    sha256: "PLACEHOLDER_SHA_ARM_LINUX"
+    bin: kubectl-wpa
+    files:
+    - from: kubectl-wpa
+      to: .
+    - from: LICENSE
+      to: .
+    selector:
+      matchLabels:
+        os: linux
+        arch: arm64
+  - uri: https://github.com/DataDog/watermarkpodautoscaler/releases/download/PLACEHOLDER_TAG/kubectl-wpa_PLACEHOLDER_VERSION_windows_arm64.zip
+    sha256: "PLACEHOLDER_SHA_ARM_WINDOWS"
+    bin: kubectl-wpa.exe
+    files:
+    - from: kubectl-wpa.exe
+      to: .
+    - from: LICENSE
+      to: .
+    selector:
+      matchLabels:
+        os: windows
+        arch: arm64

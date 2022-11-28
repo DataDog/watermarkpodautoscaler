@@ -8,7 +8,7 @@ set -e
 ROOT=$(git rev-parse --show-toplevel)
 cd $ROOT
 
-./hack/license.sh
+make licenses
 
 DIFF=$(git --no-pager diff LICENSE-3rdparty.csv)
 if [[ "${DIFF}x" != "x" ]]
