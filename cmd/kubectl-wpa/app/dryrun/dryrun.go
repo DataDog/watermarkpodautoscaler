@@ -8,12 +8,13 @@ package dryrun
 import (
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 
 	"github.com/spf13/cobra"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -301,7 +302,7 @@ func (o *dryrunOptions) run(actionFunc func(wpas []v1alpha1.WatermarkPodAutoscal
 
 		options := client.ListOptions{Namespace: o.userNamespace, LabelSelector: selector}
 		err = o.client.List(context.TODO(), wpas, &options)
-		if err != nil && errors.IsNotFound(err) {
+		if err != nil && k8serrors.IsNotFound(err) {
 			return fmt.Errorf("WatermarkPodAutoscaler not found with namespace: %s, label-selector: %s", o.userNamespace, o.labelSelector)
 		} else if err != nil {
 			return fmt.Errorf("unable to get WatermarkPodAutoscaler, err: %w", err)
@@ -330,7 +331,7 @@ func (o *dryrunOptions) runRevert() error {
 	csvReader := csv.NewReader(input)
 	for {
 		record, err := csvReader.Read()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
@@ -346,7 +347,7 @@ func (o *dryrunOptions) runRevert() error {
 			fmt.Fprintf(o.ErrOut, "error: %v", err)
 			continue
 		}
-		previousDryRunValue := dryRunBool(record[2])
+		previousDryRunValue := o.dryRunBool(record[2])
 		if wpa.Spec.DryRun == previousDryRunValue {
 			continue
 		}
@@ -364,7 +365,7 @@ func (o *dryrunOptions) runRevert() error {
 func getWpa(k8sclient client.Client, ns, name string) (*v1alpha1.WatermarkPodAutoscaler, error) {
 	wpa := &v1alpha1.WatermarkPodAutoscaler{}
 	err := k8sclient.Get(context.TODO(), client.ObjectKey{Namespace: ns, Name: name}, wpa)
-	if err != nil && errors.IsNotFound(err) {
+	if err != nil && k8serrors.IsNotFound(err) {
 		return nil, fmt.Errorf("WatermarkPodAutoscaler %s/%s not found", ns, name)
 	} else if err != nil {
 		return nil, fmt.Errorf("unable to get WatermarkPodAutoscaler, err: %w", err)
@@ -391,14 +392,14 @@ func dryRunString(wpa *v1alpha1.WatermarkPodAutoscaler) string {
 	return disabledString
 }
 
-func dryRunBool(input string) bool {
+func (o *dryrunOptions) dryRunBool(input string) bool {
 	switch input {
 	case disabledString:
 		return false
 	case enabledString:
 		return true
 	default:
-		fmt.Printf("Warning: Incorrect value for dry-run: %s, defaulting to true \n", input)
+		fmt.Fprintf(o.ErrOut, "warning: Incorrect value for dry-run: %s, defaulting to true \n", input)
 		return true
 	}
 }

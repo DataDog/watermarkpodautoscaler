@@ -738,7 +738,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				if len(wpa.Status.Conditions) != 6 {
 					return fmt.Errorf("incomplete reconciliation process, missing conditions")
 				}
-				fmt.Printf("%#v", wpa.Status.Conditions)
+				t.Logf("%#v", wpa.Status.Conditions)
 				for _, c := range wpa.Status.Conditions {
 					switch c.Type {
 					case v2beta1.AbleToScale:

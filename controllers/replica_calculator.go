@@ -71,7 +71,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 	}
 	podList, err := c.podLister.Pods(target.Namespace).List(lbl)
 	if err != nil {
-		return ReplicaCalculation{}, fmt.Errorf("unable to get pods while calculating replica count: %v", err)
+		return ReplicaCalculation{}, fmt.Errorf("unable to get pods while calculating replica count: %w", err)
 	}
 	if len(podList) == 0 {
 		return ReplicaCalculation{}, fmt.Errorf("no pods returned by selector while calculating replica count")
@@ -79,7 +79,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 
 	currentReadyReplicas, incorrectTargetPodsCount, err := c.getReadyPodsCount(logger, target.Name, podList, time.Duration(wpa.Spec.ReadinessDelaySeconds)*time.Second)
 	if err != nil {
-		return ReplicaCalculation{}, fmt.Errorf("unable to get the number of ready pods across all namespaces for %v: %s", lbl, err.Error())
+		return ReplicaCalculation{}, fmt.Errorf("unable to get the number of ready pods across all namespaces for %v: %w", lbl, err)
 	}
 
 	if currentReadyReplicas > target.Status.Replicas {

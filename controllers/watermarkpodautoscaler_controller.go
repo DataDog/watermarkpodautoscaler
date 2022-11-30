@@ -184,7 +184,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	// the following line are here to retrieve the GVK of the target ref
 	targetGV, err := schema.ParseGroupVersion(wpa.Spec.ScaleTargetRef.APIVersion)
 	if err != nil {
-		return fmt.Errorf("invalid API version in scale target reference: %v", err)
+		return fmt.Errorf("invalid API version in scale target reference: %w", err)
 	}
 	targetGK := schema.GroupKind{
 		Group: targetGV.Group,
@@ -192,7 +192,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	}
 	mappings, err := r.restMapper.RESTMappings(targetGK)
 	if err != nil {
-		return fmt.Errorf("unable to determine resource for scale target reference: %v", err)
+		return fmt.Errorf("unable to determine resource for scale target reference: %w", err)
 	}
 
 	currentScale, targetGR, err := r.getScaleForResourceMappings(ctx, wpa.Namespace, wpa.Spec.ScaleTargetRef.Name, mappings)
@@ -344,7 +344,7 @@ func (r *WatermarkPodAutoscalerReconciler) getScaleForResourceMappings(ctx conte
 		if err == nil {
 			break
 		}
-		errs = append(errs, fmt.Errorf("could not get scale for the GV %s, error: %v", mapping.GroupVersionKind.GroupVersion().String(), err.Error()))
+		errs = append(errs, fmt.Errorf("could not get scale for the GV %s, error: %w", mapping.GroupVersionKind.GroupVersion().String(), err))
 	}
 	if scale == nil {
 		errs = append(errs, fmt.Errorf(scaleNotFoundErr))

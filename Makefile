@@ -1,6 +1,7 @@
 #
 # Datadog custom variables
 #
+ROOT_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 BUILDINFOPKG=github.com/DataDog/watermarkpodautoscaler/pkg/version
 GIT_TAG?=$(shell git tag -l --contains HEAD | tail -1)
 TAG_HASH=$(shell git tag | tail -1)_$(shell git rev-parse --short HEAD)
@@ -41,13 +42,13 @@ all: install-tools manager test
 build: manager kubectl-wpa
 
 # Run tests
-test: manager manifests verify-license
+test: manager manifests verify-license bin/kubebuilder-tools
 	go test ./... -coverprofile cover.out
 
 e2e: manager manifests verify-license goe2e
 
 # Runs e2e tests (expects a configured cluster)
-goe2e:
+goe2e: bin/kubebuilder-tools
 	go test --tags=e2e ./controllers/test
 
 # Build manager binary
@@ -62,17 +63,17 @@ run: generate fmt vet manifests
 	go run ./main.go
 
 # Install CRDs into a cluster
-install: manifests kustomize
-	$(KUSTOMIZE) build config/crd | kubectl apply -f -
+install: manifests bin/kustomize
+	./bin/kustomize build config/crd | kubectl apply -f -
 
 # Uninstall CRDs from a cluster
-uninstall: manifests kustomize
-	$(KUSTOMIZE) build config/crd | kubectl delete -f -
+uninstall: manifests bin/kustomize
+	./bin/kustomize build config/crd | kubectl delete -f -
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
-deploy: manifests kustomize
-	cd config/manager && $(KUSTOMIZE) edit set image $(IMG_NAME)=$(IMG)
-	$(KUSTOMIZE) build config/default | kubectl apply -f -
+deploy: manifests bin/kustomize
+	cd config/manager && $(ROOT_DIR)/bin/kustomize edit set image $(IMG_NAME)=$(IMG)
+	./bin/kustomize build config/default | kubectl apply -f -
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: generate-manifests patch-crds
@@ -120,21 +121,6 @@ else
 CONTROLLER_GEN=$(shell which controller-gen)
 endif
 
-kustomize:
-ifeq (, $(shell which kustomize))
-	@{ \
-	set -e ;\
-	KUSTOMIZE_GEN_TMP_DIR=$$(mktemp -d) ;\
-	cd $$KUSTOMIZE_GEN_TMP_DIR ;\
-	go mod init tmp ;\
-	go get sigs.k8s.io/kustomize/kustomize/v3@v3.5.4 ;\
-	rm -rf $$KUSTOMIZE_GEN_TMP_DIR ;\
-	}
-KUSTOMIZE=$(GOBIN)/kustomize
-else
-KUSTOMIZE=$(shell which kustomize)
-endif
-
 # Make release
 .PHONY: release
 release: bundle
@@ -144,8 +130,8 @@ release: bundle
 .PHONY: bundle
 bundle: manifests
 	./bin/operator-sdk generate kustomize manifests -q
-	cd config/manager && $(KUSTOMIZE) edit set image $(IMG_NAME)=$(IMG)
-	$(KUSTOMIZE) build config/manifests | ./bin/operator-sdk generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
+	cd config/manager && ./bin/kustomize edit set image $(IMG_NAME)=$(IMG)
+	./bin/kustomize edit build config/manifests | ./bin/operator-sdk generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
 	./hack/patch-bundle.sh
 	./bin/operator-sdk bundle validate ./bundle
 
@@ -158,7 +144,7 @@ bundle-build:
 # Datadog Custom part
 #
 .PHONY: install-tools
-install-tools: bin/golangci-lint bin/operator-sdk bin/yq bin/kubebuilder kustomize
+install-tools: bin/golangci-lint bin/operator-sdk bin/yq bin/kubebuilder bin/kustomize bin/kubebuilder-tools bin/go-licenses
 
 .PHONY: generate-openapi
 generate-openapi: bin/openapi-gen
@@ -172,12 +158,13 @@ patch-crds: bin/yq
 lint: bin/golangci-lint fmt vet
 	./bin/golangci-lint run ./...
 
-.PHONY: license
-license: bin/wwhrd vendor
-	./hack/license.sh
+
+.PHONY: licenses
+licenses: bin/go-licenses
+	./bin/go-licenses report  . --template ./hack/licenses.tpl > LICENSE-3rdparty.csv 2> errors
 
 .PHONY: verify-license
-verify-license: bin/wwhrd vendor
+verify-license: vendor
 	./hack/verify-license.sh
 
 .PHONY: tidy
@@ -189,7 +176,10 @@ vendor:
 	go mod vendor
 
 bin/kubebuilder:
-	./hack/install-kubebuilder.sh 2.3.2
+	./hack/install-kubebuilder.sh 3.4.0 ./bin
+
+bin/kubebuilder-tools:
+	./hack/install-kubebuilder-tools.sh 1.24.1
 
 bin/openapi-gen:
 	go build -o ./bin/openapi-gen k8s.io/kube-openapi/cmd/openapi-gen
@@ -198,10 +188,13 @@ bin/yq:
 	./hack/install-yq.sh 3.3.0
 
 bin/golangci-lint:
-	hack/install-golangci-lint.sh 1.18.0
+	hack/install-golangci-lint.sh v1.49.0
 
 bin/operator-sdk:
 	./hack/install-operator-sdk.sh 1.5.0
 
-bin/wwhrd:
-	./hack/install-wwhrd.sh 0.2.4
+bin/kustomize:
+	./hack/install-kustomize.sh ./bin
+
+bin/go-licenses:
+	GOBIN=$(ROOT_DIR)/bin go install github.com/google/go-licenses@v1.5.0

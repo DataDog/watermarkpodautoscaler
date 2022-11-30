@@ -1,3 +1,4 @@
+// Package utils provides a set of test utils functions.
 package utils
 
 import (
