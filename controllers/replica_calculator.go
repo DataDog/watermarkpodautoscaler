@@ -286,7 +286,7 @@ func tryToConvergeToHw(logger logr.Logger, currentReplicas, currentReadyReplicas
 	setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusConvergeToHighWatermark, corev1.ConditionTrue, convergeToHighWatermarkAllowedMessage, convergeToHighWatermarkAllowedReason)
 
 	// This should stay under HW
-	logger.Info("Trying to scale down to convert to HW", "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "currentReplicasAfterDownscale", currentReplicasAfterDownscale, "currentReadyReplicasAfterDownscale", currentReadyReplicasAfterDownscale, "adjustedUsageAfterDownscale", adjustedUsageAfterDownscale, "highMark", highMark.MilliValue())
+	logger.Info("Trying to scale down to converge to HW", "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "currentReplicasAfterDownscale", currentReplicasAfterDownscale, "currentReadyReplicasAfterDownscale", currentReadyReplicasAfterDownscale, "adjustedUsageAfterDownscale", adjustedUsageAfterDownscale, "highMark", highMark.MilliValue())
 	return currentReplicasAfterDownscale
 }
 
