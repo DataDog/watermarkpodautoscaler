@@ -84,7 +84,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 
 	if currentReadyReplicas > target.Status.Replicas {
 		// if we enter in that condition it means that several Deployment use the same label selector in the same namespace.
-		logger.Info("To many ready Pods reported. It can be a conflict between Deployment.Spec.Selector", "currentReadyReplicas", currentReadyReplicas, "targetStatusReplicas", target.Status.Replicas, "scale.selector", target.Status.Selector)
+		logger.Info("Too many ready Pods reported. It can be a conflict between Deployment.Spec.Selector", "currentReadyReplicas", currentReadyReplicas, "targetStatusReplicas", target.Status.Replicas, "scale.selector", target.Status.Selector)
 		currentReadyReplicas = target.Status.Replicas
 	}
 
@@ -210,7 +210,7 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 	adjustedUsage := float64(sum) / averaged
 
 	replicaCount, utilizationQuantity := getReplicaCount(logger, target.Status.Replicas, int32(readyPodCount), wpa, string(resourceName), adjustedUsage, metric.Resource.LowWatermark, metric.Resource.HighWatermark)
-	logger.Info("Resource Metric replica calculation", "metricName", metric.External.MetricName, "replicaCount", replicaCount, "utilizationQuantity", utilizationQuantity, "timestamp", timestamp, "currentReadyReplicas", int32(readyPodCount))
+	logger.Info("Resource Metric replica calculation", "metricName", metric.Resource.Name, "replicaCount", replicaCount, "utilizationQuantity", utilizationQuantity, "timestamp", timestamp, "currentReadyReplicas", int32(readyPodCount))
 	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp, int32(readyPodCount)}, nil
 }
 
