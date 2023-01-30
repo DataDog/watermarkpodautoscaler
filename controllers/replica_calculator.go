@@ -29,7 +29,7 @@ const (
 	aboveHighWatermarkAllowedMessage = "Allow upscaling if the value stays over the Watermark"
 	belowLowWatermarkAllowedMessage  = "Allow downscaling if the value stays under the Watermark"
 	aboveHighWatermarkReason         = "Value above High Watermark"
-	belowLowWatermarkReason          = "Value above Low Watermark"
+	belowLowWatermarkReason          = "Value below Low Watermark"
 )
 
 // ReplicaCalculation is used to compute the scaling recommendation.
