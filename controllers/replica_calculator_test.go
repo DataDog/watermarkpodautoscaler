@@ -715,8 +715,8 @@ func TestReplicaCalcAbsoluteScaleUpUnreadyLessScale(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		expectedReplicas: 16,
-		readyReplicas:    3,
+		expectedReplicas: 6,
+		readyReplicas:    2,
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
@@ -744,7 +744,7 @@ func TestReplicaCalcAbsoluteScaleUpUnreadyLessScale(t *testing.T) {
 		metric: &metricInfo{
 			spec:                metric1,
 			levels:              []int64{100000, 50000, 60000}, // We are higher than the HighWatermark
-			expectedUtilization: 210000,
+			expectedUtilization: 110000,
 		},
 	}
 	tc.runTest(t)
@@ -1039,8 +1039,8 @@ func TestReplicaCalcAverageScaleUpUnreadyLessScale(t *testing.T) {
 	}
 
 	tc := replicaCalcTestCase{
-		expectedReplicas: 6,
-		readyReplicas:    3,
+		expectedReplicas: 3,
+		readyReplicas:    2,
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
@@ -1068,7 +1068,7 @@ func TestReplicaCalcAverageScaleUpUnreadyLessScale(t *testing.T) {
 		metric: &metricInfo{
 			spec:                metric1,
 			levels:              []int64{100000, 50000, 60000}, // We are higher than the HighWatermark
-			expectedUtilization: 70000,
+			expectedUtilization: 55000,
 		},
 	}
 	tc.runTest(t)
@@ -1896,8 +1896,9 @@ func TestGroupPods(t *testing.T) {
 						},
 						Conditions: []corev1.PodCondition{
 							{
-								Type:               corev1.PodReady,
-								LastTransitionTime: metav1.Time{Time: time.Now().Add(-3 * time.Minute)},
+								Type: corev1.PodReady,
+								// LastTransitionTime updated by kubernetes probes checks, so last transition time must be different than start time
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-2*time.Minute - 30*time.Second)},
 								Status:             corev1.ConditionTrue,
 							},
 						},
@@ -1913,7 +1914,7 @@ func TestGroupPods(t *testing.T) {
 		},
 
 		{
-			"count in an unready pod that was ready after initialization period - CPU",
+			"count out an unready pod that was ready after initialization period - CPU",
 			testDeploymentName,
 			[]*corev1.Pod{
 				{
@@ -1943,8 +1944,8 @@ func TestGroupPods(t *testing.T) {
 				"lucretius": metrics.PodMetric{Value: 1},
 			},
 			corev1.ResourceCPU,
-			1,
-			sets.NewString(),
+			0,
+			sets.NewString("lucretius"),
 		},
 		{
 			"ignore pod that has never been ready after initialization period - CPU",
@@ -2067,8 +2068,8 @@ func TestGroupPods(t *testing.T) {
 				"niccolo":   metrics.PodMetric{Value: 1},
 			},
 			corev1.ResourceCPU,
-			1,
-			sets.NewString("lucretius"),
+			0,
+			sets.NewString("lucretius", "niccolo"),
 		},
 		{
 			"too many pods in scope with labels",
@@ -2140,8 +2141,8 @@ func TestGroupPods(t *testing.T) {
 				"niccolo":   metrics.PodMetric{Value: 1},
 			},
 			corev1.ResourceCPU,
-			1,
-			sets.NewString(),
+			0,
+			sets.NewString("epicurus"),
 		},
 		{
 			name:       "pending pods are ignored",
