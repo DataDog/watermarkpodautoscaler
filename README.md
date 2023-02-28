@@ -190,7 +190,7 @@ Or in the logs of the controller:
 
 **Note:** If you are using multiple metrics with this feature, the above/below condition is considered using the `OR` of the metrics.
 
-e.g. if you have a 60s upscaleDelay with 2 metrics (M1 and M2), M1 stays above it's high watermark for 40s `[t0; t40]` and the M2 one goes above it's high watermark for 30s while overlapping with M1 during it's last 10s: `[t30; t60]`, this will validate the upscaleDelay condition and allow for an upscaling event.
+For example, suppose you have a 60 second `upscaleDelay` with two metrics, M1 and M2. If M1 stays above its high watermark for 40 seconds `[t0; t40]`, and the M2 one goes above its high watermark for 30 seconds, overlapping with M1 during its last 10 seconds, `[t30; t60]`, this validates the `upscaleDelay` condition and allows for an upscaling event.
 
 * **Precedence**
 <a name="precedence"></a>
@@ -218,7 +218,7 @@ If all the conditions are met, the controller will scale the targeted object in 
 
 ## Limitations
 
-- Only officially supports one metric per WPA: While the logic supports multiple metrics and will apply the greatest recommendation of all metrics, the status needs some refactoring to reflect this insight.
+- Only officially supports one metric per WPA. While the logic supports multiple metrics and applies the greatest recommendation of all metrics, the status needs some refactoring to reflect this insight.
 - Does not take CPU into account to normalize the number of replicas.
 
 ## Troubleshooting
