@@ -559,7 +559,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 				timestampProposal = replicaCalculation.timestamp
 				readyReplicasProposal = replicaCalculation.readyReplicas
 				// If multiple metrics are used, we keep track of whether at least one of them is outside of the bounds.
-				// This is later used for the delayScaling feature, which only supports OR for now.
+				// This is later used for the delayScaling feature, which only supports `OR` for now.
 				isAbove = isAbove || replicaCalculation.pos.isAbove
 				isBelow = isBelow || replicaCalculation.pos.isBelow
 

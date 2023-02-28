@@ -50,7 +50,7 @@ type replicaCalcTestCase struct {
 	expectedError    error
 	timestamp        time.Time
 	readyReplicas    int32
-	pos              MetricPosition
+	pos              metricPosition
 
 	namespace string
 	metric    *metricInfo
@@ -349,7 +349,7 @@ func TestReplicaCalcAbsoluteScaleUp(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 21,
 		readyReplicas:    3,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: true,
 			isBelow: false,
 		},
@@ -386,8 +386,9 @@ func TestScaleIntervalReplicaCalcAbsoluteScaleUp(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 25, // 21 should be computed, but we round it up to the nearest interval of 5.
 		readyReplicas:    3,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: true,
+			isBelow: false,
 		},
 		scale: makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
@@ -422,7 +423,7 @@ func TestScaleIntervalReplicaCalcNoScale(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 3, // Even though 3 is not divisible by our scaling interval, no scale up was required so we do nothing.
 		readyReplicas:    3,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: false,
 			isBelow: false,
 		},
@@ -459,7 +460,7 @@ func TestReplicaCalcAbsoluteScaleDown(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 1,
 		readyReplicas:    3,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: false,
 			isBelow: true,
 		},
@@ -496,7 +497,7 @@ func TestScaleIntervalReplicaCalcAbsoluteScaleDown(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 2, // Replica scaling interval is 2, so we can't scale down to 1 replica even though that is our min.
 		readyReplicas:    3,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: false,
 			isBelow: true,
 		},
@@ -533,7 +534,7 @@ func TestReplicaCalcAbsoluteScaleDownLessScale(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 2,
 		readyReplicas:    3,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: false,
 			isBelow: true,
 		},
@@ -570,7 +571,7 @@ func TestReplicaCalcAbsoluteScaleUpPendingLessScale(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 6,
 		readyReplicas:    2,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: true,
 			isBelow: false,
 		},
@@ -611,7 +612,7 @@ func TestReplicaCalcAbsoluteScaleUpPendingLessScaleExtraReplica(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 7,
 		readyReplicas:    2,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: true,
 			isBelow: false,
 		},
@@ -649,7 +650,7 @@ func TestReplicaCalcAbsoluteScaleUpPendingNoScale(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 3,
 		readyReplicas:    1,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: false,
 			isBelow: false,
 		},
@@ -721,7 +722,7 @@ func TestReplicaCalcAbsoluteScaleUpFailedLessScale(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 6,
 		readyReplicas:    2,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: true,
 			isBelow: false,
 		},
@@ -759,7 +760,7 @@ func TestReplicaCalcAbsoluteScaleUpUnreadyLessScale(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 6,
 		readyReplicas:    2,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: true,
 			isBelow: false,
 		},
@@ -811,7 +812,7 @@ func TestReplicaCalcAverageScaleUp(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 7,
 		readyReplicas:    3,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: true,
 			isBelow: false,
 		},
@@ -888,7 +889,7 @@ func TestReplicaCalcAverageScaleDown(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 1,
 		readyReplicas:    3,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: false,
 			isBelow: true,
 		},
@@ -925,7 +926,7 @@ func TestReplicaCalcAverageScaleDownLessScale(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 2,
 		readyReplicas:    3,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: false,
 			isBelow: true,
 		},
@@ -963,7 +964,7 @@ func TestReplicaCalcAverageScaleUpPendingLessScale(t *testing.T) {
 		scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		expectedReplicas: 3,
 		readyReplicas:    2,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: true,
 			isBelow: false,
 		},
@@ -1000,7 +1001,7 @@ func TestReplicaCalcAverageScaleUpPendingNoScale(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 3,
 		readyReplicas:    1,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: false,
 			isBelow: false,
 		},
@@ -1038,7 +1039,7 @@ func TestReplicaCalcAverageScaleUpPendingNoScaleStretchTolerance(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 3,
 		readyReplicas:    1,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: true,
 			isBelow: false,
 		},
@@ -1076,7 +1077,7 @@ func TestReplicaCalcAverageScaleUpFailedLessScale(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 3,
 		readyReplicas:    2,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: true,
 			isBelow: false,
 		},
@@ -1115,7 +1116,7 @@ func TestReplicaCalcAverageScaleUpUnreadyLessScale(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 3,
 		readyReplicas:    2,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: true,
 			isBelow: false,
 		},
@@ -1174,7 +1175,7 @@ func TestReplicaCalcAboveAbsoluteExternal_Upscale1(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 9,
 		readyReplicas:    4,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: true,
 			isBelow: false,
 		},
@@ -1211,7 +1212,7 @@ func TestReplicaCalcAboveAbsoluteExternal_Upscale2(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 20,
 		readyReplicas:    9,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: true,
 			isBelow: false,
 		},
@@ -1249,7 +1250,7 @@ func TestReplicaCalcAboveAbsoluteExternal_Upscale3(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 2,
 		readyReplicas:    20,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: false,
 			isBelow: true,
 		},
@@ -1287,7 +1288,7 @@ func TestReplicaCalcWithinAbsoluteExternal(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 9,
 		readyReplicas:    9,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: false,
 			isBelow: false,
 		},
@@ -1329,7 +1330,7 @@ func TestReplicaCalcBelowAverageExternal_Downscale1(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 4,
 		readyReplicas:    5,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: false,
 			isBelow: true,
 		},
@@ -1367,7 +1368,7 @@ func TestReplicaCalcBelowAverageExternal_Downscale2(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 3,
 		readyReplicas:    4,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: false,
 			isBelow: true,
 		},
@@ -1405,7 +1406,7 @@ func TestReplicaCalcBelowAverageExternal_Downscale3(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 3,
 		readyReplicas:    3,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: false,
 			isBelow: false,
 		},
@@ -1443,7 +1444,7 @@ func TestPendingtExpiredScale(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 1,
 		readyReplicas:    2,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: false,
 			isBelow: true,
 		},
@@ -1475,7 +1476,7 @@ func TestTooManyUnreadyPods(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 4,
 		readyReplicas:    1,
-		pos:              MetricPosition{},
+		pos:              metricPosition{},
 		scale:            makeScale(testDeploymentName, 4, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
@@ -1513,7 +1514,7 @@ func TestPendingNotExpiredScale(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 1,
 		readyReplicas:    2,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: false,
 			isBelow: true,
 		},
@@ -1574,7 +1575,7 @@ func TestPendingExpiredHigherWatermarkDownscale(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 3,
 		readyReplicas:    1,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: true,
 			isBelow: false,
 		},
@@ -1636,7 +1637,7 @@ func TestPendingNotExpiredWithinBoundsNoScale(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 3,
 		readyReplicas:    2,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: false,
 			isBelow: false,
 		},
@@ -1697,7 +1698,7 @@ func TestPendingNotOverlyScaling(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 19,
 		readyReplicas:    2,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: true,
 			isBelow: false,
 		},
@@ -1775,7 +1776,7 @@ func TestPendingUnprotectedOverlyScaling(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 66,
 		readyReplicas:    7,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: true,
 			isBelow: false,
 		},
@@ -1850,7 +1851,7 @@ func TestReplicaCalcBelowAverageExternal_Downscale4(t *testing.T) {
 	tc := replicaCalcTestCase{
 		expectedReplicas: 5,
 		readyReplicas:    3,
-		pos: MetricPosition{
+		pos: metricPosition{
 			isAbove: true,
 			isBelow: false,
 		},
