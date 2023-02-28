@@ -59,6 +59,8 @@ const (
 
 	defaultRequeueDelay       = time.Second
 	scaleNotFoundRequeueDelay = 10 * time.Second
+
+	desiredCountAcceptable = "the desired count is within the acceptable range"
 )
 
 // WatermarkPodAutoscalerReconciler reconciles a WatermarkPodAutoscaler object
@@ -471,7 +473,8 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 	}
 	replicaMin.With(labels).Set(minReplicas)
 	replicaMax.With(labels).Set(float64(wpa.Spec.MaxReplicas))
-
+	var isAbove bool
+	var isBelow bool
 	for i, metricSpec := range wpa.Spec.Metrics {
 		if metricSpec.External == nil && metricSpec.Resource == nil {
 			continue
@@ -507,6 +510,10 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 				utilizationProposal = replicaCalculation.utilization
 				timestampProposal = replicaCalculation.timestamp
 				readyReplicasProposal = replicaCalculation.readyReplicas
+				// If multiple metrics are used, we keep track of whether at least one of them is outside of the bounds.
+				// This is later used for the delayScaling feature, which only supports `OR` for now.
+				isAbove = isAbove || replicaCalculation.pos.isAbove
+				isBelow = isBelow || replicaCalculation.pos.isBelow
 
 				lowwm.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.External.LowWatermark.MilliValue()))
 				lowwmV2.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.External.LowWatermark.MilliValue()))
@@ -551,6 +558,10 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 				utilizationProposal = replicaCalculation.utilization
 				timestampProposal = replicaCalculation.timestamp
 				readyReplicasProposal = replicaCalculation.readyReplicas
+				// If multiple metrics are used, we keep track of whether at least one of them is outside of the bounds.
+				// This is later used for the delayScaling feature, which only supports `OR` for now.
+				isAbove = isAbove || replicaCalculation.pos.isAbove
+				isBelow = isBelow || replicaCalculation.pos.isBelow
 
 				lowwm.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.Resource.LowWatermark.MilliValue()))
 				lowwmV2.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.Resource.LowWatermark.MilliValue()))
@@ -583,6 +594,17 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 			readyReplicas = readyReplicasProposal
 		}
 	}
+	condAbove := corev1.ConditionFalse
+	if isAbove {
+		condAbove = corev1.ConditionTrue
+	}
+	condBelow := corev1.ConditionFalse
+	if isBelow {
+		condBelow = corev1.ConditionTrue
+	}
+
+	setCondition(wpa, datadoghqv1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark, condAbove, aboveHighWatermarkReason, aboveHighWatermarkAllowedMessage)
+	setCondition(wpa, datadoghqv1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark, condBelow, belowLowWatermarkReason, belowLowWatermarkAllowedMessage)
 	setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionTrue, datadoghqv1alpha1.ConditionValidMetricFound, "the WPA was able to successfully calculate a replica count from %s", metric)
 
 	return replicas, metric, statuses, timestamp, readyReplicas, nil
@@ -731,7 +753,7 @@ func convertDesiredReplicasWithRules(logger logr.Logger, wpa *datadoghqv1alpha1.
 	}
 
 	possibleLimitingCondition = "DesiredWithinRange"
-	possibleLimitingReason = "the desired count is within the acceptable range"
+	possibleLimitingReason = desiredCountAcceptable
 
 	return desiredReplicas, possibleLimitingCondition, possibleLimitingReason
 }

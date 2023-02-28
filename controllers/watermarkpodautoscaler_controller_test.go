@@ -498,7 +498,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				replicaCalculatorFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 					// With 3 replicas, we simulate wanting to have 8 replicas
 					// The metric's ts is old, using it as a reference would make it seem like LastScaleTime is in the future.
-					return ReplicaCalculation{8, 20, time.Now().Add(-60 * time.Second), 3}, nil
+					return ReplicaCalculation{8, 20, time.Now().Add(-60 * time.Second), 3, metricPosition{true, false}}, nil
 				},
 				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
 					Labels: map[string]string{"foo-key": "bar-value"},
@@ -508,6 +508,11 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 							{
 								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
 								Status:             corev1.ConditionTrue,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-30 * time.Second)},
+							},
+							{
+								Type:               v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark,
+								Status:             corev1.ConditionFalse,
 								LastTransitionTime: metav1.Time{Time: time.Now().Add(-30 * time.Second)},
 							},
 						},
@@ -545,7 +550,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				if wpa.Status.DesiredReplicas != desired {
 					return fmt.Errorf(fmt.Sprintf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas))
 				}
-				if len(wpa.Status.Conditions) != 5 {
+				if len(wpa.Status.Conditions) != 6 {
 					return fmt.Errorf("incomplete reconciliation process, missing conditions")
 				}
 				for _, c := range wpa.Status.Conditions {
@@ -584,7 +589,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			args: args{
 				replicaCalculatorFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 					// utilization is low enough to warrant downscaling to 1 replica
-					return ReplicaCalculation{1, 20, time.Now().Add(-60 * time.Second), 3}, nil
+					return ReplicaCalculation{1, 20, time.Now().Add(-60 * time.Second), 3, metricPosition{false, true}}, nil
 				},
 				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
 					Labels: map[string]string{"foo-key": "bar-value"},
@@ -672,17 +677,17 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			args: args{
 				replicaCalculatorFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 					// utilization is high enough to warrant upscaling to 5 replica
-					return ReplicaCalculation{5, 130, time.Now().Add(-60 * time.Second), 3}, nil
+					return ReplicaCalculation{5, 130, time.Now(), 3, metricPosition{true, false}}, nil
 				},
 				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
 					Labels: map[string]string{"foo-key": "bar-value"},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
-						LastScaleTime: &metav1.Time{Time: time.Now().Add(-90 * time.Second)},
+						LastScaleTime: &metav1.Time{Time: time.Now().Add(-45 * time.Second)},
 						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
 							{
 								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
-								Status:             corev1.ConditionFalse, // last evaluated metric is not out of bounds
-								LastTransitionTime: metav1.Time{Time: time.Now().Add(-3600 * time.Second)},
+								Status:             corev1.ConditionTrue,
+								LastTransitionTime: metav1.Time{Time: time.Now()}, // the metric just went above the HW.
 							},
 							{
 								Type:               v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark,
@@ -695,8 +700,8 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 						ScaleTargetRef:                      testCrossVersionObjectRef,
 						MaxReplicas:                         5,
 						ScaleUpLimitFactor:                  resource.NewQuantity(150, resource.DecimalSI),
-						UpscaleForbiddenWindowSeconds:       30,
-						DownscaleForbiddenWindowSeconds:     45,
+						UpscaleForbiddenWindowSeconds:       30, // we are allowed to upscale since we last scaled 45s ago.
+						DownscaleForbiddenWindowSeconds:     60,
 						UpscaleDelayAboveWatermarkSeconds:   0, // feature is disabled, not blocking multi metric yielding an upscale
 						DownscaleDelayBelowWatermarkSeconds: 60,
 						MinReplicas:                         getReplicas(1),
@@ -748,6 +753,113 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 						}
 						if c.Message != "the WPA controller was able to update the target scale to 5" {
 							return fmt.Errorf("did not scale as expected")
+						}
+					case v2beta1.ScalingLimited:
+						if c.Message != "the desired count is within the acceptable range" {
+							return fmt.Errorf("scaling incorrectly throttled")
+						}
+					}
+				}
+				return nil
+			},
+		},
+		{
+			name: "Multi metric support with delaying downscale with only one metric downscaling",
+			fields: fields{
+				client:        fake.NewClientBuilder().Build(),
+				scaleclient:   &fakescale.FakeScaleClient{},
+				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
+				scheme:        s,
+				eventRecorder: eventRecorder,
+			},
+			args: args{
+				replicaCalculatorFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
+					// utilization is high enough to warrant upscaling to 5 replica
+					return ReplicaCalculation{5, 35, time.Now().Add(-60 * time.Second), 8, metricPosition{false, true}}, nil
+				},
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Labels: map[string]string{"foo-key": "bar-value"},
+					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
+						LastScaleTime: &metav1.Time{Time: time.Now().Add(-90 * time.Second)},
+						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+							{
+								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
+								Status:             corev1.ConditionFalse, // last evaluated metric is not out of bounds
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-3600 * time.Second)},
+							},
+							{
+								Type:               v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark,
+								Status:             corev1.ConditionTrue,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-61 * time.Second)},
+							},
+						},
+					},
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						ScaleTargetRef:                      testCrossVersionObjectRef,
+						MaxReplicas:                         10,
+						ScaleUpLimitFactor:                  resource.NewQuantity(150, resource.DecimalSI),
+						ScaleDownLimitFactor:                resource.NewQuantity(50, resource.DecimalSI),
+						UpscaleForbiddenWindowSeconds:       30,
+						DownscaleForbiddenWindowSeconds:     45, // the last scaling event is past the forbidden window.
+						UpscaleDelayAboveWatermarkSeconds:   0,  // feature is disabled, not blocking multi metric yielding an upscale.
+						DownscaleDelayBelowWatermarkSeconds: 60, // we have been below the watermark for more than the config.
+						MinReplicas:                         getReplicas(1),
+						Metrics: []v1alpha1.MetricSpec{
+							{
+								Type: v1alpha1.ExternalMetricSourceType,
+								External: &v1alpha1.ExternalMetricSource{
+									MetricName:     "deadbeef-yield-downscale",
+									MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value1"}},
+									HighWatermark:  resource.NewMilliQuantity(80, resource.DecimalSI),
+									LowWatermark:   resource.NewMilliQuantity(70, resource.DecimalSI),
+								},
+							},
+							{
+								Type: v1alpha1.ExternalMetricSourceType,
+								External: &v1alpha1.ExternalMetricSource{
+									MetricName:     "deadbeef-within-bounds",
+									MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value2"}},
+									HighWatermark:  resource.NewMilliQuantity(150, resource.DecimalSI),
+									LowWatermark:   resource.NewMilliQuantity(120, resource.DecimalSI),
+								},
+							},
+						},
+					},
+				}),
+				wantReplicasCount: 5,
+				scale:             newScaleForDeployment(8),
+				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) {
+					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
+					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
+					_ = c.Create(context.TODO(), wpa)
+				},
+			},
+			wantErr: false,
+			wantFunc: func(c client.Client, desired int32, wpa *v1alpha1.WatermarkPodAutoscaler) error {
+				if wpa.Status.DesiredReplicas != desired {
+					return fmt.Errorf(fmt.Sprintf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas))
+				}
+				if len(wpa.Status.Conditions) != 6 {
+					return fmt.Errorf("incomplete reconciliation process, missing conditions")
+				}
+				t.Logf("%#v", wpa.Status.Conditions)
+				for _, c := range wpa.Status.Conditions {
+					switch c.Type {
+					case v2beta1.AbleToScale:
+						if c.Status != corev1.ConditionTrue {
+							// TODO we need more granularity on this condition to reflect that we are in not allowed to downscale.
+							return fmt.Errorf("should be able to scale")
+						}
+						if c.Message != "the WPA controller was able to update the target scale to 5" {
+							return fmt.Errorf("did not scale as expected")
+						}
+					case v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark:
+						if c.Status != corev1.ConditionTrue {
+							return fmt.Errorf("scaling incorrectly blocked")
+						}
+					case v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark:
+						if c.Status != corev1.ConditionFalse {
+							return fmt.Errorf("scaling incorrectly blocked")
 						}
 					case v2beta1.ScalingLimited:
 						if c.Message != "the desired count is within the acceptable range" {
@@ -861,7 +973,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 			},
 			wantFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 				// With 8 replicas, the avg algo and an external value returned of 100 we have 10 replicas and the utilization of 10
-				return ReplicaCalculation{10, 10, time.Time{}, 8}, nil
+				return ReplicaCalculation{10, 10, time.Time{}, 8, metricPosition{true, false}}, nil
 			},
 			err: nil,
 		},
@@ -894,7 +1006,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 			},
 			wantFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 				// With 8 replicas, the avg algo and an external value returned of 100 we have 10 replicas and the utilization of 10
-				return ReplicaCalculation{0, 0, time.Time{}, 0}, fmt.Errorf("unable to fetch metrics from external metrics API")
+				return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, fmt.Errorf("unable to fetch metrics from external metrics API")
 			},
 			err: fmt.Errorf("failed to compute replicas based on external metric deadbeef: unable to fetch metrics from external metrics API"),
 		},
@@ -940,9 +1052,9 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 			wantFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 				// With 8 replicas, the avg algo and an external value returned of 100 we have 10 replicas and the utilization of 10
 				if metric.External.MetricName == "deadbeef" {
-					return ReplicaCalculation{10, 10, time.Time{}, 8}, nil
+					return ReplicaCalculation{10, 10, time.Time{}, 8, metricPosition{true, false}}, nil
 				}
-				return ReplicaCalculation{8, 5, time.Time{}, 8}, nil
+				return ReplicaCalculation{8, 5, time.Time{}, 8, metricPosition{false, false}}, nil
 			},
 			err: nil,
 		},
@@ -983,14 +1095,14 @@ func (f *fakeReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, ta
 	if f.replicasFunc != nil {
 		return f.replicasFunc(metric, wpa)
 	}
-	return ReplicaCalculation{0, 0, time.Time{}, 0}, nil
+	return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, nil
 }
 
 func (f *fakeReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *autoscalingv1.Scale, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 	if f.replicasFunc != nil {
 		return f.replicasFunc(metric, wpa)
 	}
-	return ReplicaCalculation{0, 0, time.Time{}, 0}, nil
+	return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, nil
 }
 
 func TestDefaultWatermarkPodAutoscaler(t *testing.T) {
@@ -1487,7 +1599,7 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 		{
 			name:                      "wpaMinReplicas < scaleDownLimit < desiredReplicas",
 			possibleLimitingCondition: "DesiredWithinRange",
-			possibleLimitingReason:    "the desired count is within the acceptable range",
+			possibleLimitingReason:    desiredCountAcceptable,
 			desiredReplicas:           40,
 			currentReplicas:           50,
 			normalizedReplicas:        40,
@@ -1517,7 +1629,7 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 		{
 			name:                      "desiredReplicas < wpaMaxReplicas < scaleUpLimit",
 			possibleLimitingCondition: "DesiredWithinRange",
-			possibleLimitingReason:    "the desired count is within the acceptable range",
+			possibleLimitingReason:    desiredCountAcceptable,
 			desiredReplicas:           55,
 			currentReplicas:           50,
 			normalizedReplicas:        55,

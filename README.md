@@ -171,7 +171,7 @@ In the following example, we can see that the recommended number of replicas is 
 * **Scaling Delay**
 <a name="delay"></a>
 
-In order to avoid scaling from bursts you can use the following features: `downscaleDelayBelowWatermarkSeconds` and/or `upscaleDelayAboveWatermarkSeconds`. These options are specified as integers. The metric has to remain above or under its respective watermark for the configured duration.
+In order to avoid scaling from bursts you can use the following features: `downscaleDelayBelowWatermarkSeconds` and/or `upscaleDelayAboveWatermarkSeconds`. These options are specified as integers. The metric(s) have to remain above or under its/their respective watermark for the configured duration.
 You can keep track of how much time is left in the status of the WPA:
 
 ```
@@ -188,7 +188,9 @@ Or in the logs of the controller:
 {"level":"info","ts":1668481092517.446,"logger":"controllers.WatermarkPodAutoscaler","msg":"Will not scale: value has not been out of bounds for long enough","watermarkpodautoscaler":"datadog/example-watermarkpodautoscaler","wpa_name":"example-watermarkpodautoscaler","wpa_namespace":"datadog","time_left":3209}
 ```
 
-**Note:** This feauture does not support using multiple metrics. 
+**Note:** If you are using multiple metrics with this feature, the above/below condition is considered using the `OR` of the metrics.
+
+For example, suppose you have a 60 second `upscaleDelay` with two metrics, M1 and M2. If M1 stays above its high watermark for 40 seconds `[t0; t40]`, and the M2 one goes above its high watermark for 30 seconds, overlapping with M1 during its last 10 seconds, `[t30; t60]`, this validates the `upscaleDelay` condition and allows for an upscaling event.
 
 * **Precedence**
 <a name="precedence"></a>
@@ -216,7 +218,7 @@ If all the conditions are met, the controller will scale the targeted object in 
 
 ## Limitations
 
-- Only officially supports one metric per WPA.
+- Only officially supports one metric per WPA. While the logic supports multiple metrics and applies the greatest recommendation of all metrics, the status needs some refactoring to reflect this insight.
 - Does not take CPU into account to normalize the number of replicas.
 
 ## Troubleshooting
