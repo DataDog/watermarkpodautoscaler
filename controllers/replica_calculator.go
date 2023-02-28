@@ -367,8 +367,8 @@ func groupPods(logger logr.Logger, podList []*corev1.Pod, targetName string, met
 			if condition == nil || pod.Status.StartTime == nil {
 				ignorePod = true
 			} else {
-				// Ignore metric if pod is unready and it has never been ready.
-				ignorePod = condition.Status == corev1.ConditionFalse && pod.Status.StartTime.Add(delayOfInitialReadinessStatus).After(condition.LastTransitionTime.Time)
+				// Ignore metric if pod is unready and it has never been ready or is ready and the readiness_delay is not past.
+				ignorePod = condition.Status == corev1.ConditionFalse || pod.Status.StartTime.Add(delayOfInitialReadinessStatus).After(condition.LastTransitionTime.Time)
 			}
 			if ignorePod {
 				ignoredPods.Insert(pod.Name)
