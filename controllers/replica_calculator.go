@@ -231,7 +231,7 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 func getReplicaCountUpscale(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, highMark *resource.Quantity) (replicaCount int32) {
 	replicaCount = math32.Ceil(float64(currentReadyReplicas) * adjustedUsage / (float64(highMark.MilliValue())))
 	// Scale up the computed replica count so that it is evenly divisible by the ReplicaScalingAbsoluteModulo.
-	if replicaScalingAbsoluteModuloRemainder := int32(math.Mod(float64(replicaCount), float64(*wpa.Spec.ReplicaScalingAbsoluteModulo))); replicaScalingAbsoluteModuloRemainder > 0 {
+	if replicaScalingAbsoluteModuloRemainder := math32.Mod(replicaCount, *wpa.Spec.ReplicaScalingAbsoluteModulo); replicaScalingAbsoluteModuloRemainder > 0 {
 		replicaCount += *wpa.Spec.ReplicaScalingAbsoluteModulo - replicaScalingAbsoluteModuloRemainder
 	}
 
