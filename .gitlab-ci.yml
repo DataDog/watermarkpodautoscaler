@@ -46,7 +46,7 @@ generate_code:
 build_image_amd64:
   stage: image
   tags: ["runner:docker", "size:large"]
-  image: 486234852809.dkr.ecr.us-east-1.amazonaws.com/docker:v2718644-9ce6565-18.09.6-py3
+  image: 486234852809.dkr.ecr.us-east-1.amazonaws.com/ci-containers-project:v13932656-a1b1db4-v1.0.0
   variables:
     GOARCH: amd64
     TARGET_IMAGE: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}-amd64
@@ -62,7 +62,7 @@ build_image_amd64:
 build_image_arm64:
   stage: image
   tags: ["runner:docker-arm", "platform:arm64"]
-  image: 486234852809.dkr.ecr.us-east-1.amazonaws.com/docker:v2718787-3888eda-18.09.6-arm64-py3
+  image: 486234852809.dkr.ecr.us-east-1.amazonaws.com/ci-containers-project:v13932656-a1b1db4-v1.0.0
   variables:
     GOARCH: arm64
     TARGET_IMAGE: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}-arm64
