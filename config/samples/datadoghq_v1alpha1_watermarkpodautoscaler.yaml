@@ -4,25 +4,27 @@ metadata:
   name: example-watermarkpodautoscaler
 spec:
   # Add fields here
-  maxReplicas: 3
+  maxReplicas: 5
   minReplicas: 1
   tolerance: "10m"
   scaleTargetRef:
     kind: Deployment
     apiVersion: apps/v1
     name: alpine
-  readinessDelay: 10
+  readinessDelaySeconds: 10
+  convergeTowardsWatermark: highwatermark
   metrics:
     # Resource or External type supported
     # Example usage of External type
     - type: External
       external:
-        highWatermark: "12000"
-        lowWatermark: "8000"
-        metricName: sinus
+        highWatermark: "900k"
+        lowWatermark: "500k"
+        metricName: container.memory.usage
         metricSelector:
           matchLabels:
-            foo: bar
+            cluster_name: mycluster
+            kube_deployment: alpine
   # Example usage of Resource type
   # - type: Resource
   #   resource:

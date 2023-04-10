@@ -11,16 +11,18 @@ metadata:
             "name": "example-watermarkpodautoscaler"
           },
           "spec": {
-            "maxReplicas": 3,
+            "convergeTowardsWatermark": "highwatermark",
+            "maxReplicas": 5,
             "metrics": [
               {
                 "external": {
-                  "highWatermark": "12000",
-                  "lowWatermark": "8000",
-                  "metricName": "sinus",
+                  "highWatermark": "900k",
+                  "lowWatermark": "500k",
+                  "metricName": "container.memory.usage",
                   "metricSelector": {
                     "matchLabels": {
-                      "foo": "bar"
+                      "cluster_name": "mycluster",
+                      "kube_deployment": "alpine"
                     }
                   }
                 },
@@ -28,7 +30,7 @@ metadata:
               }
             ],
             "minReplicas": 1,
-            "readinessDelay": 10,
+            "readinessDelaySeconds": 10,
             "scaleTargetRef": {
               "apiVersion": "apps/v1",
               "kind": "Deployment",
@@ -139,7 +141,7 @@ spec:
           - watermarkpodautoscalers/status
           verbs:
           - '*'
-        serviceAccountName: watermarkpodautoscaler-controller-manager
+        serviceAccountName: watermarkpodautoscaler-watermarkpodautoscaler-controller-manager
       deployments:
       - label:
           control-plane: watermarkpodautoscaler-controller-manager
@@ -192,7 +194,7 @@ spec:
                   requests:
                     cpu: 100m
                     memory: 100Mi
-              serviceAccountName: watermarkpodautoscaler-controller-manager
+              serviceAccountName: watermarkpodautoscaler-watermarkpodautoscaler-controller-manager
               terminationGracePeriodSeconds: 10
       permissions:
       - rules:
@@ -223,7 +225,7 @@ spec:
           verbs:
           - create
           - patch
-        serviceAccountName: watermarkpodautoscaler-controller-manager
+        serviceAccountName: watermarkpodautoscaler-watermarkpodautoscaler-controller-manager
     strategy: deployment
   installModes:
   - supported: true
