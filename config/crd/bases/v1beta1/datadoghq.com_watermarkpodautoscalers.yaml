@@ -261,7 +261,6 @@ spec:
               description: Parameter used to be a float, in order to support the transition seamlessly, we validate that it is ]0;1[ in the code.
               pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
               x-kubernetes-int-or-string: true
-              x-kubernetes-preserve-unknown-fields: true
             upscaleDelayAboveWatermarkSeconds:
               format: int32
               minimum: 0

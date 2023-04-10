@@ -97,7 +97,6 @@ type WatermarkPodAutoscalerSpec struct {
 	ConvergeTowardsWatermark ConvergeTowardsWatermarkType `json:"convergeTowardsWatermark,omitempty"`
 
 	// Parameter used to be a float, in order to support the transition seamlessly, we validate that it is ]0;1[ in the code.
-	// +kubebuilder:pruning:PreserveUnknownFields
 	Tolerance resource.Quantity `json:"tolerance,omitempty"`
 
 	// computed values take the # of replicas into account
