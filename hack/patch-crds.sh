@@ -1,22 +1,18 @@
 #!/usr/bin/env bash
 
-set -e
+set -o errexit
+set -o nounset
+set -o pipefail
 
-ROOT_DIR=$(git rev-parse --show-toplevel)
-YQ="$ROOT_DIR/bin/yq"
-
+SCRIPTS_DIR="$(dirname "$0")"
+# Provides $OS,$ARCH,$PLAFORM,$ROOT variables
+source "$SCRIPTS_DIR/install-common.sh"
+YQ="$ROOT/bin/$PLATFORM/yq"
 v1beta1=config/crd/bases/v1beta1
 
 # Remove "x-kubernetes-*" as only supported in Kubernetes 1.16+.
 # Users of Kubernetes < 1.16 need to use v1beta1, others need to use v1
-#
-# Cannot use directly yq -d .. 'spec.validation.openAPIV3Schema.properties.**.x-kubernetes-*'
-# as for some reason, yq takes several minutes to execute this command
-for crd in $(ls "$ROOT_DIR/$v1beta1")
+for crd in "$ROOT/$v1beta1"/*.yaml
 do
-  for path in $($YQ r "$ROOT_DIR/$v1beta1/$crd" 'spec.validation.openAPIV3Schema.properties.**.x-kubernetes-*' --printMode p)
-  do
-    $YQ d -i "$ROOT_DIR/$v1beta1/$crd" $path
-  done
-  $YQ d -i "$ROOT_DIR/$v1beta1/$crd" 'spec.validation.openAPIV3Schema.properties.spec.properties.tolerance[*]'
+  $YQ -i 'del(.spec.validation.openAPIV3Schema.properties.**.x-kubernetes-*)' "$crd"
 done

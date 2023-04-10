@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPTS_DIR="$(dirname "$0")"
+# Provides $OS,$ARCH,$PLAFORM,$ROOT variables
+source "$SCRIPTS_DIR/install-common.sh"
+
 # Use GNU tools, even on MacOS
 if sed --version 2>/dev/null | grep -q "GNU sed"; then
     SED=sed
@@ -8,14 +12,12 @@ elif gsed --version 2>/dev/null | grep -q "GNU sed"; then
     SED=gsed
 fi
 
-ROOT=$(git rev-parse --show-toplevel)
 OLM_FOLDER=$ROOT/deploy/olm-catalog/watermarkpodautoscaler
 IMAGE_NAME='datadog/watermarkpodautoscaler'
 REDHAT_REGISTRY='registry.connect.redhat.com/'
 REDHAT_IMAGE_NAME="${REDHAT_REGISTRY}${IMAGE_NAME}"
 ZIP_FILE_NAME=$ROOT/dist/olm-redhat-bundle.zip
 
-WORK_DIR=$(mktemp -d)
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 # move all zip file if exit

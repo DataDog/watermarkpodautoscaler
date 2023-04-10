@@ -6,6 +6,10 @@ uname_os() {
   local os=$(uname -s | tr '[:upper:]' '[:lower:]')
   case "$os" in
     msys_nt) os="windows" ;;
+    msys*) os="windows" ;;
+    mingw*) os="windows" ;;
+    cygwin*) os="windows" ;;
+    win*) os="windows" ;;
   esac
   echo "$os"
 }
@@ -27,8 +31,14 @@ uname_arch() {
 
 OS=$(uname_os)
 ARCH=$(uname_arch)
-ROOT=$(pwd)
+PLATFORM="$OS-$ARCH"
+ROOT=$(git rev-parse --show-toplevel)
 WORK_DIR=$(mktemp -d)
+
+SED="sed -i"
+if [ "$OS" == "darwin" ]; then
+    SED="sed -i .bak"
+fi
 
 # Make sure the bin directory exists
 mkdir -p $ROOT/bin

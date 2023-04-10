@@ -1,6 +1,10 @@
 #!/bin/sh
 set -e
 
+SCRIPTS_DIR="$(dirname "$0")"
+# Provides $OS,$ARCH,$PLAFORM,$ROOT variables
+source "$SCRIPTS_DIR/install-common.sh"
+
 usage() {
   this=$1
   cat <<EOF
@@ -61,41 +65,41 @@ execute() {
 }
 get_binaries() {
   case "$PLATFORM" in
-    darwin/amd64) BINARIES="golangci-lint" ;;
-    darwin/arm64) BINARIES="golangci-lint" ;;
-    darwin/armv6) BINARIES="golangci-lint" ;;
-    darwin/armv7) BINARIES="golangci-lint" ;;
-    darwin/mips64) BINARIES="golangci-lint" ;;
-    darwin/mips64le) BINARIES="golangci-lint" ;;
-    darwin/ppc64le) BINARIES="golangci-lint" ;;
-    darwin/s390x) BINARIES="golangci-lint" ;;
-    freebsd/386) BINARIES="golangci-lint" ;;
-    freebsd/amd64) BINARIES="golangci-lint" ;;
-    freebsd/armv6) BINARIES="golangci-lint" ;;
-    freebsd/armv7) BINARIES="golangci-lint" ;;
-    freebsd/mips64) BINARIES="golangci-lint" ;;
-    freebsd/mips64le) BINARIES="golangci-lint" ;;
-    freebsd/ppc64le) BINARIES="golangci-lint" ;;
-    freebsd/s390x) BINARIES="golangci-lint" ;;
-    linux/386) BINARIES="golangci-lint" ;;
-    linux/amd64) BINARIES="golangci-lint" ;;
-    linux/arm64) BINARIES="golangci-lint" ;;
-    linux/armv6) BINARIES="golangci-lint" ;;
-    linux/armv7) BINARIES="golangci-lint" ;;
-    linux/mips64) BINARIES="golangci-lint" ;;
-    linux/mips64le) BINARIES="golangci-lint" ;;
-    linux/ppc64le) BINARIES="golangci-lint" ;;
-    linux/s390x) BINARIES="golangci-lint" ;;
-    linux/riscv64) BINARIES="golangci-lint" ;;
-    windows/386) BINARIES="golangci-lint" ;;
-    windows/amd64) BINARIES="golangci-lint" ;;
-    windows/arm64) BINARIES="golangci-lint" ;;
-    windows/armv6) BINARIES="golangci-lint" ;;
-    windows/armv7) BINARIES="golangci-lint" ;;
-    windows/mips64) BINARIES="golangci-lint" ;;
-    windows/mips64le) BINARIES="golangci-lint" ;;
-    windows/ppc64le) BINARIES="golangci-lint" ;;
-    windows/s390x) BINARIES="golangci-lint" ;;
+    darwin-amd64) BINARIES="golangci-lint" ;;
+    darwin-arm64) BINARIES="golangci-lint" ;;
+    darwin-armv6) BINARIES="golangci-lint" ;;
+    darwin-armv7) BINARIES="golangci-lint" ;;
+    darwin-mips64) BINARIES="golangci-lint" ;;
+    darwin-mips64le) BINARIES="golangci-lint" ;;
+    darwin-ppc64le) BINARIES="golangci-lint" ;;
+    darwin-s390x) BINARIES="golangci-lint" ;;
+    freebsd-386) BINARIES="golangci-lint" ;;
+    freebsd-amd64) BINARIES="golangci-lint" ;;
+    freebsd-armv6) BINARIES="golangci-lint" ;;
+    freebsd-armv7) BINARIES="golangci-lint" ;;
+    freebsd-mips64) BINARIES="golangci-lint" ;;
+    freebsd-mips64le) BINARIES="golangci-lint" ;;
+    freebsd-ppc64le) BINARIES="golangci-lint" ;;
+    freebsd-s390x) BINARIES="golangci-lint" ;;
+    linux-386) BINARIES="golangci-lint" ;;
+    linux-amd64) BINARIES="golangci-lint" ;;
+    linux-arm64) BINARIES="golangci-lint" ;;
+    linux-armv6) BINARIES="golangci-lint" ;;
+    linux-armv7) BINARIES="golangci-lint" ;;
+    linux-mips64) BINARIES="golangci-lint" ;;
+    linux-mips64le) BINARIES="golangci-lint" ;;
+    linux-ppc64le) BINARIES="golangci-lint" ;;
+    linux-s390x) BINARIES="golangci-lint" ;;
+    linux-riscv64) BINARIES="golangci-lint" ;;
+    windows-386) BINARIES="golangci-lint" ;;
+    windows-amd64) BINARIES="golangci-lint" ;;
+    windows-arm64) BINARIES="golangci-lint" ;;
+    windows-armv6) BINARIES="golangci-lint" ;;
+    windows-armv7) BINARIES="golangci-lint" ;;
+    windows-mips64) BINARIES="golangci-lint" ;;
+    windows-mips64le) BINARIES="golangci-lint" ;;
+    windows-ppc64le) BINARIES="golangci-lint" ;;
+    windows-s390x) BINARIES="golangci-lint" ;;
     *)
       log_crit "platform $PLATFORM is not supported.  Make sure this script is up-to-date and file request at https://github.com/${PREFIX}/issues/new"
       exit 1
@@ -189,30 +193,6 @@ log_err() {
 log_crit() {
   log_priority 2 || return 0
   echoerr "$(log_prefix)" "$(log_tag 2)" "$@"
-}
-uname_os() {
-  os=$(uname -s | tr '[:upper:]' '[:lower:]')
-  case "$os" in
-    msys*) os="windows" ;;
-    mingw*) os="windows" ;;
-    cygwin*) os="windows" ;;
-    win*) os="windows" ;;
-  esac
-  echo "$os"
-}
-uname_arch() {
-  arch=$(uname -m)
-  case $arch in
-    x86_64) arch="amd64" ;;
-    x86) arch="386" ;;
-    i686) arch="386" ;;
-    i386) arch="386" ;;
-    aarch64) arch="arm64" ;;
-    armv5*) arch="armv5" ;;
-    armv6*) arch="armv6" ;;
-    armv7*) arch="armv7" ;;
-  esac
-  echo ${arch}
 }
 uname_os_check() {
   os=$(uname_os)
@@ -378,7 +358,6 @@ PREFIX="$OWNER/$REPO"
 log_prefix() {
 	echo "$PREFIX"
 }
-PLATFORM="${OS}/${ARCH}"
 GITHUB_DOWNLOAD=https://github.com/${OWNER}/${REPO}/releases/download
 
 uname_os_check "$OS"

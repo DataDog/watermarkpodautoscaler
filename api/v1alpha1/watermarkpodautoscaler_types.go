@@ -54,8 +54,10 @@ type ConvergeTowardsWatermarkType string
 
 var (
 	// ConvergeUpwards will suggest downscaling the target for a value to converge towards it's High Watermark.
+	// +optional
 	ConvergeUpwards ConvergeTowardsWatermarkType = "highwatermark"
 	// ConvergeUpwards will suggest upscaling the target for a value to converge towards it's Low Watermark.
+	// +optional
 	ConvergeDownwards ConvergeTowardsWatermarkType = "lowwatermark"
 )
 
@@ -95,6 +97,7 @@ type WatermarkPodAutoscalerSpec struct {
 	ConvergeTowardsWatermark ConvergeTowardsWatermarkType `json:"convergeTowardsWatermark,omitempty"`
 
 	// Parameter used to be a float, in order to support the transition seamlessly, we validate that it is ]0;1[ in the code.
+	// +kubebuilder:pruning:PreserveUnknownFields
 	Tolerance resource.Quantity `json:"tolerance,omitempty"`
 
 	// computed values take the # of replicas into account

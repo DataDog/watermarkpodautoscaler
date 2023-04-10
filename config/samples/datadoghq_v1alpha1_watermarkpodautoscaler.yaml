@@ -6,7 +6,7 @@ spec:
   # Add fields here
   maxReplicas: 3
   minReplicas: 1
-  tolerance: 0.01
+  tolerance: "10m"
   scaleTargetRef:
     kind: Deployment
     apiVersion: apps/v1

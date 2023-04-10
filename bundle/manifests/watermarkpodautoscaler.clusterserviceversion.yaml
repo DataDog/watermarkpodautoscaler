@@ -34,22 +34,20 @@ metadata:
               "kind": "Deployment",
               "name": "alpine"
             },
-            "tolerance": 0.01
+            "tolerance": "10m"
           }
         }
       ]
     capabilities: Basic Install
-    operators.operatorframework.io/builder: operator-sdk-v1.4.0+git
+    operators.operatorframework.io/builder: operator-sdk-v1.23.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v2
-  name: watermarkpodautoscaler.v0.4.0
+  name: watermarkpodautoscaler.v0.6.0-rc.1
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
     owned:
-    - description: WatermarkPodAutoscaler is the Schema for the watermarkpodautoscalers API
-      displayName: Watermark Pod Autoscaler
-      kind: WatermarkPodAutoscaler
+    - kind: WatermarkPodAutoscaler
       name: watermarkpodautoscalers.datadoghq.com
       version: v1alpha1
   description: Custom controller that extends the Horizontal Pod Autoscaler
@@ -143,7 +141,9 @@ spec:
           - '*'
         serviceAccountName: watermarkpodautoscaler-controller-manager
       deployments:
-      - name: watermarkpodautoscaler-controller-manager
+      - label:
+          control-plane: watermarkpodautoscaler-controller-manager
+        name: watermarkpodautoscaler-controller-manager
         spec:
           replicas: 1
           selector:
@@ -155,7 +155,9 @@ spec:
               annotations:
                 ad.datadoghq.com/watermarkpodautoscaler.check_names: '["openmetrics"]'
                 ad.datadoghq.com/watermarkpodautoscaler.init_configs: '[{}]'
-                ad.datadoghq.com/watermarkpodautoscaler.instances: '[{"prometheus_url": "http://%%host%%:8383/metrics","namespace":"watermarkpodautoscaler","metrics": ["wpa","wpa_controller*"]}]'
+                ad.datadoghq.com/watermarkpodautoscaler.instances: '[{"prometheus_url":
+                  "http://%%host%%:8383/metrics","namespace":"watermarkpodautoscaler","metrics":
+                  ["wpa","wpa_controller*"]}]'
               labels:
                 control-plane: watermarkpodautoscaler-controller-manager
             spec:
@@ -171,7 +173,7 @@ spec:
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.name
-                image: gcr.io/datadoghq/watermarkpodautoscaler:v0.4.0
+                image: gcr.io/datadoghq/watermarkpodautoscaler:v0.6.0-rc.1
                 imagePullPolicy: IfNotPresent
                 livenessProbe:
                   httpGet:
@@ -245,4 +247,4 @@ spec:
   maturity: alpha
   provider:
     name: Datadog
-  version: 0.4.0
+  version: 0.6.0-rc.1
