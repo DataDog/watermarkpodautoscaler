@@ -67,15 +67,15 @@ run: generate fmt vet manifests
 	go run ./main.go
 
 # Install CRDs into a cluster
-install: manifests bin/kustomize
+install: manifests $(KUSTOMIZE)
 	$(KUSTOMIZE) build config/crd | kubectl apply -f -
 
 # Uninstall CRDs from a cluster
-uninstall: manifests bin/kustomize
+uninstall: manifests $(KUSTOMIZE)
 	$(KUSTOMIZE) build config/crd | kubectl delete -f -
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
-deploy: manifests bin/kustomize
+deploy: manifests $(KUSTOMIZE)
 	cd config/manager && $(ROOT_DIR)/bin/kustomize edit set image $(IMG_NAME)=$(IMG)
 	.$(KUSTOMIZE) build config/default | kubectl apply -f -
 
