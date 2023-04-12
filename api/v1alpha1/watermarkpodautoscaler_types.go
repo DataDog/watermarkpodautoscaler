@@ -49,6 +49,16 @@ type CrossVersionObjectReference struct {
 	APIVersion string `json:"apiVersion,omitempty"`
 }
 
+// ConvergeTowardsWatermarkType indicates the direction to converge to while in stable regime (when the value is between watermarks).
+type ConvergeTowardsWatermarkType string
+
+var (
+	// ConvergeUpwards will suggest downscaling the target for a value to converge towards it's High Watermark.
+	ConvergeUpwards ConvergeTowardsWatermarkType = "highwatermark"
+	// ConvergeUpwards will suggest upscaling the target for a value to converge towards it's Low Watermark.
+	ConvergeDownwards ConvergeTowardsWatermarkType = "lowwatermark"
+)
+
 // WatermarkPodAutoscalerSpec defines the desired state of WatermarkPodAutoscaler
 // +k8s:openapi-gen=true
 type WatermarkPodAutoscalerSpec struct {
@@ -79,6 +89,10 @@ type WatermarkPodAutoscalerSpec struct {
 	// Allows for special scaling patterns, for instance when an application requires a certain number of pods in multiple
 	// +kubebuilder:validation:Minimum=1
 	ReplicaScalingAbsoluteModulo *int32 `json:"replicaScalingAbsoluteModulo,omitempty"`
+
+	// Try to make the usage converge towards High Watermark to save resources. This will slowly downscale by `ReplicaScalingAbsoluteModulo`
+	// if the predicted usage stays bellow the high watermarks.
+	ConvergeTowardsWatermark ConvergeTowardsWatermarkType `json:"convergeTowardsWatermark,omitempty"`
 
 	// Parameter used to be a float, in order to support the transition seamlessly, we validate that it is ]0;1[ in the code.
 	Tolerance resource.Quantity `json:"tolerance,omitempty"`
@@ -220,6 +234,9 @@ const WatermarkPodAutoscalerStatusBelowLowWatermark autoscalingv2.HorizontalPodA
 
 // WatermarkPodAutoscalerStatusAboveHighWatermark ConditionType used when the value is above the high watermark
 const WatermarkPodAutoscalerStatusAboveHighWatermark autoscalingv2.HorizontalPodAutoscalerConditionType = "AboveHighWatermark"
+
+// WatermarkPodAutoscalerStatusConvergeToWatermark ConditionType used when the value is within bound and we're trying to converge to the one of the watermarks
+const WatermarkPodAutoscalerStatusConvergeToWatermark autoscalingv2.HorizontalPodAutoscalerConditionType = "ConvergeToWatermark"
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
