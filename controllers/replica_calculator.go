@@ -267,8 +267,7 @@ func getReplicaCountDownscale(logger logr.Logger, currentReplicas, currentReadyR
 // tryToConvergeToWatermark will try to make the replicaCount slowly converge to a watermark.
 // It will suggested converging until the estimated usage goes beyond the respective watermark.
 // This feature is officially only supported with 1 metric.
-func tryToConvergeToWatermark(logger logr.Logger, convergingType v1alpha1.ConvergeTowardsWatermarkType, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, lowMark, highMark *resource.Quantity) (replicaCount int32) {
-	var optimisedReplicaCount int32
+func tryToConvergeToWatermark(logger logr.Logger, convergingType v1alpha1.ConvergeTowardsWatermarkType, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, lowMark, highMark *resource.Quantity) (optimisedReplicaCount int32) {
 	scaleBy := *wpa.Spec.ReplicaScalingAbsoluteModulo
 	switch convergingType {
 	case v1alpha1.ConvergeUpwards:
@@ -279,12 +278,12 @@ func tryToConvergeToWatermark(logger logr.Logger, convergingType v1alpha1.Conver
 		if int64(adjustedUsageAfterDownscale) > highMark.MilliValue() {
 			// This would result in a downscale, give up
 			setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusConvergeToWatermark, corev1.ConditionFalse, convergeToHighWatermarkAllowedMessage, convergeToWatermarkUnstable)
-			logger.Info("Scaling down would likely make the usage go above the High Watermark", "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "currentReadyReplicasAfterDownscale", currentReadyReplicasAfterDownscale, "adjustedUsageAfterDownscale", adjustedUsageAfterDownscale, "highMark", highMark.MilliValue())
+			logger.Info("Scaling down would likely make the usage go above the High Watermark", "optimisedReplicaCount", optimisedReplicaCount, "currentReadyReplicas", currentReadyReplicas, "adjustedUsageAfterDownscale", adjustedUsageAfterDownscale, "highMark", highMark.MilliValue())
 			return currentReplicas
 		}
 		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusConvergeToWatermark, corev1.ConditionTrue, convergeToHighWatermarkAllowedMessage, convergeToWatermarkAllowedReason)
 		// This should stay under HW
-		logger.Info("Trying to scale down to converge to High Watermark", "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "currentReplicasAfterDownscale", optimisedReplicaCount, "currentReadyReplicasAfterDownscale", currentReadyReplicasAfterDownscale, "adjustedUsageAfterDownscale", adjustedUsageAfterDownscale, "highMark", highMark.MilliValue())
+		logger.Info("Trying to scale down to converge to High Watermark", "optimisedReplicaCount", optimisedReplicaCount, "currentReadyReplicas", currentReadyReplicas, "adjustedUsageAfterDownscale", adjustedUsageAfterDownscale, "highMark", highMark.MilliValue())
 
 	case v1alpha1.ConvergeDownwards:
 		optimisedReplicaCount = currentReplicas + scaleBy
@@ -294,12 +293,12 @@ func tryToConvergeToWatermark(logger logr.Logger, convergingType v1alpha1.Conver
 		if int64(adjustedUsageAfterUpscale) < lowMark.MilliValue() {
 			// This would result in an upscale, give up
 			setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusConvergeToWatermark, corev1.ConditionFalse, convergeToLowWatermarkAllowedMessage, convergeToWatermarkUnstable)
-			logger.Info("Scaling up would likely make the usage go below the Low Watermark", "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "currentReadyReplicasUpscale", currentReadyReplicasUpscale, "currentReadyReplicasUpscale", currentReadyReplicasUpscale, "lowMark", lowMark.MilliValue())
+			logger.Info("Scaling up would likely make the usage go below the Low Watermark", "optimisedReplicaCount", optimisedReplicaCount, "currentReadyReplicas", currentReadyReplicas, "adjustedUsageAfterUpscale", adjustedUsageAfterUpscale, "lowMark", lowMark.MilliValue())
 			return currentReplicas
 		}
 		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusConvergeToWatermark, corev1.ConditionTrue, convergeToLowWatermarkAllowedMessage, convergeToWatermarkAllowedReason)
 		// This should stay under HW
-		logger.Info("Trying to scale up to converge to Low Watermark", "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "currentReplicasAfterDownscale", optimisedReplicaCount, "currentReadyReplicasUpscale", currentReadyReplicasUpscale, "currentReadyReplicasUpscale", currentReadyReplicasUpscale, "lowMark", lowMark.MilliValue())
+		logger.Info("Trying to scale up to converge to Low Watermark", "optimisedReplicaCount", optimisedReplicaCount, "currentReadyReplicas", currentReadyReplicas, "adjustedUsageAfterUpscale", adjustedUsageAfterUpscale, "lowMark", lowMark.MilliValue())
 
 	default:
 		setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusConvergeToWatermark, corev1.ConditionFalse, convergedToWatermarkDisabled, convergeToWatermarkAllowedReason)

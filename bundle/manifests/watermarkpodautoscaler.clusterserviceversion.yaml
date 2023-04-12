@@ -11,16 +11,18 @@ metadata:
             "name": "example-watermarkpodautoscaler"
           },
           "spec": {
-            "maxReplicas": 3,
+            "convergeTowardsWatermark": "highwatermark",
+            "maxReplicas": 5,
             "metrics": [
               {
                 "external": {
-                  "highWatermark": "12000",
-                  "lowWatermark": "8000",
-                  "metricName": "sinus",
+                  "highWatermark": "900k",
+                  "lowWatermark": "500k",
+                  "metricName": "container.memory.usage",
                   "metricSelector": {
                     "matchLabels": {
-                      "foo": "bar"
+                      "cluster_name": "mycluster",
+                      "kube_deployment": "alpine"
                     }
                   }
                 },
@@ -28,28 +30,26 @@ metadata:
               }
             ],
             "minReplicas": 1,
-            "readinessDelay": 10,
+            "readinessDelaySeconds": 10,
             "scaleTargetRef": {
               "apiVersion": "apps/v1",
               "kind": "Deployment",
               "name": "alpine"
             },
-            "tolerance": 0.01
+            "tolerance": "10m"
           }
         }
       ]
     capabilities: Basic Install
-    operators.operatorframework.io/builder: operator-sdk-v1.4.0+git
+    operators.operatorframework.io/builder: operator-sdk-v1.23.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v2
-  name: watermarkpodautoscaler.v0.4.0
+  name: watermarkpodautoscaler.v0.5.2
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
     owned:
-    - description: WatermarkPodAutoscaler is the Schema for the watermarkpodautoscalers API
-      displayName: Watermark Pod Autoscaler
-      kind: WatermarkPodAutoscaler
+    - kind: WatermarkPodAutoscaler
       name: watermarkpodautoscalers.datadoghq.com
       version: v1alpha1
   description: Custom controller that extends the Horizontal Pod Autoscaler
@@ -141,9 +141,11 @@ spec:
           - watermarkpodautoscalers/status
           verbs:
           - '*'
-        serviceAccountName: watermarkpodautoscaler-controller-manager
+        serviceAccountName: watermarkpodautoscaler-watermarkpodautoscaler-controller-manager
       deployments:
-      - name: watermarkpodautoscaler-controller-manager
+      - label:
+          control-plane: watermarkpodautoscaler-controller-manager
+        name: watermarkpodautoscaler-controller-manager
         spec:
           replicas: 1
           selector:
@@ -155,7 +157,9 @@ spec:
               annotations:
                 ad.datadoghq.com/watermarkpodautoscaler.check_names: '["openmetrics"]'
                 ad.datadoghq.com/watermarkpodautoscaler.init_configs: '[{}]'
-                ad.datadoghq.com/watermarkpodautoscaler.instances: '[{"prometheus_url": "http://%%host%%:8383/metrics","namespace":"watermarkpodautoscaler","metrics": ["wpa","wpa_controller*"]}]'
+                ad.datadoghq.com/watermarkpodautoscaler.instances: '[{"prometheus_url":
+                  "http://%%host%%:8383/metrics","namespace":"watermarkpodautoscaler","metrics":
+                  ["wpa","wpa_controller*"]}]'
               labels:
                 control-plane: watermarkpodautoscaler-controller-manager
             spec:
@@ -171,7 +175,7 @@ spec:
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.name
-                image: gcr.io/datadoghq/watermarkpodautoscaler:v0.4.0
+                image: gcr.io/datadoghq/watermarkpodautoscaler:v0.5.2
                 imagePullPolicy: IfNotPresent
                 livenessProbe:
                   httpGet:
@@ -190,7 +194,7 @@ spec:
                   requests:
                     cpu: 100m
                     memory: 100Mi
-              serviceAccountName: watermarkpodautoscaler-controller-manager
+              serviceAccountName: watermarkpodautoscaler-watermarkpodautoscaler-controller-manager
               terminationGracePeriodSeconds: 10
       permissions:
       - rules:
@@ -221,7 +225,7 @@ spec:
           verbs:
           - create
           - patch
-        serviceAccountName: watermarkpodautoscaler-controller-manager
+        serviceAccountName: watermarkpodautoscaler-watermarkpodautoscaler-controller-manager
     strategy: deployment
   installModes:
   - supported: true
@@ -245,4 +249,4 @@ spec:
   maturity: alpha
   provider:
     name: Datadog
-  version: 0.4.0
+  version: 0.5.2

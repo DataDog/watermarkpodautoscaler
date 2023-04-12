@@ -16,6 +16,8 @@ DEFAULT_CHANNEL=alpha
 GOARCH?=amd64
 IMG_NAME=gcr.io/datadoghq/watermarkpodautoscaler
 
+CRD_OPTIONS ?= "crd:trivialVersions=true,preserveUnknownFields=false"
+
 # Default bundle image tag
 BUNDLE_IMG ?= controller-bundle:$(VERSION)
 # Options for 'bundle-build'
@@ -26,6 +28,8 @@ ifneq ($(origin DEFAULT_CHANNEL), undefined)
 BUNDLE_DEFAULT_CHANNEL := --default-channel=$(DEFAULT_CHANNEL)
 endif
 BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
+
+KUSTOMIZE = bin/kustomize
 
 # Image URL to use all building/pushing image targets
 IMG ?= $(IMG_NAME):v$(IMG_VERSION)
@@ -63,24 +67,24 @@ run: generate fmt vet manifests
 	go run ./main.go
 
 # Install CRDs into a cluster
-install: manifests bin/kustomize
-	./bin/kustomize build config/crd | kubectl apply -f -
+install: manifests $(KUSTOMIZE)
+	$(KUSTOMIZE) build config/crd | kubectl apply -f -
 
 # Uninstall CRDs from a cluster
-uninstall: manifests bin/kustomize
-	./bin/kustomize build config/crd | kubectl delete -f -
+uninstall: manifests $(KUSTOMIZE)
+	$(KUSTOMIZE) build config/crd | kubectl delete -f -
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
-deploy: manifests bin/kustomize
+deploy: manifests $(KUSTOMIZE)
 	cd config/manager && $(ROOT_DIR)/bin/kustomize edit set image $(IMG_NAME)=$(IMG)
-	./bin/kustomize build config/default | kubectl apply -f -
+	$(KUSTOMIZE) build config/default | kubectl apply -f -
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: generate-manifests patch-crds
 
 generate-manifests: controller-gen
-	$(CONTROLLER_GEN) crd:trivialVersions=true,crdVersions=v1 rbac:roleName=manager webhook paths="./..." output:crd:artifacts:config=config/crd/bases/v1
-	$(CONTROLLER_GEN) crd:trivialVersions=true,crdVersions=v1beta1 rbac:roleName=manager webhook paths="./..." output:crd:artifacts:config=config/crd/bases/v1beta1
+	$(CONTROLLER_GEN) $(CRD_OPTIONS),crdVersions=v1 rbac:roleName=manager webhook paths="./..." output:crd:artifacts:config=config/crd/bases/v1
+	$(CONTROLLER_GEN) $(CRD_OPTIONS),crdVersions=v1beta1 rbac:roleName=manager webhook paths="./..." output:crd:artifacts:config=config/crd/bases/v1beta1
 
 # Run go fmt against code
 fmt:
@@ -113,7 +117,7 @@ ifeq (, $(shell which controller-gen))
 	CONTROLLER_GEN_TMP_DIR=$$(mktemp -d) ;\
 	cd $$CONTROLLER_GEN_TMP_DIR ;\
 	go mod init tmp ;\
-	go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.3.0 ;\
+	go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.6.1 ;\
 	rm -rf $$CONTROLLER_GEN_TMP_DIR ;\
 	}
 CONTROLLER_GEN=$(GOBIN)/controller-gen
@@ -130,8 +134,8 @@ release: bundle
 .PHONY: bundle
 bundle: manifests
 	./bin/operator-sdk generate kustomize manifests -q
-	cd config/manager && ./bin/kustomize edit set image $(IMG_NAME)=$(IMG)
-	./bin/kustomize edit build config/manifests | ./bin/operator-sdk generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
+	cd config/manager && $(ROOT_DIR)/$(KUSTOMIZE) edit set image $(IMG_NAME)=$(IMG)
+	$(KUSTOMIZE) build config/manifests | ./bin/operator-sdk generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
 	./hack/patch-bundle.sh
 	./bin/operator-sdk bundle validate ./bundle
 
@@ -185,13 +189,13 @@ bin/openapi-gen:
 	go build -o ./bin/openapi-gen k8s.io/kube-openapi/cmd/openapi-gen
 
 bin/yq:
-	./hack/install-yq.sh 3.3.0
+	./hack/install-yq.sh v4.31.2
 
 bin/golangci-lint:
 	hack/install-golangci-lint.sh v1.49.0
 
 bin/operator-sdk:
-	./hack/install-operator-sdk.sh 1.5.0
+	./hack/install-operator-sdk.sh v1.23.0
 
 bin/kustomize:
 	./hack/install-kustomize.sh ./bin

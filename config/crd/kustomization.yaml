@@ -2,7 +2,7 @@
 # since it depends on service name and namespace that are out of this kustomize package.
 # It should be run by config/default
 resources:
-- bases/v1beta1/datadoghq.com_watermarkpodautoscalers.yaml
+- bases/v1/datadoghq.com_watermarkpodautoscalers.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patchesStrategicMerge:

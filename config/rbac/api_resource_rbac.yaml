@@ -1,7 +1,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: external-metrics-reader
+  name: external-metrics-reader-wpa
 rules:
   - apiGroups:
       - external.metrics.k8s.io
@@ -16,11 +16,11 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: external-metrics-reader
+  name: external-metrics-reader-wpa
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: external-metrics-reader
+  name: external-metrics-reader-wpa
 subjects:
   - kind: ServiceAccount
     name: watermarkpodautoscaler-controller-manager

@@ -4,8 +4,10 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-ROOT=$(git rev-parse --show-toplevel)
-WORK_DIR=$(mktemp -d)
+SCRIPTS_DIR="$(dirname "$0")"
+# Provides $OS,$ARCH,$PLAFORM,$ROOT variables
+source "$SCRIPTS_DIR/install-common.sh"
+
 cleanup() {
   rm -rf "$WORK_DIR"
 }
@@ -21,9 +23,6 @@ then
   exit 1
 fi
 
-
-OS=$(go env GOOS)
-ARCH=$(go env GOARCH)
 
 curl -L https://storage.googleapis.com/kubebuilder-tools/kubebuilder-tools-${VERSION}-${OS}-${ARCH}.tar.gz | tar -xz -C $WORK_DIR 
 

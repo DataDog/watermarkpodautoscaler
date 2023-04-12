@@ -54,8 +54,10 @@ type ConvergeTowardsWatermarkType string
 
 var (
 	// ConvergeUpwards will suggest downscaling the target for a value to converge towards it's High Watermark.
+	// +optional
 	ConvergeUpwards ConvergeTowardsWatermarkType = "highwatermark"
 	// ConvergeUpwards will suggest upscaling the target for a value to converge towards it's Low Watermark.
+	// +optional
 	ConvergeDownwards ConvergeTowardsWatermarkType = "lowwatermark"
 )
 

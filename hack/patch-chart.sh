@@ -11,9 +11,11 @@ VERSION="$1"
 VVERSION="v$VERSION"
 
 # Locate project root
-ROOT=$(git rev-parse --show-toplevel)
-cd "$ROOT"
+SCRIPTS_DIR="$(dirname "$0")"
+# Provides $OS,$ARCH,$PLAFORM,$ROOT variables
+source "$SCRIPTS_DIR/os-env.sh"
+YQ="$ROOT/bin/$PLATFORM/yq"
 
 # Update version in the helm chart
-"$ROOT/bin/yq" w -i "$ROOT/chart/watermarkpodautoscaler/Chart.yaml" "appVersion" "$VVERSION"
-"$ROOT/bin/yq" w -i "$ROOT/chart/watermarkpodautoscaler/values.yaml" "image.tag" "$VVERSION"
+$YQ w -i "$ROOT/chart/watermarkpodautoscaler/Chart.yaml" "appVersion" "$VVERSION"
+$YQ w -i "$ROOT/chart/watermarkpodautoscaler/values.yaml" "image.tag" "$VVERSION"

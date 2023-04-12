@@ -37,9 +37,29 @@ jobs:
         # Prefix the list here with "+" to use these queries and those in the config file.
         # queries: ./path/to/local/query, your-org/your-repo/queries@main
 
-    # Autobuild attempts to build any compiled languages  (C/C++, C#, or Java).
-    - name: Autobuild
-      uses: github/codeql-action/autobuild@v2
+    # Autobuild attempts to build any compiled languages (C/C++, C#, Go, or Java).
+    # If this step fails, then you should remove it and run the build manually (see below).
+    # see doc: https://github.com/github/codeql-action
+    #- name: Autobuild
+    #  uses: github/codeql-action/autobuild@v2
+      
+    - name: Set up Go
+      uses: actions/setup-go@v1
+      with:
+        go-version: 1.19
+      id: go
+    - name: Install required packages
+      uses: mstksg/get-package@v1
+      with:
+        apt-get: mercurial jq build-essential
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v1
+    - name: Install tools
+      run: |
+        make install-tools
+    - name: Run build
+      run: |
+          make manager
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v2
