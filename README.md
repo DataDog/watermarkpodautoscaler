@@ -90,7 +90,7 @@ The WatermarkPodAutoscaler Controler comes with a kubectl plugin providing a set
 
 ### The process
 
-Create your [WPA](https://github.com/DataDog/watermarkpodautoscaler/blob/main/deploy/crds/datadoghq.com_watermarkpodautoscalers_cr.yaml) in the same namespace as your target deployment.
+Create your [WPA](https://github.com/DataDog/watermarkpodautoscaler/blob/main/chart/watermarkpodautoscaler/templates/datadoghq.com_watermarkpodautoscalers_crd_v1.yaml) in the same namespace as your target deployment.
 
 The Datadog Cluster Agent will pick up the creation/update/deletion event. It parses the WPA spec to extract the metric and scope to get from Datadog.
 
