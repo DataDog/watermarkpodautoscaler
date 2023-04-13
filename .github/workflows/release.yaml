@@ -160,7 +160,7 @@ jobs:
           mv ./tmp-build/darwin/*.zip ./dist
           mv ./tmp-build/linux/*.zip ./dist
           mv ./tmp-build/windows/*.zip ./dist
-          cp ./tmp-build/linuxdist/CHANGELOG.md ./dist/CHANGELOG.md
+          cp ./tmp-build/linux/CHANGELOG.md ./dist/CHANGELOG.md
       - name: Generate Plugin manifest
         run: ./hack/release/generate-plugin-manifest.sh ${{steps.tag.outputs.tag}}
       - name: Release
