@@ -1,5 +1,8 @@
 name: Release
 
+env:
+  GO_VERSION: 1.19
+
 on:
   push:
     branches:
@@ -25,7 +28,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v3
         with:
-          go-version: 1.18
+          go-version: ${{ env.GO_VERSION }}
       - name: Get Latest Release
         id: latest_version
         uses: pozetroninc/github-action-get-latest-release@master
@@ -61,7 +64,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v3
         with:
-          go-version: 1.17
+          go-version: ${{ env.GO_VERSION }}
       - name: Get Latest Release
         id: latest_version
         uses: pozetroninc/github-action-get-latest-release@master
@@ -95,7 +98,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v3
         with:
-          go-version: 1.17
+          go-version: ${{ env.GO_VERSION }}
       - name: Get Latest Release
         id: latest_version
         uses: pozetroninc/github-action-get-latest-release@master
