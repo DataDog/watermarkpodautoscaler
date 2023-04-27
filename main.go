@@ -53,6 +53,7 @@ func main() {
 	var logEncoder string
 	var logTimestampFormat string
 	var syncPeriodSeconds int
+	var clientTimeoutDuration time.Duration
 	var leaderElectionResourceLock string
 	var ddProfilingEnabled bool
 	var workers int
@@ -63,7 +64,8 @@ func main() {
 	flag.IntVar(&healthPort, "health-port", healthPort, "Port to use for the health probe")
 	flag.StringVar(&logEncoder, "logEncoder", "json", "log encoding ('json' or 'console')")
 	flag.StringVar(&logTimestampFormat, "log-timestamp-format", "millis", "log timestamp format ('millis', 'nanos', 'epoch', 'rfc3339' or 'rfc3339nano')")
-	flag.IntVar(&syncPeriodSeconds, "syncPeriodSeconds", 60*60, "The informers resync period in seconds") // default 1 hour
+	flag.IntVar(&syncPeriodSeconds, "syncPeriodSeconds", 60*60, "The informers resync period in seconds")                                            // default 1 hour
+	flag.DurationVar(&clientTimeoutDuration, "client-timeout", 0, "The maximum length of time to wait before giving up on a kube-apiserver request") // is set to 0, keep default
 	flag.StringVar(&leaderElectionResourceLock, "leader-election-resource", "configmaps", "determines which resource lock to use for leader election. option:[configmapsleases|endpointsleases|configmaps]")
 	flag.BoolVar(&ddProfilingEnabled, "ddProfilingEnabled", false, "Enable the datadog profiler")
 	flag.IntVar(&workers, "workers", 1, "Maximum number of concurrent Reconciles which can be run")
@@ -100,6 +102,12 @@ func main() {
 	version.PrintVersionLogs(setupLog)
 
 	syncDuration := time.Duration(syncPeriodSeconds) * time.Second
+	clientConfig := ctrl.GetConfigOrDie()
+	if clientTimeoutDuration != 0 {
+		// override client timeout duration if set
+		clientConfig.Timeout = clientTimeoutDuration
+	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), config.ManagerOptionsWithNamespaces(setupLog, ctrl.Options{
 		Scheme:                     scheme,
 		MetricsBindAddress:         fmt.Sprintf("%s:%d", host, metricsPort),
