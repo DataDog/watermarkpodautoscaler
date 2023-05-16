@@ -100,7 +100,9 @@ func main() {
 	version.PrintVersionLogs(setupLog)
 
 	syncDuration := time.Duration(syncPeriodSeconds) * time.Second
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), config.ManagerOptionsWithNamespaces(setupLog, ctrl.Options{
+	restConfig := ctrl.GetConfigOrDie()
+	restConfig.UserAgent = "wpa-controller"
+	mgr, err := ctrl.NewManager(restConfig, config.ManagerOptionsWithNamespaces(setupLog, ctrl.Options{
 		Scheme:                     scheme,
 		MetricsBindAddress:         fmt.Sprintf("%s:%d", host, metricsPort),
 		Port:                       9443,
