@@ -26,7 +26,7 @@ func NewClient(clientConfig clientcmd.ClientConfig) (client.Client, error) {
 	// Create the mapper provider.
 	mapper, err := apiutil.NewDiscoveryRESTMapper(restConfig)
 	if err != nil {
-		return nil, fmt.Errorf("unable to to instantiate mapper, err: %w", err)
+		return nil, fmt.Errorf("unable to instantiate mapper, err: %w", err)
 	}
 
 	if err = v1alpha1.AddToScheme(scheme.Scheme); err != nil {
