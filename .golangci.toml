@@ -70,6 +70,11 @@
     "golint",
     "gomoddirectives",
     "prealloc",
+    "structcheck",
+    "deadcode",
+    "varcheck",
+    "rowserrcheck",
+    "sqlclosecheck",
   ]
 
 [issues]
