@@ -205,6 +205,14 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	currentReplicas := currentScale.Status.Replicas
 	logger.Info("Target deploy", "replicas", currentReplicas)
 
+	// add additional labels to info metric
+	promLabels := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace}
+	for _, eLabel := range extraPromLabels {
+		eLabelValue := wpa.Labels[eLabel]
+		promLabels[eLabel] = eLabelValue
+	}
+	labelsInfo.With(promLabels).Set(1)
+
 	dryRunMetricValue := 0
 	if wpa.Spec.DryRun {
 		dryRunMetricValue = 1
@@ -217,67 +225,65 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	reference := fmt.Sprintf("%s/%s/%s", wpa.Spec.ScaleTargetRef.Kind, wpa.Namespace, wpa.Spec.ScaleTargetRef.Name)
 	setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, datadoghqv1alpha1.ConditionReasonSuccessfulGetScale, "the WPA controller was able to get the target's current scale")
 
-	metricStatuses := wpaStatusOriginal.CurrentMetrics
-	proposedReplicas := int32(0)
-	metricName := ""
-
 	desiredReplicas := int32(0)
 	rescaleReason := ""
 	now := time.Now()
-	rescale := true
-	stableRegime := false
+	var rescale bool
+
+	proposedReplicas, metricName, metricStatuses, metricTimestamp, readyReplicas, stableRegime, err := r.computeReplicasForMetrics(logger, wpa, currentScale)
+	if err != nil {
+		r.setCurrentReplicasInStatus(wpa, currentReplicas)
+		if err2 := r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa); err2 != nil {
+			r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedUpdateReplicasStatus, err2.Error())
+			setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedUpdateReplicasStatus, "the WPA controller was unable to update the number of replicas: %v", err)
+			logger.Info("The WPA controller was unable to update the number of replicas", "error", err2)
+			return nil
+		}
+		r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedComputeMetricsReplicas", err.Error())
+		logger.Info("Failed to compute desired number of replicas based on listed metrics.", "reference", reference, "error", err)
+		return nil
+	}
+	logger.Info("Proposing replicas", "proposedReplicas", proposedReplicas, "metricName", metricName, "reference", reference, "metric timestamp", metricTimestamp.Format(time.RFC1123))
+
+	rescaleMetric := ""
+	if proposedReplicas > desiredReplicas {
+		desiredReplicas = proposedReplicas
+		rescaleMetric = metricName
+	}
+	if desiredReplicas > currentReplicas {
+		rescaleReason = fmt.Sprintf("%s above target", rescaleMetric)
+	}
+	if desiredReplicas < currentReplicas {
+		rescaleReason = "All metrics below target"
+	}
+	desiredReplicas = normalizeDesiredReplicas(logger, wpa, currentReplicas, desiredReplicas, readyReplicas)
+	// update rescale reason if converging.
+	if stableRegime && desiredReplicas != currentReplicas {
+		rescaleReason = "Metric within watermarks, attempting to scale to converge towards watermark"
+	}
+	logger.Info("Normalized Desired replicas", "desiredReplicas", desiredReplicas)
+	rescale = shouldScale(logger, wpa, currentReplicas, desiredReplicas, now, stableRegime)
+
 	switch {
 	case currentScale.Spec.Replicas == 0:
 		// Autoscaling is disabled for this resource
 		desiredReplicas = 0
-		rescale = false
 		setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonScalingDisabled, "scaling is disabled since the replica count of the target is zero")
 	case currentReplicas > wpa.Spec.MaxReplicas:
 		rescaleReason = "Current number of replicas above Spec.MaxReplicas"
 		desiredReplicas = wpa.Spec.MaxReplicas
+		rescale = true
+		metricStatuses = wpaStatusOriginal.CurrentMetrics
 	case wpa.Spec.MinReplicas != nil && currentReplicas < *wpa.Spec.MinReplicas:
 		rescaleReason = "Current number of replicas below Spec.MinReplicas"
 		desiredReplicas = *wpa.Spec.MinReplicas
+		rescale = true
+		metricStatuses = wpaStatusOriginal.CurrentMetrics
 	case currentReplicas == 0:
 		rescaleReason = "Current number of replicas must be greater than 0"
 		desiredReplicas = 1
-	default:
-		var metricTimestamp time.Time
-		readyReplicas := int32(0)
-
-		proposedReplicas, metricName, metricStatuses, metricTimestamp, readyReplicas, stableRegime, err = r.computeReplicasForMetrics(logger, wpa, currentScale)
-		if err != nil {
-			r.setCurrentReplicasInStatus(wpa, currentReplicas)
-			if err2 := r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa); err2 != nil {
-				r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedUpdateReplicasStatus, err2.Error())
-				setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedUpdateReplicasStatus, "the WPA controller was unable to update the number of replicas: %v", err)
-				logger.Info("The WPA controller was unable to update the number of replicas", "error", err2)
-				return nil
-			}
-			r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedComputeMetricsReplicas", err.Error())
-			logger.Info("Failed to compute desired number of replicas based on listed metrics.", "reference", reference, "error", err)
-			return nil
-		}
-		logger.Info("Proposing replicas", "proposedReplicas", proposedReplicas, "metricName", metricName, "reference", reference, "metric timestamp", metricTimestamp.Format(time.RFC1123))
-
-		rescaleMetric := ""
-		if proposedReplicas > desiredReplicas {
-			desiredReplicas = proposedReplicas
-			rescaleMetric = metricName
-		}
-		if desiredReplicas > currentReplicas {
-			rescaleReason = fmt.Sprintf("%s above target", rescaleMetric)
-		}
-		if desiredReplicas < currentReplicas {
-			rescaleReason = "All metrics below target"
-		}
-		desiredReplicas = normalizeDesiredReplicas(logger, wpa, currentReplicas, desiredReplicas, readyReplicas)
-		// update rescale reason if converging.
-		if stableRegime && desiredReplicas != currentReplicas {
-			rescaleReason = "Metric within watermarks, attempting to scale to converge towards watermark"
-		}
-		logger.Info("Normalized Desired replicas", "desiredReplicas", desiredReplicas)
-		rescale = shouldScale(logger, wpa, currentReplicas, desiredReplicas, now, stableRegime)
+		rescale = true
+		metricStatuses = wpaStatusOriginal.CurrentMetrics
 	}
 
 	if rescale {
@@ -285,6 +291,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 		if wpa.Spec.DryRun {
 			logger.Info("DryRun mode: scaling change was inhibited", "currentReplicas", currentReplicas, "desiredReplicas", desiredReplicas)
 			setStatus(wpa, currentReplicas, desiredReplicas, metricStatuses, rescale)
+			replicaEffective.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(float64(desiredReplicas))
 			return r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa)
 		}
 
@@ -311,14 +318,6 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	}
 
 	replicaEffective.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(float64(desiredReplicas))
-
-	// add additional labels to info metric
-	promLabels := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace}
-	for _, eLabel := range extraPromLabels {
-		eLabelValue := wpa.Labels[eLabel]
-		promLabels[eLabel] = eLabelValue
-	}
-	labelsInfo.With(promLabels).Set(1)
 
 	setStatus(wpa, currentReplicas, desiredReplicas, metricStatuses, rescale)
 	return r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa)
