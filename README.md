@@ -335,6 +335,27 @@ Finally, we have verification that the deployment was correctly autoscaled:
 {"level":"info","ts":1566327253.7887673,"logger":"wpa_controller","msg":"Successful rescale of watermarkpodautoscaler, old size: 8, new size: 9, reason: cutom_metric.max{map[kubernetes_cluster:my-cluster service:my-service short_image:my-image]} above target"}
 ```
 
+### Extra options
+
+- You can use the annotation `wpa.datadoghq.com/logs-attributes` to add extra key values in the logs associated with the underlying WPA object.
+Example:
+```
+apiVersion: datadoghq.com/v1alpha1
+kind: WatermarkPodAutoscaler
+metadata:
+  annotations:
+    wpa.datadoghq.com/logs-attributes: '{"mywpa": "isgreat"}'
+  name: watermarkpodautoscaler-sinus
+  namespace: default
+  [...]
+```
+
+Will yield:
+
+```
+{"level":"info","ts":1643642642091.062,"logger":"controllers.WatermarkPodAutoscaler","msg":"getReadyPodsCount","watermarkpodautoscaler":"default/watermarkpodautoscaler-sinus","mywpa":"isgreat","full podList length":2,"toleratedAsReadyPodCount":2,"incorrectly targeted pods":0}
+```
+
 #### FAQ
 
 - **What happens if I scale manually my deployment?**
