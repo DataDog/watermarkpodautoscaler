@@ -265,7 +265,7 @@ func getReplicaCountDownscale(logger logr.Logger, currentReplicas, currentReadyR
 }
 
 // tryToConvergeToWatermark will try to make the replicaCount slowly converge to a watermark.
-// It will suggested converging until the estimated usage goes beyond the respective watermark.
+// It will suggest converging until the estimated usage goes beyond the respective watermark.
 // This feature is officially only supported with 1 metric.
 func tryToConvergeToWatermark(logger logr.Logger, convergingType v1alpha1.ConvergeTowardsWatermarkType, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, lowMark, highMark *resource.Quantity) (optimisedReplicaCount int32) {
 	scaleBy := *wpa.Spec.ReplicaScalingAbsoluteModulo

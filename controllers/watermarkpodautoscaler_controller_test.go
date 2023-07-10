@@ -755,7 +755,187 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 							return fmt.Errorf("did not scale as expected")
 						}
 					case v2beta1.ScalingLimited:
-						if c.Message != "the desired count is within the acceptable range" {
+						if c.Message != desiredCountAcceptable {
+							return fmt.Errorf("scaling incorrectly throttled")
+						}
+					}
+				}
+				return nil
+			},
+		},
+		{
+			name: "Converging while in stable regime",
+			fields: fields{
+				client:        fake.NewClientBuilder().Build(),
+				scaleclient:   &fakescale.FakeScaleClient{},
+				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
+				scheme:        s,
+				eventRecorder: eventRecorder,
+			},
+			args: args{
+				replicaCalculatorFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
+					// utilization is stable, we try to converge (successfully).
+					return ReplicaCalculation{4, 65, time.Now(), 3, metricPosition{false, false}}, nil
+				},
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Labels: map[string]string{"foo-key": "bar-value"},
+					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
+						LastScaleTime: &metav1.Time{Time: time.Now().Add(-45 * time.Second)},
+						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+							{
+								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
+								Status:             corev1.ConditionFalse,
+								LastTransitionTime: metav1.Time{Time: time.Now()},
+							},
+							{
+								Type:               v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark,
+								Status:             corev1.ConditionFalse,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-45 * time.Second)},
+							},
+						},
+					},
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						ScaleTargetRef:                      testCrossVersionObjectRef,
+						MaxReplicas:                         15,
+						ScaleUpLimitFactor:                  resource.NewQuantity(150, resource.DecimalSI),
+						UpscaleForbiddenWindowSeconds:       60,
+						DownscaleForbiddenWindowSeconds:     30, // we are allowed to downscale (converging) since we last scaled 45s ago.
+						UpscaleDelayAboveWatermarkSeconds:   0,
+						DownscaleDelayBelowWatermarkSeconds: 60,
+						ConvergeTowardsWatermark:            "highwatermark", // we will try to downscale until the metric gets past the high watermark
+						MinReplicas:                         getReplicas(1),
+						Metrics: []v1alpha1.MetricSpec{
+							{
+								Type: v1alpha1.ExternalMetricSourceType,
+								External: &v1alpha1.ExternalMetricSource{
+									MetricName:     "deadbeef-stable",
+									MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value1"}},
+									HighWatermark:  resource.NewMilliQuantity(80, resource.DecimalSI),
+									LowWatermark:   resource.NewMilliQuantity(70, resource.DecimalSI),
+								},
+							},
+						},
+					},
+				}),
+				wantReplicasCount: 4,
+				scale:             newScaleForDeployment(5),
+				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) {
+					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
+					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
+					_ = c.Create(context.TODO(), wpa)
+				},
+			},
+			wantErr: false,
+			wantFunc: func(c client.Client, desired int32, wpa *v1alpha1.WatermarkPodAutoscaler) error {
+				if wpa.Status.DesiredReplicas != desired {
+					return fmt.Errorf(fmt.Sprintf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas))
+				}
+				if len(wpa.Status.Conditions) != 6 {
+					return fmt.Errorf("incomplete reconciliation process, missing conditions")
+				}
+				t.Logf("%#v", wpa.Status.Conditions)
+				for _, c := range wpa.Status.Conditions {
+					switch c.Type {
+					case v2beta1.AbleToScale:
+						if c.Status != corev1.ConditionTrue {
+							// TODO we need more granularity on this condition to reflect that we are in not allowed to downscale.
+							return fmt.Errorf("should be able to scale")
+						}
+						if c.Message != "the WPA controller was able to update the target scale to 4" {
+							return fmt.Errorf("did not scale as expected")
+						}
+					case v2beta1.ScalingLimited:
+						if c.Message != desiredCountAcceptable {
+							return fmt.Errorf("scaling incorrectly throttled")
+						}
+					}
+				}
+				return nil
+			},
+		},
+		{
+			name: "Converging while in stable regime, blocked by forbidden window",
+			fields: fields{
+				client:        fake.NewClientBuilder().Build(),
+				scaleclient:   &fakescale.FakeScaleClient{},
+				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
+				scheme:        s,
+				eventRecorder: eventRecorder,
+			},
+			args: args{
+				replicaCalculatorFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
+					// utilization is stable, we try to converge (successfully).
+					return ReplicaCalculation{4, 65, time.Now(), 3, metricPosition{false, false}}, nil
+				},
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Labels: map[string]string{"foo-key": "bar-value"},
+					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
+						LastScaleTime: &metav1.Time{Time: time.Now().Add(-45 * time.Second)},
+						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+							{
+								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
+								Status:             corev1.ConditionFalse,
+								LastTransitionTime: metav1.Time{Time: time.Now()},
+							},
+							{
+								Type:               v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark,
+								Status:             corev1.ConditionFalse,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-45 * time.Second)},
+							},
+						},
+					},
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						ScaleTargetRef:                      testCrossVersionObjectRef,
+						MaxReplicas:                         15,
+						ScaleUpLimitFactor:                  resource.NewQuantity(150, resource.DecimalSI),
+						UpscaleForbiddenWindowSeconds:       60,
+						DownscaleForbiddenWindowSeconds:     60, // we are not allowed to downscale (converging) since we last scaled 45s ago.
+						UpscaleDelayAboveWatermarkSeconds:   0,
+						DownscaleDelayBelowWatermarkSeconds: 60,
+						ConvergeTowardsWatermark:            "highwatermark", // we will try to downscale until the metric gets past the high watermark
+						MinReplicas:                         getReplicas(1),
+						Metrics: []v1alpha1.MetricSpec{
+							{
+								Type: v1alpha1.ExternalMetricSourceType,
+								External: &v1alpha1.ExternalMetricSource{
+									MetricName:     "deadbeef-stable",
+									MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value1"}},
+									HighWatermark:  resource.NewMilliQuantity(80, resource.DecimalSI),
+									LowWatermark:   resource.NewMilliQuantity(70, resource.DecimalSI),
+								},
+							},
+						},
+					},
+				}),
+				wantReplicasCount: 5,
+				scale:             newScaleForDeployment(5),
+				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) {
+					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
+					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
+					_ = c.Create(context.TODO(), wpa)
+				},
+			},
+			wantErr: false,
+			wantFunc: func(c client.Client, desired int32, wpa *v1alpha1.WatermarkPodAutoscaler) error {
+				if wpa.Status.DesiredReplicas != desired {
+					return fmt.Errorf(fmt.Sprintf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas))
+				}
+				if len(wpa.Status.Conditions) != 6 {
+					return fmt.Errorf("incomplete reconciliation process, missing conditions")
+				}
+				t.Logf("%#v", wpa.Status.Conditions)
+				for _, c := range wpa.Status.Conditions {
+					switch c.Type {
+					case v2beta1.AbleToScale:
+						if c.Status != corev1.ConditionFalse {
+							// TODO we need more granularity on this condition to reflect that we are in not allowed to downscale.
+							return fmt.Errorf("shouldn't be able to scale")
+						}
+						if c.Message != "the time since the previous scale is still within both the downscale and upscale forbidden windows" {
+							return fmt.Errorf("did not block scaling as expected")
+						}
+					case v2beta1.ScalingLimited:
+						if c.Message != desiredCountAcceptable {
 							return fmt.Errorf("scaling incorrectly throttled")
 						}
 					}
@@ -862,7 +1042,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 							return fmt.Errorf("scaling incorrectly blocked")
 						}
 					case v2beta1.ScalingLimited:
-						if c.Message != "the desired count is within the acceptable range" {
+						if c.Message != desiredCountAcceptable {
 							return fmt.Errorf("scaling incorrectly throttled")
 						}
 					}
@@ -1070,7 +1250,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 			}
 			// If we have 2 metrics, we can assert on the two statuses
 			// We can also use the returned replica, metric etc that is from the highest scaling event
-			replicas, metric, statuses, _, _, err := r.computeReplicasForMetrics(logf.Log.WithName(tt.name), tt.args.wpa, tt.args.scale)
+			replicas, metric, statuses, _, _, _, err := r.computeReplicasForMetrics(logf.Log.WithName(tt.name), tt.args.wpa, tt.args.scale)
 			if err != nil && err.Error() != tt.err.Error() {
 				t.Errorf("Unexpected error %v", err)
 			}
@@ -1437,7 +1617,7 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			scale := shouldScale(logf.Log.WithName(tt.name), tt.args.wpa, tt.args.currentReplicas, tt.args.desiredReplicas, tt.args.timestamp)
+			scale := shouldScale(logf.Log.WithName(tt.name), tt.args.wpa, tt.args.currentReplicas, tt.args.desiredReplicas, tt.args.timestamp, false)
 			if scale != tt.shoudScale {
 				t.Error("Incorrect scale")
 			}
