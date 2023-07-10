@@ -386,6 +386,12 @@ func schema__api_v1alpha1_WatermarkPodAutoscalerStatus(ref common.ReferenceCallb
 							Ref: ref("k8s.io/apimachinery/pkg/apis/meta/v1.Time"),
 						},
 					},
+					"scalingEventsCount": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"integer"},
+							Format: "int32",
+						},
+					},
 					"currentReplicas": {
 						SchemaProps: spec.SchemaProps{
 							Default: 0,
