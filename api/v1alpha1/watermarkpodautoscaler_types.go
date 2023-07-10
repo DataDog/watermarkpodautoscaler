@@ -26,6 +26,7 @@ import (
 // +kubebuilder:printcolumn:name="max replicas",type="integer",JSONPath=".spec.maxReplicas"
 // +kubebuilder:printcolumn:name="dry-run",type="string",JSONPath=".status.conditions[?(@.type==\"DryRun\")].status"
 // +kubebuilder:printcolumn:name="last scale",type="date",JSONPath=".status.lastScaleTime"
+// +kubebuilder:printcolumn:name="scale count",type="integer",priority=1,JSONPath=".status.scalingEventsCount"
 // +kubebuilder:resource:path=watermarkpodautoscalers,shortName=wpa
 // +k8s:openapi-gen=true
 // +genclient
@@ -211,6 +212,7 @@ type MetricSpec struct {
 type WatermarkPodAutoscalerStatus struct {
 	ObservedGeneration *int64       `json:"observedGeneration,omitempty"`
 	LastScaleTime      *metav1.Time `json:"lastScaleTime,omitempty"`
+	ScalingEventsCount int32        `json:"scalingEventsCount,omitempty"`
 	CurrentReplicas    int32        `json:"currentReplicas"`
 	DesiredReplicas    int32        `json:"desiredReplicas"`
 	// +optional

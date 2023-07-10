@@ -42,6 +42,10 @@ spec:
     - JSONPath: .status.lastScaleTime
       name: last scale
       type: date
+    - JSONPath: .status.scalingEventsCount
+      name: scale count
+      priority: 1
+      type: integer
   group: datadoghq.com
   names:
     kind: WatermarkPodAutoscaler
@@ -548,6 +552,9 @@ spec:
               type: string
             observedGeneration:
               format: int64
+              type: integer
+            scalingEventsCount:
+              format: int32
               type: integer
           required:
             - currentReplicas

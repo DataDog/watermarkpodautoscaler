@@ -460,6 +460,7 @@ func setStatus(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, d
 	if rescale {
 		now := metav1.NewTime(time.Now())
 		wpa.Status.LastScaleTime = &now
+		wpa.Status.ScalingEventsCount += 1
 	}
 }
 
