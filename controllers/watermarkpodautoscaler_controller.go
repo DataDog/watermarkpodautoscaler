@@ -228,7 +228,6 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	desiredReplicas := int32(0)
 	rescaleReason := ""
 	now := time.Now()
-	var rescale bool
 
 	proposedReplicas, metricName, metricStatuses, metricTimestamp, readyReplicas, stableRegime, err := r.computeReplicasForMetrics(logger, wpa, currentScale)
 	if err != nil {
@@ -262,7 +261,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 		rescaleReason = "Metric within watermarks, attempting to scale to converge towards watermark"
 	}
 	logger.Info("Normalized Desired replicas", "desiredReplicas", desiredReplicas)
-	rescale = shouldScale(logger, wpa, currentReplicas, desiredReplicas, now, stableRegime)
+	rescale := shouldScale(logger, wpa, currentReplicas, desiredReplicas, now, stableRegime)
 
 	switch {
 	case currentScale.Spec.Replicas == 0:
@@ -284,6 +283,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 		desiredReplicas = 1
 		rescale = true
 		metricStatuses = wpaStatusOriginal.CurrentMetrics
+	default:
 	}
 
 	if rescale {
