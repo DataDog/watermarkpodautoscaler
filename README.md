@@ -362,6 +362,11 @@ Finally, we have verification that the deployment was correctly autoscaled:
 
     Yes.
 
+- **Does WPA support multiple metrics?**
+
+    Yes, WPA can scale on multiple metrics and works similar to [HPA](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#scaling-on-multiple-metrics). WPA evaluates each metric separately and proposes maximum number of replicas of all.
+
+
 #### RBAC
 
 Since we watch all the WPA definitions cluster wide, we use a clusterrole.
