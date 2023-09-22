@@ -1598,6 +1598,80 @@ func TestReplicaCalcBelowAverageExternal_Downscale3(t *testing.T) {
 	tc.runTest(t)
 }
 
+func TestReplicaCountConvergingDownward(t *testing.T) {
+	logf.SetLogger(zap.New())
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ExternalMetricSourceType,
+		External: &v1alpha1.ExternalMetricSource{
+			MetricName:     "loadbalancer.request.per.seconds",
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"foo": "bar"}},
+			HighWatermark:  resource.NewMilliQuantity(120001, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(75000, resource.DecimalSI),
+		},
+	}
+	tc := replicaCalcTestCase{
+		expectedReplicas: 2,
+		readyReplicas:    3,
+		pos: metricPosition{
+			isAbove: false,
+			isBelow: false,
+		},
+		scale: makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				Algorithm:                    "absolute",
+				ConvergeTowardsWatermark:     "highwatermark",
+				Tolerance:                    *resource.NewMilliQuantity(10, resource.DecimalSI),
+				Metrics:                      []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
+			},
+		},
+		metric: &metricInfo{
+			spec:                metric1,
+			levels:              []int64{80000}, // We are within the watermarks
+			expectedUtilization: 80000,
+		},
+	}
+	tc.runTest(t)
+}
+
+func TestReplicaCountConvergingDownwardBlocked(t *testing.T) {
+	logf.SetLogger(zap.New())
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ExternalMetricSourceType,
+		External: &v1alpha1.ExternalMetricSource{
+			MetricName:     "loadbalancer.request.per.seconds",
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"foo": "bar"}},
+			HighWatermark:  resource.NewMilliQuantity(119999, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(75000, resource.DecimalSI),
+		},
+	}
+	tc := replicaCalcTestCase{
+		expectedReplicas: 3,
+		readyReplicas:    3,
+		pos: metricPosition{
+			isAbove: false,
+			isBelow: false,
+		},
+		scale: makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				Algorithm:                    "absolute",
+				ConvergeTowardsWatermark:     "highwatermark",
+				Tolerance:                    *resource.NewMilliQuantity(10, resource.DecimalSI),
+				Metrics:                      []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
+			},
+		},
+		metric: &metricInfo{
+			spec:                metric1,
+			levels:              []int64{80000}, // We are within the watermarks
+			expectedUtilization: 80000,
+		},
+	}
+	tc.runTest(t)
+}
+
 // We have pods that are pending and not within an acceptable window.
 func TestPendingtExpiredScale(t *testing.T) {
 	logf.SetLogger(zap.New())
