@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-source "$(dirname $0)/../os-env.sh"
+source "$(dirname $0)/../install-common.sh"
 
 TAG=""
 if [ $# -gt 0 ]; then
