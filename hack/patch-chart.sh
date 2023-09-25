@@ -13,7 +13,7 @@ VVERSION="v$VERSION"
 # Locate project root
 SCRIPTS_DIR="$(dirname "$0")"
 # Provides $OS,$ARCH,$PLAFORM,$ROOT variables
-source "$SCRIPTS_DIR/os-env.sh"
+source "$SCRIPTS_DIR/install-common.sh"
 YQ="$ROOT/bin/$PLATFORM/yq"
 
 # Update version in the helm chart
