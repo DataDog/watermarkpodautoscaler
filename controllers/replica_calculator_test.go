@@ -1367,6 +1367,81 @@ func TestReplicaCalcAboveAbsoluteExternal_Upscale1(t *testing.T) {
 	tc.runTest(t)
 }
 
+func TestTolerateZeroDefault(t *testing.T) {
+	logf.SetLogger(zap.New())
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ExternalMetricSourceType,
+		External: &v1alpha1.ExternalMetricSource{
+			MetricName:     "deadbeef",
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"foo": "bar"}},
+			HighWatermark:  resource.NewMilliQuantity(4000, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(2000, resource.DecimalSI),
+		},
+	}
+
+	tc := replicaCalcTestCase{
+		expectedReplicas: 3,
+		readyReplicas:    3,
+		pos: metricPosition{
+			isAbove: false,
+			isBelow: false,
+		},
+		scale: makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				Algorithm:                    "absolute",
+				Tolerance:                    *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                      []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
+			},
+		},
+		metric: &metricInfo{
+			spec:                metric1,
+			levels:              []int64{0}, // We are much lower than the LowWatermark
+			expectedUtilization: 0,
+		},
+	}
+	tc.runTest(t)
+}
+
+func TestTolerateZeroEnabled(t *testing.T) {
+	logf.SetLogger(zap.New())
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ExternalMetricSourceType,
+		External: &v1alpha1.ExternalMetricSource{
+			MetricName:     "deadbeef",
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"foo": "bar"}},
+			HighWatermark:  resource.NewMilliQuantity(4000, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(2000, resource.DecimalSI),
+		},
+	}
+
+	tc := replicaCalcTestCase{
+		expectedReplicas: 1,
+		readyReplicas:    3,
+		pos: metricPosition{
+			isAbove: false,
+			isBelow: true,
+		},
+		scale: makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				Algorithm:                    "absolute",
+				TolerateZero:                 true,
+				Tolerance:                    *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                      []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
+			},
+		},
+		metric: &metricInfo{
+			spec:                metric1,
+			levels:              []int64{0}, // We are much lower than the LowWatermark
+			expectedUtilization: 0,
+		},
+	}
+	tc.runTest(t)
+}
+
 func TestReplicaCalcAboveAbsoluteExternal_Upscale2(t *testing.T) {
 	logf.SetLogger(zap.New())
 
