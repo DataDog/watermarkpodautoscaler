@@ -145,7 +145,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 		sum += val
 	}
 	if sum == 0 && !wpa.Spec.TolerateZero {
-		logger.V(1).Info("Retrieved 0 from the External Metrics Provider which is not ignored by default, use Spec.TolerateZero to enable")
+		logger.V(1).Info("Retrieved 0 from the External Metrics Provider which is not tolerated by default, use Spec.TolerateZero to enable")
 		// We artificially set the metricPos between the watermarks to force the controller not to scale the target.
 		return ReplicaCalculation{currentReadyReplicas, 0, timestamp, currentReadyReplicas, metricPosition{false, false}}, nil
 	}
