@@ -180,7 +180,7 @@ func (tc *replicaCalcTestCase) prepareTestClientSet() *fake.Clientset {
 				podPhase = tc.podPhase[i]
 			}
 			podDeletionTimestamp := false
-			if tc.podDeletionTimestamp != nil {
+			if tc.podDeletionTimestamp != nil && tc.podDeletionTimestamp[i] {
 				podDeletionTimestamp = tc.podDeletionTimestamp[i]
 			}
 			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
@@ -2639,17 +2639,19 @@ func TestGetReadyPodsCount(t *testing.T) {
 
 	now := metav1.Now()
 	startTime := metav1.Unix(now.Unix()-120, 0)
+	newReplicaStartTime := metav1.Unix(now.Unix()-10, 0)
 	readyTolerated := metav1.Unix(now.Unix()-readinessDelay/2, 0)
 	expired := metav1.Unix(now.Unix()-2*readinessDelay, 0)
 
 	tests := []struct {
-		name          string
-		selector      map[string]string
-		phases        []corev1.PodPhase
-		conditions    []corev1.PodCondition
-		startTimes    []metav1.Time
-		expected      int32
-		errorExpected error
+		name                 string
+		selector             map[string]string
+		phases               []corev1.PodPhase
+		conditions           []corev1.PodCondition
+		startTimes           []metav1.Time
+		podDeletionTimestamp []bool
+		expected             int32
+		errorExpected        error
 	}{
 		{
 			name:     "All Pods Running",
@@ -2668,10 +2670,11 @@ func TestGetReadyPodsCount(t *testing.T) {
 					LastTransitionTime: now,
 				},
 			},
-			startTimes:    []metav1.Time{startTime, startTime, startTime},
-			phases:        []corev1.PodPhase{corev1.PodRunning, corev1.PodRunning, corev1.PodRunning},
-			expected:      3,
-			errorExpected: nil,
+			startTimes:           []metav1.Time{startTime, startTime, startTime},
+			phases:               []corev1.PodPhase{corev1.PodRunning, corev1.PodRunning, corev1.PodRunning},
+			expected:             3,
+			podDeletionTimestamp: []bool{false, false, false, false},
+			errorExpected:        nil,
 		},
 		{
 			name:     "One Pod Pending but recent, one expired",
@@ -2690,10 +2693,11 @@ func TestGetReadyPodsCount(t *testing.T) {
 					LastTransitionTime: now,
 				},
 			},
-			startTimes:    []metav1.Time{startTime, startTime, startTime},
-			phases:        []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodRunning},
-			expected:      2,
-			errorExpected: nil,
+			startTimes:           []metav1.Time{startTime, startTime, startTime},
+			phases:               []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodRunning},
+			expected:             2,
+			podDeletionTimestamp: []bool{false, false, false, false},
+			errorExpected:        nil,
 		},
 		{
 			name:     "All Pods Failed",
@@ -2712,10 +2716,11 @@ func TestGetReadyPodsCount(t *testing.T) {
 					LastTransitionTime: now,
 				},
 			},
-			startTimes:    []metav1.Time{startTime, startTime, startTime},
-			phases:        []corev1.PodPhase{corev1.PodFailed, corev1.PodFailed, corev1.PodFailed},
-			expected:      0,
-			errorExpected: fmt.Errorf("among the %d pods, none is ready. Skipping recommendation", 3),
+			startTimes:           []metav1.Time{startTime, startTime, startTime},
+			phases:               []corev1.PodPhase{corev1.PodFailed, corev1.PodFailed, corev1.PodFailed},
+			expected:             0,
+			podDeletionTimestamp: []bool{false, false, false, false},
+			errorExpected:        fmt.Errorf("among the %d pods, none is ready. Skipping recommendation", 3),
 		},
 		{
 			name:     "No ready pods",
@@ -2734,10 +2739,11 @@ func TestGetReadyPodsCount(t *testing.T) {
 					LastTransitionTime: startTime,
 				},
 			},
-			startTimes:    []metav1.Time{startTime, startTime, startTime},
-			phases:        []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodPending},
-			expected:      0,
-			errorExpected: fmt.Errorf("among the 3 pods, none is ready. Skipping recommendation"),
+			startTimes:           []metav1.Time{startTime, startTime, startTime},
+			phases:               []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodPending},
+			expected:             0,
+			podDeletionTimestamp: []bool{false, false, false, false},
+			errorExpected:        fmt.Errorf("among the 3 pods, none is ready. Skipping recommendation"),
 		},
 		{
 			name:     "pod stuck in pending and containerCreating",
@@ -2756,21 +2762,54 @@ func TestGetReadyPodsCount(t *testing.T) {
 					LastTransitionTime: startTime,
 				},
 			},
-			startTimes:    []metav1.Time{startTime, startTime, startTime},
-			phases:        []corev1.PodPhase{corev1.PodRunning, corev1.PodPending, corev1.PodPending},
-			expected:      2,
-			errorExpected: nil,
+			startTimes:           []metav1.Time{startTime, startTime, startTime},
+			phases:               []corev1.PodPhase{corev1.PodRunning, corev1.PodPending, corev1.PodPending},
+			expected:             2,
+			podDeletionTimestamp: []bool{false, false, false, false},
+			errorExpected:        nil,
+		},
+		{
+			name:     "rolling update in progress, 2 pods to be deleted, 2 to be created",
+			selector: labels.Set{"name": "test-pod"},
+			conditions: []corev1.PodCondition{
+				{
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: startTime, // Old Replicaset, still Running
+					Message:            "Pod from old RS",
+				},
+				{
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: startTime, // Old Replicaset, still Running
+					Message:            "Pod from old RS",
+				},
+				{
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: newReplicaStartTime, // New ReplicaSet
+					Message:            "Pod from new RS",
+				},
+				{
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: newReplicaStartTime, // New ReplicaSet
+					Message:            "Pod from new RS",
+				},
+			},
+			startTimes:           []metav1.Time{startTime, startTime, newReplicaStartTime, newReplicaStartTime},
+			phases:               []corev1.PodPhase{corev1.PodRunning, corev1.PodRunning, corev1.PodRunning, corev1.PodRunning},
+			expected:             2,
+			podDeletionTimestamp: []bool{true, true, false, false},
+			errorExpected:        nil,
 		},
 	}
 
 	for _, f := range tests {
 		t.Run(f.name, func(t *testing.T) {
 			tc := replicaCalcTestCase{
-				podCondition: f.conditions,
-				podPhase:     f.phases,
-				podStartTime: f.startTimes,
-				scale:        makeScale(testDeploymentName, 3, f.selector),
-				namespace:    testNamespace,
+				podCondition:         f.conditions,
+				podPhase:             f.phases,
+				podStartTime:         f.startTimes,
+				scale:                makeScale(testDeploymentName, 3, f.selector),
+				namespace:            testNamespace,
+				podDeletionTimestamp: f.podDeletionTimestamp,
 			}
 			fakeClient := tc.prepareTestClientSet()
 
