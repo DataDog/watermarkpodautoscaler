@@ -358,8 +358,9 @@ func (c *ReplicaCalculator) getReadyPodsCount(log logr.Logger, targetName string
 		_, condition := getPodCondition(&pod.Status, corev1.PodReady)
 		// We can't distinguish pods that are past the Readiness in the lifecycle but have not reached it
 		// and pods that are still Unschedulable but we don't need this level of granularity.
-		if condition == nil || pod.Status.StartTime == nil {
-			log.Info("Pod unready", "namespace", pod.Namespace, "name", pod.Name)
+		// We do not want to account for pods that are being deleted either.
+		if condition == nil || pod.Status.StartTime == nil || pod.DeletionTimestamp != nil {
+			log.V(2).Info("Pod unready", "namespace", pod.Namespace, "name", pod.Name)
 			continue
 		}
 		if pod.Status.Phase == corev1.PodRunning && condition.Status == corev1.ConditionTrue ||
