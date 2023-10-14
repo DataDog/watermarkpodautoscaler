@@ -13,6 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 
+	datadoghq "github.com/DataDog/datadog-operator/apis/datadoghq/v1alpha1"
 	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
 )
 
@@ -32,6 +33,11 @@ func NewClient(clientConfig clientcmd.ClientConfig) (client.Client, error) {
 	if err = v1alpha1.AddToScheme(scheme.Scheme); err != nil {
 		return nil, fmt.Errorf("unable register WatermarkPodAutoscaler apis, err: %w", err)
 	}
+
+	if err = datadoghq.AddToScheme(scheme.Scheme); err != nil {
+		return nil, fmt.Errorf("unable register DatadogMetric apis, err: %w", err)
+	}
+
 	// Create the Client for Read/Write operations.
 	var newClient client.Client
 	newClient, err = client.New(restConfig, client.Options{Scheme: scheme.Scheme, Mapper: mapper})

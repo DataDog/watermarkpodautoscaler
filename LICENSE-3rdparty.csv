@@ -51,7 +51,7 @@ core,go.uber.org/zap,MIT
 core,golang.org/x/crypto/pkcs12,BSD-3-Clause
 core,golang.org/x/net,BSD-3-Clause
 core,golang.org/x/oauth2,BSD-3-Clause
-core,golang.org/x/sys,BSD-3-Clause
+core,golang.org/x/sys/unix,BSD-3-Clause
 core,golang.org/x/term,BSD-3-Clause
 core,golang.org/x/text,BSD-3-Clause
 core,golang.org/x/time/rate,BSD-3-Clause
