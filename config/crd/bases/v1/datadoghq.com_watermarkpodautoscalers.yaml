@@ -52,6 +52,10 @@ spec:
     - jsonPath: .status.lastScaleTime
       name: last scale
       type: date
+    - jsonPath: .status.scalingEventsCount
+      name: scale count
+      priority: 1
+      type: integer
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -733,6 +737,9 @@ spec:
                 type: string
               observedGeneration:
                 format: int64
+                type: integer
+              scalingEventsCount:
+                format: int32
                 type: integer
             required:
             - currentReplicas
