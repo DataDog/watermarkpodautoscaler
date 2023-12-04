@@ -138,11 +138,20 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 		value.Delete(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: metricName})
 		return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, fmt.Errorf("unable to get external metric %s/%s/%+v: %s", wpa.Namespace, metricName, selector, err) //nolint:errorlint
 	}
-	logger.Info("Metrics from the External Metrics Provider", "metrics", metrics)
+	logger.V(2).Info("Metrics from the External Metrics Provider", "metrics", metrics)
 
 	var sum int64
 	for _, val := range metrics {
 		sum += val
+	}
+	if sum == 0 && !wpa.Spec.TolerateZero {
+		logger.Info("Warning, retrieved 0 from the External Metrics Provider which is not tolerated by default, use Spec.TolerateZero to enable",
+			"wpa_name", wpa.Name,
+			"wpa_namespace", wpa.Namespace,
+			"metricName", metricName,
+		)
+		// We artificially set the metricPos between the watermarks to force the controller not to scale the target.
+		return ReplicaCalculation{currentReadyReplicas, 0, timestamp, currentReadyReplicas, metricPosition{false, false}}, nil
 	}
 
 	// if the average algorithm is used, the metrics retrieved has to be divided by the number of available replicas.

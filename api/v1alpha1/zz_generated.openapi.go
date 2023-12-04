@@ -308,6 +308,13 @@ func schema__api_v1alpha1_WatermarkPodAutoscalerSpec(ref common.ReferenceCallbac
 							Format:      "",
 						},
 					},
+					"tolerateZero": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Zero is a value that can lead to undesired outcomes, unless explicitly set the WPA will not take action if the value retrieved is 0.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
 					"scaleTargetRef": {
 						SchemaProps: spec.SchemaProps{
 							Description: "part of HorizontalPodAutoscalerSpec, see comments in the k8s-1.10.8 repo: staging/src/k8s.io/api/autoscaling/v1/types.go reference to scaled resource; horizontal pod autoscaler will learn the current resource consumption and will set the desired number of pods by using its Scale subresource.",

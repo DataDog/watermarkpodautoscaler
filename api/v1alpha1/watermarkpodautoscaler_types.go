@@ -106,6 +106,9 @@ type WatermarkPodAutoscalerSpec struct {
 	// Whether planned scale changes are actually applied
 	DryRun bool `json:"dryRun,omitempty"`
 
+	// Zero is a value that can lead to undesired outcomes, unless explicitly set the WPA will not take action if the value retrieved is 0.
+	TolerateZero bool `json:"tolerateZero,omitempty"`
+
 	// part of HorizontalPodAutoscalerSpec, see comments in the k8s-1.10.8 repo: staging/src/k8s.io/api/autoscaling/v1/types.go
 	// reference to scaled resource; horizontal pod autoscaler will learn the current resource consumption
 	// and will set the desired number of pods by using its Scale subresource.
