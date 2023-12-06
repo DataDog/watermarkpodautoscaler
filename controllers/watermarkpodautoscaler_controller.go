@@ -267,6 +267,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	case currentScale.Spec.Replicas == 0:
 		// Autoscaling is disabled for this resource
 		desiredReplicas = 0
+		rescale = false
 		setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonScalingDisabled, "scaling is disabled since the replica count of the target is zero")
 	case currentReplicas > wpa.Spec.MaxReplicas:
 		rescaleReason = "Current number of replicas above Spec.MaxReplicas"
@@ -283,7 +284,6 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 		desiredReplicas = 1
 		rescale = true
 		metricStatuses = wpaStatusOriginal.CurrentMetrics
-	default:
 	}
 
 	if rescale {
