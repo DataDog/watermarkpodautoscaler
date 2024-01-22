@@ -11,9 +11,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/DataDog/dd-trace-go/v2/profiler"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"gopkg.in/DataDog/dd-trace-go.v1/profiler"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
