@@ -5,7 +5,8 @@ core,github.com/Azure/go-autorest/autorest/adal,Apache-2.0
 core,github.com/Azure/go-autorest/autorest/date,Apache-2.0
 core,github.com/Azure/go-autorest/logger,Apache-2.0
 core,github.com/Azure/go-autorest/tracing,Apache-2.0
-core,github.com/DataDog/datadog-go/statsd,MIT
+core,github.com/DataDog/datadog-go/v5/statsd,MIT
+core,github.com/DataDog/dd-trace-go/v2,Apache-2.0
 core,github.com/DataDog/gostackparse,Apache-2.0
 core,github.com/DataDog/watermarkpodautoscaler,Apache-2.0
 core,github.com/DataDog/watermarkpodautoscaler/third_party/kubernetes/pkg/controller/podautoscaler/metrics,Apache-2.0
@@ -44,6 +45,10 @@ core,github.com/prometheus/client_model/go,Apache-2.0
 core,github.com/prometheus/common,Apache-2.0
 core,github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg,BSD-3-Clause
 core,github.com/prometheus/procfs,Apache-2.0
+core,github.com/richardartoul/molecule,MIT
+core,github.com/richardartoul/molecule/src/codec,Apache-2.0
+core,github.com/richardartoul/molecule/src/protowire,BSD-3-Clause
+core,github.com/spaolacci/murmur3,BSD-3-Clause
 core,github.com/spf13/pflag,BSD-3-Clause
 core,go.uber.org/atomic,MIT
 core,go.uber.org/multierr,MIT
@@ -57,7 +62,6 @@ core,golang.org/x/text,BSD-3-Clause
 core,golang.org/x/time/rate,BSD-3-Clause
 core,gomodules.xyz/jsonpatch/v2,Apache-2.0
 core,google.golang.org/protobuf,BSD-3-Clause
-core,gopkg.in/DataDog/dd-trace-go.v1,Apache-2.0
 core,gopkg.in/inf.v0,BSD-3-Clause
 core,gopkg.in/yaml.v2,Apache-2.0
 core,gopkg.in/yaml.v3,MIT
