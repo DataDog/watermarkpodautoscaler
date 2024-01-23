@@ -44,4 +44,10 @@ const (
 	ReasonFailedUpdateStatus = "FailedUpdateStatus"
 	// ReasonFailedProcessWPA Reason when the WPA can't be processed
 	ReasonFailedProcessWPA = "FailedProcessWPA"
+	// ReasonDatadogMonitorOK Reason when the DatadogMonitor associated with a WPA is in a OK state.
+	ReasonDatadogMonitorOK = "DatadogMonitorOK"
+	// ReasonDatadogMonitorNotOK Reason when the DatadogMonitor associated with a WPA is not in a OK state.
+	ReasonDatadogMonitorNotOK = "DatadogMonitorNotOK"
+	// ReasonDatadogMonitorNotOK Reason when the DatadogMonitor associated with a WPA is not in a OK state.
+	ReasonFailedGetDatadogMonitor = "FailedGetDatadogMonitor"
 )

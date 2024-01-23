@@ -1,5 +1,11 @@
 # WatermarkPodAutoscaler Helm chart changelog
 
+## v0.4
+
+### v0.4.0
+
+* Updating CRD to support the new features released in 0.6.1 (convergeTowardsWatermark) and 0.7.0 (lifecycleControl).
+
 ## v0.3
 
 ### Breaking changes

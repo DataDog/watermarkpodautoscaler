@@ -98,6 +98,15 @@ spec:
               dryRun:
                 description: Whether planned scale changes are actually applied
                 type: boolean
+              lifecycleControl:
+                description: LifecycleControl allows users to pair a DatadogMonitor
+                  Resource alongside their WPA object in order to control whether
+                  the reconciliation can take place
+                properties:
+                  enabled:
+                    description: Enabled is used to enable the feature.
+                    type: boolean
+                type: object
               maxReplicas:
                 format: int32
                 minimum: 1
