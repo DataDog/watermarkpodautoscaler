@@ -127,15 +127,6 @@ type WatermarkPodAutoscalerSpec struct {
 	MaxReplicas int32 `json:"maxReplicas,omitempty"`
 	// +kubebuilder:validation:Minimum=1
 	ReadinessDelaySeconds int32 `json:"readinessDelaySeconds,omitempty"`
-
-	// LifecycleControl allows users to pair a DatadogMonitor Resource alongside their WPA object in order to control whether the reconciliation can take place
-	LifecycleControl *LifecycleControlConfig `json:"lifecycleControl,omitempty"`
-}
-
-// LifecycleControlConfig allows users to specify whether to use a DatadogMonitor alongside their WPA object to better inform the scaling decisions.
-type LifecycleControlConfig struct {
-	// Enabled is used to enable the feature.
-	Enabled bool `json:"enabled,omitempty"`
 }
 
 // ExternalMetricSource indicates how to scale on a metric not associated with

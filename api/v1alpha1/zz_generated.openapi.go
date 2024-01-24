@@ -366,18 +366,12 @@ func schema__api_v1alpha1_WatermarkPodAutoscalerSpec(ref common.ReferenceCallbac
 							Format: "int32",
 						},
 					},
-					"lifecycleControl": {
-						SchemaProps: spec.SchemaProps{
-							Description: "LifecycleControl allows users to pair a DatadogMonitor Resource alongside their WPA object in order to control whether the reconciliation can take place",
-							Ref:         ref("./api/v1alpha1.LifecycleControlConfig"),
-						},
-					},
 				},
 				Required: []string{"scaleTargetRef"},
 			},
 		},
 		Dependencies: []string{
-			"./api/v1alpha1.CrossVersionObjectReference", "./api/v1alpha1.LifecycleControlConfig", "./api/v1alpha1.MetricSpec", "k8s.io/apimachinery/pkg/api/resource.Quantity"},
+			"./api/v1alpha1.CrossVersionObjectReference", "./api/v1alpha1.MetricSpec", "k8s.io/apimachinery/pkg/api/resource.Quantity"},
 	}
 }
 

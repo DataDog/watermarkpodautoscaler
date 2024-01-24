@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -59,9 +60,12 @@ const (
 	logAttributesAnnotationKey = "wpa.datadoghq.com/logs-attributes"
 	scaleNotFoundErr           = "scale not found"
 
-	monitorStatusErrorDuration = time.Minute
-	defaultRequeueDelay        = time.Second
-	scaleNotFoundRequeueDelay  = 10 * time.Second
+	// the lifecycleControl annotation allows users to specify whether to use a DatadogMonitor alongside their WPA object to better inform the scaling decisions.
+	lifecycleControlEnabledAnnotationKey = "wpa.datadoghq.com/lifecycle-control.enabled"
+	monitorStatusErrorDuration           = time.Minute
+
+	defaultRequeueDelay       = time.Second
+	scaleNotFoundRequeueDelay = 10 * time.Second
 
 	desiredCountAcceptable = "the desired count is within the acceptable range"
 )
@@ -160,8 +164,14 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		return reconcile.Result{}, nil
 	}
 
+	enabled, err := strconv.ParseBool(instance.Annotations[lifecycleControlEnabledAnnotationKey])
+	if err != nil {
+		log.Error(err, "lifecycle control config annotation could not be parsed, it will be ignored")
+		setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedGetDatadogMonitor, fmt.Sprintf("Lifecycle Control is not correctly enabled: %s", err.Error()))
+	}
+
 	// TODO Add telemetry on the associated DatadogMonitor
-	if instance.Spec.LifecycleControl != nil && instance.Spec.LifecycleControl.Enabled {
+	if enabled && err == nil {
 		log.Info("Lifecycle Control enabled, checking the state of the Datadog Monitor", "datadogMonitor", fmt.Sprintf("%s/%s", instance.Namespace, instance.Name))
 		// TODO allow users to override the name of the Datadog Monitor
 		dmon := types.NamespacedName{

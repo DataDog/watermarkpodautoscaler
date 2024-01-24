@@ -8,6 +8,6 @@ dependencies:
   version: "=1.3.0"
   alias: datadogCRDs
   repository: https://helm.datadoghq.com
-  condition: lifecycleControl.enabled
+  condition: lifecycleControl.enabled && datadogCRDs.crds.datadogMonitors
   tags:
   - install-crds
