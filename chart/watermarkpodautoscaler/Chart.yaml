@@ -9,5 +9,3 @@ dependencies:
   alias: datadogCRDs
   repository: https://helm.datadoghq.com
   condition: lifecycleControl.enabled && datadogCRDs.crds.datadogMonitors
-  tags:
-  - install-crds
