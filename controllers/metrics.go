@@ -27,6 +27,9 @@ const (
 	metricNamePromLabel        = "metric_name"
 	reasonPromLabel            = "reason"
 	transitionPromLabel        = "transition"
+	lifecycleStatus            = "lifecycle_status"
+	monitorName                = "monitor_name"
+	monitorNamespace           = "monotor_namespace"
 	// Label values
 	downscaleCappingPromLabelVal = "downscale_capping"
 	upscaleCappingPromLabelVal   = "upscale_capping"
@@ -96,6 +99,20 @@ var (
 			resourceNamePromLabel,
 			resourceKindPromLabel,
 		})
+	lifecycleControlStatus = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "lifecycle_control_status",
+			Help:      "Gauge indicating the status of the associated DatadogMonitor object",
+		},
+		[]string{
+			wpaNamePromLabel,
+			wpaNamespacePromLabel,
+			lifecycleStatus,
+			monitorName,
+			monitorNamespace,
+		},
+	)
 	lowwm = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
@@ -224,6 +241,7 @@ func init() {
 	sigmetrics.Registry.MustRegister(replicaEffective)
 	sigmetrics.Registry.MustRegister(restrictedScaling)
 	sigmetrics.Registry.MustRegister(transitionCountdown)
+	sigmetrics.Registry.MustRegister(lifecycleControlStatus)
 	sigmetrics.Registry.MustRegister(replicaMin)
 	sigmetrics.Registry.MustRegister(replicaMax)
 	sigmetrics.Registry.MustRegister(dryRun)
@@ -279,4 +297,13 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 		highwmV2.Delete(promLabelsForWpa)
 		value.Delete(promLabelsForWpa)
 	}
+	// TODO this only be cleaned up as part of the finalizer.
+	// Until the feature is moved to the Spec, updating the annotation to disable the feature will not clean up the metric.
+	lifecycleControlStatus.Delete(prometheus.Labels{
+		wpaNamePromLabel:      wpa.Name,
+		wpaNamespacePromLabel: wpa.Namespace,
+		lifecycleStatus:       lifecycleControlBlockedStatus,
+		monitorName:           wpa.Name,
+		monitorNamespace:      wpa.Namespace,
+	})
 }

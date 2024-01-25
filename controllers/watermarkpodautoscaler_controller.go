@@ -63,9 +63,9 @@ const (
 	// the lifecycleControl annotation allows users to specify whether to use a DatadogMonitor alongside their WPA object to better inform the scaling decisions.
 	lifecycleControlEnabledAnnotationKey = "wpa.datadoghq.com/lifecycle-control.enabled"
 	monitorStatusErrorDuration           = time.Minute
-
-	defaultRequeueDelay       = time.Second
-	scaleNotFoundRequeueDelay = 10 * time.Second
+	lifecycleControlBlockedStatus        = "blocked"
+	defaultRequeueDelay                  = time.Second
+	scaleNotFoundRequeueDelay            = 10 * time.Second
 
 	desiredCountAcceptable = "the desired count is within the acceptable range"
 )
@@ -174,6 +174,13 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 	if enabled && err == nil {
 		log.Info("Lifecycle Control enabled, checking the state of the Datadog Monitor", "datadogMonitor", fmt.Sprintf("%s/%s", instance.Namespace, instance.Name))
 		// TODO allow users to override the name of the Datadog Monitor
+		promLabels := prometheus.Labels{
+			wpaNamePromLabel:      instance.Name,
+			wpaNamespacePromLabel: instance.Namespace,
+			monitorName:           instance.Name,
+			monitorNamespace:      instance.Namespace,
+			lifecycleStatus:       lifecycleControlBlockedStatus,
+		}
 		dmon := types.NamespacedName{
 			Name:      instance.Name,
 			Namespace: instance.Namespace,
@@ -181,6 +188,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		mon := &monitorv1alpha1.DatadogMonitor{}
 		err := r.Client.Get(ctx, dmon, mon)
 		if err != nil {
+			lifecycleControlStatus.With(promLabels).Set(1)
 			log.Info("Datadog Monitor is not found, blocking reconcile loop for this WPA, will retry in 2 minute", "datadogMonitor", fmt.Sprintf("%s/%s", instance.Namespace, instance.Name))
 			// DatadogMonitor not found, wait for a minute before trying again.
 			// not returning an error to adding to the main rate-limited queue.
@@ -194,6 +202,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 			return reconcile.Result{RequeueAfter: 2 * monitorStatusErrorDuration}, nil
 		}
 		if mon.Status.MonitorState != monitorv1alpha1.DatadogMonitorStateOK {
+			lifecycleControlStatus.With(promLabels).Set(1)
 			log.Info("Datadog Monitor is not OK, blocking reconcile loop for this WPA, will retry in a minute", "datadogMonitor", fmt.Sprintf("%s/%s", instance.Namespace, instance.Name), "state", mon.Status.MonitorState)
 			// Monitors are evaluated every minute, no need to reconcile the WPA before that duration if we are not in a OK state.
 			// TODO: Introduce more granular status handling if the monitor is in No Data or Alert.
@@ -204,6 +213,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 			}
 			return reconcile.Result{RequeueAfter: monitorStatusErrorDuration}, nil
 		}
+		lifecycleControlStatus.With(promLabels).Set(0)
 		setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionFalse, datadoghqv1alpha1.ReasonDatadogMonitorOK, fmt.Sprintf("monitor %s is in a OK state, allowing the WPA from proceeding", dmon.String()))
 	}
 

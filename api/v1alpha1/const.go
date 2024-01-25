@@ -48,6 +48,6 @@ const (
 	ReasonDatadogMonitorOK = "DatadogMonitorOK"
 	// ReasonDatadogMonitorNotOK Reason when the DatadogMonitor associated with a WPA is not in a OK state.
 	ReasonDatadogMonitorNotOK = "DatadogMonitorNotOK"
-	// ReasonDatadogMonitorNotOK Reason when the DatadogMonitor associated with a WPA is not in a OK state.
+	// ReasonFailedGetDatadogMonitor Reason when the DatadogMonitor associated with a WPA is not found.
 	ReasonFailedGetDatadogMonitor = "FailedGetDatadogMonitor"
 )
