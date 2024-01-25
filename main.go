@@ -24,6 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	ctrlzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	monitorv1alpha1 "github.com/DataDog/datadog-operator/apis/datadoghq/v1alpha1"
 	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
 	"github.com/DataDog/watermarkpodautoscaler/controllers"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/config"
@@ -40,10 +41,11 @@ var (
 )
 
 func init() {
+	// +kubebuilder:scaffold:scheme
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(datadoghqv1alpha1.AddToScheme(scheme))
-	// +kubebuilder:scaffold:scheme
+	utilruntime.Must(monitorv1alpha1.AddToScheme(scheme))
 }
 
 func main() {

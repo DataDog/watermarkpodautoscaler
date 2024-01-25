@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	monitorv1alpha1 "github.com/DataDog/datadog-operator/apis/datadoghq/v1alpha1"
 	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
 	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1/test"
 	"github.com/go-logr/logr"
@@ -59,10 +60,13 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 	log := logf.Log.WithName("TestReconcileWatermarkPodAutoscaler_Reconcile")
 	s := scheme.Scheme
 	s.AddKnownTypes(v1alpha1.SchemeGroupVersion, &v1alpha1.WatermarkPodAutoscaler{})
+	s.AddKnownTypes(v1alpha1.SchemeGroupVersion, &monitorv1alpha1.DatadogMonitor{})
+
 	type fields struct {
 		client        client.Client
 		scaleclient   scale.ScalesGetter
 		scheme        *runtime.Scheme
+		restmapper    apimeta.RESTMapper
 		eventRecorder record.EventRecorder
 	}
 	type args struct {
@@ -84,6 +88,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				client:        fake.NewClientBuilder().Build(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				scheme:        s,
+				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
 				eventRecorder: eventRecorder,
 			},
 			args: args{
@@ -98,6 +103,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				client:        fake.NewClientBuilder().Build(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				scheme:        s,
+				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
 				eventRecorder: eventRecorder,
 			},
 			args: args{
@@ -115,6 +121,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				client:        fake.NewClientBuilder().Build(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				scheme:        s,
+				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
 				eventRecorder: eventRecorder,
 			},
 			args: args{
@@ -167,6 +174,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				client:        fake.NewClientBuilder().Build(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				scheme:        s,
+				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
 				eventRecorder: eventRecorder,
 			},
 			args: args{
@@ -214,6 +222,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				client:        fake.NewClientBuilder().Build(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				scheme:        s,
+				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
 				eventRecorder: eventRecorder,
 			},
 			args: args{
@@ -263,6 +272,105 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				return nil
 			},
 		},
+		{
+			name: "Lifecycle Control enabled, DatadogMonitor does not exist",
+			fields: fields{
+				client:        fake.NewClientBuilder().Build(),
+				scaleclient:   &fakescale.FakeScaleClient{},
+				scheme:        s,
+				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
+				eventRecorder: eventRecorder,
+			},
+			args: args{
+				request: newRequest(testingNamespace, testingWPAName),
+				loadFunc: func(c client.Client) {
+					wpa := test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+						Annotations: map[string]string{lifecycleControlEnabledAnnotationKey: "true"},
+						Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+							ScaleTargetRef: testCrossVersionObjectRef,
+							MinReplicas:    getReplicas(3),
+							MaxReplicas:    5,
+						},
+					})
+					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
+					_ = c.Create(context.TODO(), wpa)
+				},
+			},
+			want:    reconcile.Result{RequeueAfter: 2 * monitorStatusErrorDuration},
+			wantErr: false,
+			wantFunc: func(c client.Client) error {
+				rq := newRequest(testingNamespace, testingWPAName)
+				wpa := &v1alpha1.WatermarkPodAutoscaler{}
+				err := c.Get(context.TODO(), rq.NamespacedName, wpa)
+				if err != nil {
+					return err
+				}
+				cond := &v2beta1.HorizontalPodAutoscalerCondition{
+					Message: fmt.Sprintf("monitor %s/%s not found, blocking the WPA from proceeding", testingNamespace, testingWPAName),
+				}
+				if wpa.Status.Conditions[0].Message != cond.Message {
+					return fmt.Errorf("Unexpected Condition for non existent DatadogMonitor")
+				}
+				return nil
+			},
+		},
+		{
+			name: "Lifecycle Control enabled, DatadogMonitor exist and is OK",
+			fields: fields{
+				client:        fake.NewClientBuilder().Build(),
+				scaleclient:   &fakescale.FakeScaleClient{},
+				scheme:        s,
+				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
+				eventRecorder: eventRecorder,
+			},
+			args: args{
+				request: newRequest(testingNamespace, testingWPAName),
+				loadFunc: func(c client.Client) {
+					wpa := test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+						Annotations: map[string]string{lifecycleControlEnabledAnnotationKey: "true"},
+						Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+							ScaleTargetRef: testCrossVersionObjectRef,
+							MinReplicas:    getReplicas(3),
+							MaxReplicas:    5,
+						},
+					})
+					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
+					_ = c.Create(context.TODO(), wpa)
+
+					dmon := &monitorv1alpha1.DatadogMonitor{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      testingWPAName,
+							Namespace: testingNamespace,
+						},
+						Spec: monitorv1alpha1.DatadogMonitorSpec{},
+						Status: monitorv1alpha1.DatadogMonitorStatus{
+							MonitorState: monitorv1alpha1.DatadogMonitorStateOK,
+						},
+					}
+					err := c.Create(context.TODO(), dmon)
+					if err != nil {
+						panic(err)
+					}
+				},
+			},
+			want:    reconcile.Result{},
+			wantErr: false,
+			wantFunc: func(c client.Client) error {
+				rq := newRequest(testingNamespace, testingWPAName)
+				wpa := &v1alpha1.WatermarkPodAutoscaler{}
+				err := c.Get(context.TODO(), rq.NamespacedName, wpa)
+				if err != nil {
+					return err
+				}
+				cond := &v2beta1.HorizontalPodAutoscalerCondition{
+					Message: fmt.Sprintf("monitor %s/%s is in a OK state, allowing the WPA from proceeding", testingNamespace, testingWPAName),
+				}
+				if wpa.Status.Conditions[6].Message != cond.Message {
+					return fmt.Errorf("Unexpected Condition for existent DatadogMonitor")
+				}
+				return nil
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -272,6 +380,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				Scheme:        tt.fields.scheme,
 				Log:           log,
 				eventRecorder: tt.fields.eventRecorder,
+				restMapper:    tt.fields.restmapper,
 			}
 			log.Info(fmt.Sprintf("Reconciliating %v", tt.args.request))
 			if tt.args.loadFunc != nil {

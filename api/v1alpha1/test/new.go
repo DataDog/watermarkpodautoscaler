@@ -23,6 +23,7 @@ type NewWatermarkPodAutoscalerOptions struct {
 	Spec         *v1alpha1.WatermarkPodAutoscalerSpec
 	CreationTime *time.Time
 	Labels       map[string]string
+	Annotations  map[string]string
 }
 
 // NewWatermarkPodAutoscaler return new instance of *v1alpha1.WatermarkPodAutoscaler
@@ -52,6 +53,11 @@ func NewWatermarkPodAutoscaler(ns, name string, options *NewWatermarkPodAutoscal
 		if options.Labels != nil {
 			for k, v := range options.Labels {
 				wpa.Labels[k] = v
+			}
+		}
+		if options.Annotations != nil {
+			for k, v := range options.Annotations {
+				wpa.Annotations[k] = v
 			}
 		}
 	}

@@ -245,6 +245,9 @@ const WatermarkPodAutoscalerStatusAboveHighWatermark autoscalingv2.HorizontalPod
 // WatermarkPodAutoscalerStatusConvergeToWatermark ConditionType used when the value is within bound and we're trying to converge to the one of the watermarks
 const WatermarkPodAutoscalerStatusConvergeToWatermark autoscalingv2.HorizontalPodAutoscalerConditionType = "ConvergeToWatermark"
 
+// ScalingBlocked represents a given WPA's lifecycle will depend on the associated Datadog Monitor's state
+const ScalingBlocked autoscalingv2.HorizontalPodAutoscalerConditionType = "ScalingBlocked"
+
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // WatermarkPodAutoscalerList contains a list of WatermarkPodAutoscaler

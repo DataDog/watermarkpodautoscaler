@@ -70,4 +70,15 @@ rules:
   - list
   - get
   - watch
+{{- if .Values.lifecycleControl.enabled }}
+- apiGroups:
+  - datadoghq.com
+  resources:
+  - datadogmonitors
+  - datadogmonitors/status
+  verbs:
+  - get
+  - list
+  - watch
+{{- end -}}
 {{- end -}}
