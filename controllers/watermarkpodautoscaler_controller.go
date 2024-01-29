@@ -164,8 +164,9 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		return reconcile.Result{}, nil
 	}
 
-	enabled, err := strconv.ParseBool(instance.Annotations[lifecycleControlEnabledAnnotationKey])
-	if err != nil {
+	enabledValue := instance.Annotations[lifecycleControlEnabledAnnotationKey]
+	enabled, err := strconv.ParseBool(enabledValue)
+	if err != nil && enabledValue != "" {
 		log.Error(err, "lifecycle control config annotation could not be parsed, it will be ignored")
 		setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedGetDatadogMonitor, fmt.Sprintf("Lifecycle Control is not correctly enabled: %s", err.Error()))
 	}
