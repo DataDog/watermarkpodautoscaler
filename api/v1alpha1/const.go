@@ -30,10 +30,10 @@ const (
 	ConditionReasonFailedGetResourceMetric = "FailedGetResourceMetric"
 	// ConditionValidMetricFound Condition when a valid metric is retrieved
 	ConditionValidMetricFound = "ValidMetricFound"
+	// CondistionReasonNotScaling Condition reason when not scaling
+	ConditionReasonNotScaling = "NotScaling"
 	// ReasonFailedSpecCheck Reason when the spec of the WPA is incorrect
 	ReasonFailedSpecCheck = "FailedSpecCheck"
-	// ReasonNotScaling Reason when not scaling
-	ReasonNotScaling = "NotScaling"
 	// ReasonScaling Reason when scaling
 	ReasonScaling = "Scaling"
 	// ReasonFailedScale Reason when unable to scale
