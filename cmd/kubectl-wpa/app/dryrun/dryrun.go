@@ -19,7 +19,7 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
+	"github.com/DataDog/watermarkpodautoscaler/api/datadoghq/v1alpha1"
 	"github.com/DataDog/watermarkpodautoscaler/cmd/kubectl-wpa/app/common"
 )
 
