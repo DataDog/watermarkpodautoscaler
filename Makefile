@@ -175,7 +175,7 @@ install-tools: bin/$(PLATFORM)/golangci-lint bin/$(PLATFORM)/operator-sdk bin/$(
 
 .PHONY: generate-openapi
 generate-openapi: bin/$(PLATFORM)/openapi-gen
-	bin/$(PLATFORM)/openapi-gen --logtostderr=true -o "" -i ./api/datadohq/v1alpha1 -O zz_generated.openapi -p ./api/datadohq/v1alpha1 -h ./hack/boilerplate.go.txt -r "-"
+	bin/$(PLATFORM)/openapi-gen --logtostderr=true -o "" -i ./api/datadoghq/v1alpha1 -O zz_generated.openapi -p ./api/datadoghq/v1alpha1 -h ./hack/boilerplate.go.txt -r "-"
 
 .PHONY: patch-crds
 patch-crds: bin/$(PLATFORM)/yq
