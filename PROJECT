@@ -10,7 +10,7 @@ resources:
   group: datadoghq
   kind: WatermarkPodAutoscaler
   # TODO(user): Update the package path for your API if the below value is incorrect.
-  path: github.com/DataDog/watermarkpodautoscaler/api/v1alpha1
+  path: github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1
   version: v1alpha1
 version: "3"
 plugins:
