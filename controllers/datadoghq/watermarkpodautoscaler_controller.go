@@ -52,7 +52,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	monitorv1alpha1 "github.com/DataDog/datadog-operator/apis/datadoghq/v1alpha1"
-	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/api/datadoghq/v1alpha1"
+	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 )
 
 const (
