@@ -54,7 +54,7 @@ e2e: manager manifests verify-license goe2e
 
 # Runs e2e tests (expects a configured cluster)
 goe2e:
-	KUBEBUILDER_ASSETS="$(ROOT)/bin/$(PLATFORM)/" go test --tags=e2e ./controllers/test
+	KUBEBUILDER_ASSETS="$(ROOT)/bin/$(PLATFORM)/" go test --tags=e2e ./controllers/datadoghq/test
 
 # Build manager binary
 .PHONY: manager
@@ -175,7 +175,7 @@ install-tools: bin/$(PLATFORM)/golangci-lint bin/$(PLATFORM)/operator-sdk bin/$(
 
 .PHONY: generate-openapi
 generate-openapi: bin/$(PLATFORM)/openapi-gen
-	bin/$(PLATFORM)/openapi-gen --logtostderr=true -o "" -i ./api/v1alpha1 -O zz_generated.openapi -p ./api/v1alpha1 -h ./hack/boilerplate.go.txt -r "-"
+	bin/$(PLATFORM)/openapi-gen --logtostderr=true -o "" -i ./apis/datadoghq/v1alpha1 -O zz_generated.openapi -p ./apis/datadoghq/v1alpha1 -h ./hack/boilerplate.go.txt -r "-"
 
 .PHONY: patch-crds
 patch-crds: bin/$(PLATFORM)/yq

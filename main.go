@@ -25,8 +25,9 @@ import (
 	ctrlzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	monitorv1alpha1 "github.com/DataDog/datadog-operator/apis/datadoghq/v1alpha1"
-	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
-	"github.com/DataDog/watermarkpodautoscaler/controllers"
+
+	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
+	datadoghqcontrollers "github.com/DataDog/watermarkpodautoscaler/controllers/datadoghq"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/config"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/version"
 	// +kubebuilder:scaffold:imports
@@ -123,7 +124,7 @@ func main() {
 	managerLogger := ctrl.Log.WithName("controllers").WithName("WatermarkPodAutoscaler")
 	klog.SetLogger(managerLogger) // Redirect klog to the controller logger (zap)
 
-	if err = (&controllers.WatermarkPodAutoscalerReconciler{
+	if err = (&datadoghqcontrollers.WatermarkPodAutoscalerReconciler{
 		Client: mgr.GetClient(),
 		Log:    managerLogger,
 		Scheme: mgr.GetScheme(),
