@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/api/datadoghq/v1alpha1"
+	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 
 	"github.com/prometheus/client_golang/prometheus"
 

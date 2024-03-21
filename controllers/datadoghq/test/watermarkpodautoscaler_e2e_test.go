@@ -28,8 +28,8 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/api/datadoghq/v1alpha1"
-	wpatest "github.com/DataDog/watermarkpodautoscaler/api/datadoghq/v1alpha1/test"
+	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
+	wpatest "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1/test"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/util"
 	"github.com/DataDog/watermarkpodautoscaler/test/e2e/metricsserver"
 	"github.com/DataDog/watermarkpodautoscaler/test/e2e/utils"

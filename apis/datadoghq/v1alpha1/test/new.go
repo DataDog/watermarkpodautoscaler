@@ -9,7 +9,7 @@ package test
 import (
 	"time"
 
-	"github.com/DataDog/watermarkpodautoscaler/api/datadoghq/v1alpha1"
+	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
