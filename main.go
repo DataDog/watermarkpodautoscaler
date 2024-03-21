@@ -26,7 +26,7 @@ import (
 
 	monitorv1alpha1 "github.com/DataDog/datadog-operator/apis/datadoghq/v1alpha1"
 	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/api/datadoghq/v1alpha1"
-	"github.com/DataDog/watermarkpodautoscaler/controllers"
+	controllers "github.com/DataDog/watermarkpodautoscaler/controllers/datadoghq"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/config"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/version"
 	// +kubebuilder:scaffold:imports
