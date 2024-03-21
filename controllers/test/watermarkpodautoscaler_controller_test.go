@@ -18,8 +18,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
-	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1/test"
+	"github.com/DataDog/watermarkpodautoscaler/api/datadoghq/v1alpha1"
+	"github.com/DataDog/watermarkpodautoscaler/api/datadoghq/v1alpha1/test"
 )
 
 var _ = Describe("WatermarkPodAutoscaler Controller", func() {
