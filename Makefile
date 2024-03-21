@@ -55,7 +55,7 @@ e2e: manager manifests verify-license goe2e
 
 # Runs e2e tests (expects a configured cluster)
 goe2e:
-	KUBEBUILDER_ASSETS="$(ROOT)/bin/$(PLATFORM)/" go test --tags=e2e ./controllers/test
+	KUBEBUILDER_ASSETS="$(ROOT)/bin/$(PLATFORM)/" go test --tags=e2e ./controllers/datadoghq/test
 
 # Build manager binary
 .PHONY: manager
