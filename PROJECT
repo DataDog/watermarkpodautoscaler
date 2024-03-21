@@ -5,7 +5,7 @@ repo: github.com/DataDog/watermarkpodautoscaler
 resources:
 -
   # TODO(user): Uncomment the below line if this resource implements a controller, else delete it.
-  # controller: true
+  controller: true
   domain: datadoghq.com
   group: datadoghq
   kind: WatermarkPodAutoscaler
