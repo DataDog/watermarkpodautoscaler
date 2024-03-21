@@ -1,2 +1,2 @@
-// Package controllers containers all the WatermarkPodAutoscaler controller logic.
-package controllers
+// Package datadoghq containers all the WatermarkPodAutoscaler controller logic.
+package datadoghq
