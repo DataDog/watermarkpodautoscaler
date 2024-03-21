@@ -77,7 +77,7 @@ func ginkgoLog(format string, a ...interface{}) {
 var alreadyExistingObjs = map[dynclient.Object]bool{}
 
 func objectsBeforeEachFunc() {
-	objs, err := metricsserver.InitMetricsServerFiles(GinkgoWriter, "../../test/e2e/metricsserver/deploy", namespace)
+	objs, err := metricsserver.InitMetricsServerFiles(GinkgoWriter, "../../../test/e2e/metricsserver/deploy", namespace)
 	Expect(err).Should(Succeed())
 	info("We extracted all the files")
 	Expect(err).Should(Succeed())
