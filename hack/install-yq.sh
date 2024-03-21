@@ -13,7 +13,8 @@ cleanup() {
 }
 trap "cleanup" EXIT SIGINT
 
-VERSION=$1
+INSTALL_PATH=$1
+VERSION=$2
 
 BIN_ARCH=$(uname_arch)
 BINARY="yq_$(uname)_$BIN_ARCH"
@@ -28,5 +29,5 @@ cd $WORK_DIR
 curl -Lo ${BINARY} https://github.com/mikefarah/yq/releases/download/$VERSION/$BINARY
 
 chmod +x $BINARY
-mkdir -p $ROOT/bin/$PLATFORM/
-mv $BINARY $ROOT/bin/$PLATFORM/yq
+mkdir -p $ROOT/$INSTALL_PATH/
+mv $BINARY $ROOT/$INSTALL_PATH/yq

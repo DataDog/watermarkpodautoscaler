@@ -10,6 +10,9 @@ VERSION?=$(GIT_VERSION:v%=%)
 IMG_VERSION?=$(if $(VERSION),$(VERSION),latest)
 GIT_COMMIT?=$(shell git rev-parse HEAD)
 DATE=$(shell date +%Y-%m-%d/%H:%M:%S )
+PLATFORM=$(shell uname -s | tr '[:upper:]' '[:lower:]')-$(shell uname -m)
+ROOT=$(dir $(abspath $(firstword $(MAKEFILE_LIST))))
+KUSTOMIZE_CONFIG?=config/default
 LDFLAGS=-w -s -X ${BUILDINFOPKG}.Commit=${GIT_COMMIT} -X ${BUILDINFOPKG}.Version=${VERSION} -X ${BUILDINFOPKG}.BuildTime=${DATE}
 CHANNELS=alpha
 DEFAULT_CHANNEL=alpha
@@ -29,8 +32,6 @@ BUNDLE_DEFAULT_CHANNEL := --default-channel=$(DEFAULT_CHANNEL)
 endif
 BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
-KUSTOMIZE = bin/kustomize
-
 # Image URL to use all building/pushing image targets
 IMG ?= $(IMG_NAME):v$(IMG_VERSION)
 
@@ -46,43 +47,53 @@ all: install-tools manager test
 build: manager kubectl-wpa
 
 # Run tests
-test: manager manifests verify-license bin/kubebuilder-tools
-	go test ./... -coverprofile cover.out
+test: manager manifests verify-license
+	KUBEBUILDER_ASSETS="$(ROOT)/bin/$(PLATFORM)/" go test ./... -coverprofile cover.out
 
 e2e: manager manifests verify-license goe2e
 
 # Runs e2e tests (expects a configured cluster)
-goe2e: bin/kubebuilder-tools
-	go test --tags=e2e ./controllers/test
+goe2e:
+	KUBEBUILDER_ASSETS="$(ROOT)/bin/$(PLATFORM)/" go test --tags=e2e ./controllers/test
 
 # Build manager binary
+.PHONY: manager
 manager: generate lint fmt vet
 	go build -o bin/manager main.go
 
+.PHONY: kubectl-wpa
 kubectl-wpa: fmt vet lint
 	CGO_ENABLED=1 go build -ldflags '${LDFLAGS}' -o bin/kubectl-wpa ./cmd/kubectl-wpa/main.go
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
+.PHONY: run
 run: generate fmt vet manifests
 	go run ./main.go
 
 # Install CRDs into a cluster
+.PHONY: install
 install: manifests $(KUSTOMIZE)
 	$(KUSTOMIZE) build config/crd | kubectl apply -f -
 
 # Uninstall CRDs from a cluster
+.PHONY: uninstall
 uninstall: manifests $(KUSTOMIZE)
 	$(KUSTOMIZE) build config/crd | kubectl delete -f -
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
+.PHONY: deploy
 deploy: manifests $(KUSTOMIZE)
-	cd config/manager && $(ROOT_DIR)/bin/kustomize edit set image $(IMG_NAME)=$(IMG)
+	cd config/manager && $(ROOT_DIR)/bin/$(PLATFORM)/kustomize edit set image $(IMG_NAME)=$(IMG)
 	$(KUSTOMIZE) build config/default | kubectl apply -f -
+
+.PHONY: undeploy
+undeploy: $(KUSTOMIZE) ## Undeploy controller from the K8s cluster specified in ~/.kube/config.
+	$(KUSTOMIZE) build $(KUSTOMIZE_CONFIG) | kubectl delete -f -
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: generate-manifests patch-crds
 
-generate-manifests: controller-gen
+generate-manifests: $(CONTROLLER_GEN)
 	$(CONTROLLER_GEN) $(CRD_OPTIONS),crdVersions=v1 rbac:roleName=manager webhook paths="./..." output:crd:artifacts:config=config/crd/bases/v1
 	$(CONTROLLER_GEN) $(CRD_OPTIONS),crdVersions=v1beta1 rbac:roleName=manager webhook paths="./..." output:crd:artifacts:config=config/crd/bases/v1beta1
 
@@ -95,7 +106,7 @@ vet:
 	go vet ./...
 
 # Generate code
-generate: controller-gen generate-openapi
+generate: $(CONTROLLER_GEN) generate-openapi
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
 # Build the docker image
@@ -108,22 +119,34 @@ docker-build-ci:
 docker-push:
 	docker push ${IMG}
 
-# find or download controller-gen
-# download controller-gen if necessary
-controller-gen:
-ifeq (, $(shell which controller-gen))
-	@{ \
-	set -e ;\
-	CONTROLLER_GEN_TMP_DIR=$$(mktemp -d) ;\
-	cd $$CONTROLLER_GEN_TMP_DIR ;\
-	go mod init tmp ;\
-	go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.6.1 ;\
-	rm -rf $$CONTROLLER_GEN_TMP_DIR ;\
-	}
-CONTROLLER_GEN=$(GOBIN)/controller-gen
-else
-CONTROLLER_GEN=$(shell which controller-gen)
-endif
+
+##@ Tools
+CONTROLLER_GEN = bin/$(PLATFORM)/controller-gen
+$(CONTROLLER_GEN): Makefile  ## Download controller-gen locally if necessary.
+	$(call go-get-tool,$@,sigs.k8s.io/controller-tools/cmd/controller-gen@v0.6.1)
+
+KUSTOMIZE = bin/$(PLATFORM)/kustomize
+$(KUSTOMIZE): Makefile  ## Download kustomize locally if necessary.
+	$(call go-get-tool,$@,sigs.k8s.io/kustomize/kustomize/v4@v4.5.7)
+
+ENVTEST = bin/$(PLATFORM)/setup-envtest
+$(ENVTEST): Makefile ## Download envtest-setup locally if necessary.
+	$(call go-get-tool,$@,sigs.k8s.io/controller-runtime/tools/setup-envtest@latest)
+
+
+# go-get-tool will 'go get' any package $2 and install it to $1.
+PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
+define go-get-tool
+@[ -f $(1) ] || { \
+set -e ;\
+TMP_DIR=$$(mktemp -d) ;\
+cd $$TMP_DIR ;\
+go mod init tmp ;\
+echo "Downloading $(2)" ;\
+GOBIN=$(PROJECT_DIR)/bin/$(PLATFORM) go install $(2) ;\
+rm -rf $$TMP_DIR ;\
+}
+endef
 
 # Make release
 .PHONY: release
@@ -133,11 +156,11 @@ release: bundle
 # Generate bundle manifests and metadata, then validate generated files.
 .PHONY: bundle
 bundle: manifests
-	./bin/operator-sdk generate kustomize manifests -q
+	bin/$(PLATFORM)/operator-sdk generate kustomize manifests -q
 	cd config/manager && $(ROOT_DIR)/$(KUSTOMIZE) edit set image $(IMG_NAME)=$(IMG)
 	$(KUSTOMIZE) build config/manifests | ./bin/operator-sdk generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
-	./hack/patch-bundle.sh
-	./bin/operator-sdk bundle validate ./bundle
+	hack/patch-bundle.sh
+	bin/$(PLATFORM)/operator-sdk bundle validate ./bundle
 
 # Build the bundle image.
 .PHONY: bundle-build
@@ -148,57 +171,59 @@ bundle-build:
 # Datadog Custom part
 #
 .PHONY: install-tools
-install-tools: bin/golangci-lint bin/operator-sdk bin/yq bin/kubebuilder bin/kustomize bin/kubebuilder-tools bin/go-licenses
+install-tools: bin/$(PLATFORM)/golangci-lint bin/$(PLATFORM)/operator-sdk bin/$(PLATFORM)/yq bin/$(PLATFORM)/kubebuilder bin/$(PLATFORM)/kubebuilder-tools bin/$(PLATFORM)/go-licenses bin/$(PLATFORM)/openapi-gen bin/$(PLATFORM)/controller-gen bin/$(PLATFORM)/openapi-gen bin/$(PLATFORM)/kustomize
 
 .PHONY: generate-openapi
-generate-openapi: bin/openapi-gen
-	./bin/openapi-gen --logtostderr=true -o "" -i ./api/v1alpha1 -O zz_generated.openapi -p ./api/v1alpha1 -h ./hack/boilerplate.go.txt -r "-"
+generate-openapi: bin/$(PLATFORM)/openapi-gen
+	bin/$(PLATFORM)/openapi-gen --logtostderr=true -o "" -i ./api/v1alpha1 -O zz_generated.openapi -p ./api/v1alpha1 -h ./hack/boilerplate.go.txt -r "-"
 
 .PHONY: patch-crds
-patch-crds: bin/yq
-	./hack/patch-crds.sh
+patch-crds: bin/$(PLATFORM)/yq
+	hack/patch-crds.sh
 
 .PHONY: lint
-lint: bin/golangci-lint fmt vet
-	./bin/golangci-lint run ./...
+lint: bin/$(PLATFORM)/golangci-lint fmt vet
+	bin/$(PLATFORM)/golangci-lint run ./...
 
 
 .PHONY: licenses
-licenses: bin/go-licenses
-	./bin/go-licenses report  . --template ./hack/licenses.tpl > LICENSE-3rdparty.csv 2> errors
+licenses: bin/$(PLATFORM)/go-licenses
+	bin/$(PLATFORM)/go-licenses report . --template ./hack/licenses.tpl > LICENSE-3rdparty.csv 2> errors
 
 .PHONY: verify-license
-verify-license: vendor
-	./hack/verify-license.sh
+verify-license:
+	hack/verify-license.sh
 
 .PHONY: tidy
 tidy:
 	go mod tidy -v
 
-.PHONY: vendor
-vendor:
-	go mod vendor
 
-bin/kubebuilder:
-	./hack/install-kubebuilder.sh 3.4.0 ./bin
+bin/$(PLATFORM)/yq: Makefile
+	hack/install-yq.sh "bin/$(PLATFORM)" v4.31.2
 
-bin/kubebuilder-tools:
-	./hack/install-kubebuilder-tools.sh 1.24.1
+bin/$(PLATFORM)/golangci-lint: Makefile
+	hack/install-golangci-lint.sh -b "bin/$(PLATFORM)" v1.51.0
 
-bin/openapi-gen:
-	go build -o ./bin/openapi-gen k8s.io/kube-openapi/cmd/openapi-gen
+bin/$(PLATFORM)/operator-sdk: Makefile
+	hack/install-operator-sdk.sh v1.23.0
 
-bin/yq:
-	./hack/install-yq.sh v4.31.2
+bin/$(PLATFORM)/go-licenses:
+	mkdir -p $(ROOT)bin/$(PLATFORM)
+	GOBIN=$(ROOT)/bin/$(PLATFORM) go install github.com/google/go-licenses@v1.5.0
 
-bin/golangci-lint:
-	hack/install-golangci-lint.sh v1.51.0
+bin/$(PLATFORM)/operator-manifest-tools: Makefile
+	hack/install-operator-manifest-tools.sh 0.2.0
 
-bin/operator-sdk:
-	./hack/install-operator-sdk.sh v1.23.0
+bin/$(PLATFORM)/preflight: Makefile
+	hack/install-openshift-preflight.sh 1.2.1
 
-bin/kustomize:
-	./hack/install-kustomize.sh ./bin
+bin/$(PLATFORM)/openapi-gen:
+	mkdir -p $(ROOT)bin/$(PLATFORM)
+	GOBIN=$(ROOT)/bin/$(PLATFORM) go install k8s.io/kube-openapi/cmd/openapi-gen
 
-bin/go-licenses:
-	GOBIN=$(ROOT_DIR)/bin go install github.com/google/go-licenses@v1.5.0
+bin/$(PLATFORM)/kubebuilder:
+	hack/install-kubebuilder.sh 3.4.0 ./bin/$(PLATFORM)
+
+bin/$(PLATFORM)/kubebuilder-tools:
+	hack/install-kubebuilder-tools.sh 1.24.1 ./bin/$(PLATFORM)

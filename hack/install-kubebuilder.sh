@@ -4,16 +4,15 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-SCRIPTS_DIR="$(dirname "$0")"
-# Provides $OS,$ARCH,$PLAFORM,$ROOT variables
-source "$SCRIPTS_DIR/install-common.sh"
-
+ROOT=$(git rev-parse --show-toplevel)
+WORK_DIR=$(mktemp -d)
 cleanup() {
   rm -rf "$WORK_DIR"
 }
 trap "cleanup" EXIT SIGINT
 
 VERSION=$1
+INSTALL_PATH=$2
 
 if [ -z "$VERSION" ];
 then
@@ -21,8 +20,11 @@ then
   exit 1
 fi
 
-# download kubebuilder and extract it to tmp
-rm -rf "$ROOT/bin/kubebuilder"
-curl -L https://github.com/kubernetes-sigs/kubebuilder/releases/download/v${VERSION}/kubebuilder_${OS}_${ARCH} --output $ROOT/bin/kubebuilder
+os=$(go env GOOS)
+arch=$(go env GOARCH)
 
-chmod +x $ROOT/bin/kubebuilder
+# download kubebuilder and extract it to tmp
+rm -rf "$ROOT/$INSTALL_PATH/kubebuilder"
+curl -L https://github.com/kubernetes-sigs/kubebuilder/releases/download/v${VERSION}/kubebuilder_${os}_${arch} --output $ROOT/$INSTALL_PATH/kubebuilder
+
+chmod +x $ROOT/$INSTALL_PATH/kubebuilder

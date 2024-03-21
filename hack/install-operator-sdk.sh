@@ -23,6 +23,6 @@ OS=$(uname_os)
 
 ARCH=$(go env GOARCH)
 
-mkdir -p "$ROOT/bin"
-curl -Lo "$ROOT/bin/operator-sdk" "https://github.com/operator-framework/operator-sdk/releases/download/${RELEASE_VERSION}/operator-sdk_${OS}_${ARCH}"
-chmod +x "$ROOT/bin/operator-sdk"
+mkdir -p "$ROOT/bin/$PLATFORM"
+curl -Lo "$ROOT/bin/$PLATFORM/operator-sdk" "https://github.com/operator-framework/operator-sdk/releases/download/${RELEASE_VERSION}/operator-sdk_${OS}_${ARCH}"
+chmod +x "$ROOT/bin/$PLATFORM/operator-sdk"
