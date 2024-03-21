@@ -8,7 +8,6 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -73,7 +72,6 @@ var _ = BeforeSuite(func(done Done) {
 	}
 
 	// Not present in envtest.Environment
-	err = os.Setenv("KUBEBUILDER_ASSETS", filepath.Join("../..", "bin", "kubebuilder-tools", "bin"))
 	Expect(err).ToNot(HaveOccurred())
 
 	cfg, err = testEnv.Start()

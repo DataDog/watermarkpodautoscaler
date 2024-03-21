@@ -1,12 +1,9 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-set -o errexit
-set -o nounset
-set -o pipefail
-set -e
-
-ROOT=$(git rev-parse --show-toplevel)
-cd $ROOT
+SCRIPTS_DIR="$(dirname "$0")"
+# Provides $OS,$ARCH,$PLAFORM,$ROOT variables
+source "$SCRIPTS_DIR/install-common.sh"
 
 make licenses
 
@@ -22,7 +19,7 @@ DIFF=$(git ls-files docs/ --exclude-standard --others)
 if [[ "${DIFF}x" != "x" ]]
 then
     echo "License removed:" >&2
-    echo ${DIFF} >&2
+    echo "${DIFF}" >&2
     exit 2
 fi
 exit 0

@@ -29,8 +29,8 @@ uname_arch() {
   echo ${arch}
 }
 
-OS=$(uname_os)
-ARCH=$(uname_arch)
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
 PLATFORM="$OS-$ARCH"
 ROOT=$(git rev-parse --show-toplevel)
 WORK_DIR=$(mktemp -d)
