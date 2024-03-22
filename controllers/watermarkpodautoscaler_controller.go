@@ -70,6 +70,10 @@ const (
 	desiredCountAcceptable = "the desired count is within the acceptable range"
 )
 
+type Options struct {
+	SkipNotScalingEvents bool
+}
+
 // WatermarkPodAutoscalerReconciler reconciles a WatermarkPodAutoscaler object
 type WatermarkPodAutoscalerReconciler struct {
 	// This client, initialized using mgr.Client() above, is a split client
@@ -82,6 +86,7 @@ type WatermarkPodAutoscalerReconciler struct {
 	syncPeriod    time.Duration
 	eventRecorder record.EventRecorder
 	replicaCalc   ReplicaCalculatorItf
+	Options       Options
 }
 
 // +kubebuilder:rbac:groups=apps;extensions,resources=deployments/finalizers,resourceNames=watermarkpodautoscalers,verbs=update
@@ -373,7 +378,12 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 
 		logger.Info("Successful rescale", "currentReplicas", currentReplicas, "desiredReplicas", desiredReplicas, "rescaleReason", rescaleReason)
 	} else {
-		r.eventRecorder.Eventf(wpa, corev1.EventTypeNormal, datadoghqv1alpha1.ReasonNotScaling, fmt.Sprintf("Decided not to scale %s to %d (last scale time was %v )", reference, desiredReplicas, wpa.Status.LastScaleTime))
+		if r.Options.SkipNotScalingEvents {
+			setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionTrue, datadoghqv1alpha1.ConditionReasonNotScaling, "the WPA was able to successfully calculate a replica count and decided not to scale %s to %d (last scale time was %v )", reference, desiredReplicas, wpa.Status.LastScaleTime)
+		} else {
+			r.eventRecorder.Eventf(wpa, corev1.EventTypeNormal, datadoghqv1alpha1.ConditionReasonNotScaling, fmt.Sprintf("Decided not to scale %s to %d (last scale time was %v )", reference, desiredReplicas, wpa.Status.LastScaleTime))
+		}
+
 		desiredReplicas = currentReplicas
 	}
 
