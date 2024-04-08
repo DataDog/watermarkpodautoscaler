@@ -26,4 +26,13 @@ resources:
   kind: RecommendWatermarkPodAutoscaler
   path: github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: datadoghq.com
+  group: datadoghq
+  kind: RecommendedWatermarkPodAutoscaler
+  path: github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1
+  version: v1alpha1
 version: "3"

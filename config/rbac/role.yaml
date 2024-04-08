@@ -86,3 +86,29 @@ rules:
   - watermarkpodautoscalers/status
   verbs:
   - '*'
+- apiGroups:
+  - datadoghq.datadoghq.com
+  resources:
+  - recommendedwatermarkpodautoscalers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - datadoghq.datadoghq.com
+  resources:
+  - recommendedwatermarkpodautoscalers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - datadoghq.datadoghq.com
+  resources:
+  - recommendedwatermarkpodautoscalers/status
+  verbs:
+  - get
+  - patch
+  - update

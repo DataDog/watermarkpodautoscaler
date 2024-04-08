@@ -1,0 +1,6 @@
+apiVersion: datadoghq.datadoghq.com/v1alpha1
+kind: RecommendedWatermarkPodAutoscaler
+metadata:
+  name: recommendedwatermarkpodautoscaler-sample
+spec:
+  # TODO(user): Add fields here

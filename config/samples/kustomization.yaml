@@ -1,4 +1,5 @@
 ## Append samples you want in your CSV to this file as resources ##
 resources:
 - datadoghq_v1alpha1_watermarkpodautoscaler.yaml
+- datadoghq_v1alpha1_recommendedwatermarkpodautoscaler.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

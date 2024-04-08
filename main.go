@@ -28,6 +28,7 @@ import (
 
 	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 	datadoghqcontrollers "github.com/DataDog/watermarkpodautoscaler/controllers/datadoghq"
+	rwpacontroller "github.com/DataDog/watermarkpodautoscaler/controllers/datadoghq/recommendedwpa"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/config"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/version"
 	// +kubebuilder:scaffold:imports
@@ -135,6 +136,13 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "WatermarkPodAutoscaler")
 		exitCode = 1
 		return
+	}
+	if err = (&rwpacontroller.RecommendedWatermarkPodAutoscalerReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "RecommendedWatermarkPodAutoscaler")
+		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
 

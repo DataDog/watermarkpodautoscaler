@@ -1,0 +1,24 @@
+# permissions for end users to edit recommendedwatermarkpodautoscalers.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: recommendedwatermarkpodautoscaler-editor-role
+rules:
+- apiGroups:
+  - datadoghq.datadoghq.com
+  resources:
+  - recommendedwatermarkpodautoscalers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - datadoghq.datadoghq.com
+  resources:
+  - recommendedwatermarkpodautoscalers/status
+  verbs:
+  - get
