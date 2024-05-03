@@ -128,7 +128,7 @@ trigger_internal_image:
     - when: never
   trigger:
     project: DataDog/images
-    branch: master
+    branch: levan-m/use-GBI-for-WPA
     strategy: depend
   variables:
     IMAGE_VERSION: tmpl-v1
