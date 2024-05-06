@@ -5,7 +5,7 @@
 replicaCount: 1
 image:
   repository: gcr.io/datadoghq/watermarkpodautoscaler
-  tag: v0.7.0
+  tag: v0.7.1-rc.2
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 nameOverride: ""
@@ -32,12 +32,10 @@ podSecurityContext: {}
 # Feature available starting with the WPA controller 0.7.0
 lifecycleControl:
   enabled: false
-
 datadogCRDs:
   crds:
     # datadogCRDs.crds.datadogMonitors -- Set to true to deploy the DatadogMonitors CRD, depends on lifecycleControl.enabled
     datadogMonitors: true
-
 # Determines which resource lock to use for leader election
 leaderElectionResourceLock: configmaps
 securityContext: {}
