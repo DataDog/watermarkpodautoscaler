@@ -17,5 +17,5 @@ source "$SCRIPTS_DIR/install-common.sh"
 YQ="$ROOT/bin/$PLATFORM/yq"
 
 # Update version in the helm chart
-$YQ w -i "$ROOT/chart/watermarkpodautoscaler/Chart.yaml" "appVersion" "$VVERSION"
-$YQ w -i "$ROOT/chart/watermarkpodautoscaler/values.yaml" "image.tag" "$VVERSION"
+$YQ -i ".appVersion = \"$VVERSION\"" "$ROOT/chart/watermarkpodautoscaler/Chart.yaml"
+$YQ -i ".image.tag = \"$VVERSION\"" "$ROOT/chart/watermarkpodautoscaler/values.yaml"
