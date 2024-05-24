@@ -43,6 +43,34 @@ var reasonValues = []string{downscaleCappingPromLabelVal, upscaleCappingPromLabe
 var extraPromLabels = strings.Fields(os.Getenv("DD_LABELS_AS_TAGS"))
 
 var (
+	upscale = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Subsystem: subsystem,
+			Name:      "upscale_replicas_total",
+			Help:      "",
+		},
+		[]string{
+			wpaNamePromLabel,
+			wpaNamespacePromLabel,
+			resourceNamespacePromLabel,
+			resourceNamePromLabel,
+			resourceKindPromLabel,
+		},
+	)
+	downscale = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Subsystem: subsystem,
+			Name:      "downscale_replicas_total",
+			Help:      "",
+		},
+		[]string{
+			wpaNamePromLabel,
+			wpaNamespacePromLabel,
+			resourceNamespacePromLabel,
+			resourceNamePromLabel,
+			resourceKindPromLabel,
+		},
+	)
 	value = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
@@ -306,4 +334,14 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 		monitorName:           wpa.Name,
 		monitorNamespace:      wpa.Namespace,
 	})
+}
+
+func getPrometheusLabels(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) prometheus.Labels {
+	return prometheus.Labels{
+		wpaNamePromLabel:           wpa.Name,
+		wpaNamespacePromLabel:      wpa.Namespace,
+		resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
+		resourceNamespacePromLabel: wpa.Namespace,
+		resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
+	}
 }

@@ -377,6 +377,11 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 		r.eventRecorder.Eventf(wpa, corev1.EventTypeNormal, datadoghqv1alpha1.ReasonScaling, fmt.Sprintf("New size: %d; reason: %s", desiredReplicas, rescaleReason))
 
 		logger.Info("Successful rescale", "currentReplicas", currentReplicas, "desiredReplicas", desiredReplicas, "rescaleReason", rescaleReason)
+		if currentReplicas < desiredReplicas {
+			upscale.With(getPrometheusLabels(wpa)).Add(float64(desiredReplicas - currentReplicas))
+		} else {
+			downscale.With(getPrometheusLabels(wpa)).Add(float64(currentReplicas - desiredReplicas))
+		}
 	} else {
 		if r.Options.SkipNotScalingEvents {
 			setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionTrue, datadoghqv1alpha1.ConditionReasonNotScaling, "the WPA was able to successfully calculate a replica count and decided not to scale %s to %d (last scale time was %v )", reference, desiredReplicas, wpa.Status.LastScaleTime)
