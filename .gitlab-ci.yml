@@ -6,7 +6,7 @@ variables:
   GOPATH: "$CI_PROJECT_DIR/.cache"
   TARGET_TAG: v$CI_PIPELINE_ID-$CI_COMMIT_SHORT_SHA
   BUILD_DOCKER_REGISTRY: "registry.ddbuild.io/ci"
-  JOB_DOCKER_IMAGE: "486234852809.dkr.ecr.us-east-1.amazonaws.com/ci-containers-project:v2.0.0"
+  JOB_DOCKER_IMAGE: "registry.ddbuild.io/ci-containers-project:v2.0.0"
   DOCKER_REGISTRY_LOGIN_SSM_KEY: docker_hub_login
   DOCKER_REGISTRY_PWD_SSM_KEY: docker_hub_pwd
   DOCKER_REGISTRY_URL: docker.io
@@ -45,27 +45,14 @@ generate_code:
     - make generate
     - git diff --exit-code
 
-build_image_amd64:
+build_image:
   stage: image
   tags:
     - "arch:amd64"
   image: $JOB_DOCKER_IMAGE
   variables:
-    GOARCH: amd64
-    TARGET_IMAGE: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}-amd64
+    TARGET_IMAGE: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
     RELEASE_IMAGE: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG-amd64
-  script:
-    - IMG=$TARGET_IMAGE make docker-buildx-ci
-
-build_image_arm64:
-  stage: image
-  tags:
-    - "arch:arm64"
-  image: $JOB_DOCKER_IMAGE
-  variables:
-    GOARCH: arm64
-    TARGET_IMAGE: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}-arm64
-    RELEASE_IMAGE: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG-arm64
   script:
     - IMG=$TARGET_IMAGE make docker-buildx-ci
 
@@ -80,7 +67,7 @@ publish_public_main:
     branch: main
     strategy: depend
   variables:
-    IMG_SOURCES: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}-amd64,$BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}-arm64
+    IMG_SOURCES: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
     IMG_DESTINATIONS: $PROJECTNAME:main
     IMG_SIGNING: "false"
 
@@ -95,7 +82,7 @@ publish_public_tag:
     branch: main
     strategy: depend
   variables:
-    IMG_SOURCES: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG-amd64,$BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG-arm64
+    IMG_SOURCES: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG
     IMG_DESTINATIONS: $PROJECTNAME:$CI_COMMIT_TAG
     IMG_SIGNING: "false"
 
@@ -110,7 +97,7 @@ publish_public_latest:
     branch: main
     strategy: depend
   variables:
-    IMG_SOURCES: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG-amd64,$BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG-arm64
+    IMG_SOURCES: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG
     IMG_DESTINATIONS: $PROJECTNAME:latest
     IMG_SIGNING: "false"
 

@@ -121,7 +121,7 @@ docker-push:
 	docker push ${IMG}
 
 docker-buildx-ci:
-	docker buildx build . --build-arg LDFLAGS="${LDFLAGS}" --platform=linux/${GOARCH} --label target=build --push --tag ${IMG} ${RELEASE_IMAGE_TAG}
+	docker buildx build . --build-arg LDFLAGS="${LDFLAGS}" --platform=linux/arm64,linux/amd64 --label target=build --push --tag ${IMG} ${RELEASE_IMAGE_TAG}
 
 ##@ Tools
 CONTROLLER_GEN = bin/$(PLATFORM)/controller-gen
