@@ -3,8 +3,8 @@
 # and another the rest of the directory.
 
 # All your base
-*                   @DataDog/container-ecosystems
+*                   @DataDog/wpa-maintainers
 
 # Documentation
-README.md             @DataDog/documentation @DataDog/container-ecosystems
-/docs/                @DataDog/documentation @DataDog/container-ecosystems
+README.md             @DataDog/documentation @DataDog/wpa-maintainers
+/docs/                @DataDog/documentation @DataDog/wpa-maintainers
