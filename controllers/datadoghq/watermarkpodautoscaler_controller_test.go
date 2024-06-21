@@ -3,7 +3,7 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
 // Copyright 2016-present Datadog, Inc.
 
-package controllers
+package datadoghq
 
 import (
 	"context"
@@ -14,8 +14,8 @@ import (
 	"time"
 
 	monitorv1alpha1 "github.com/DataDog/datadog-operator/apis/datadoghq/v1alpha1"
-	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
-	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1/test"
+	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
+	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1/test"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
