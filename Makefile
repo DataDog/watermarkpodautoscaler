@@ -18,6 +18,7 @@ CHANNELS=alpha
 DEFAULT_CHANNEL=alpha
 GOARCH?=amd64
 IMG_NAME=gcr.io/datadoghq/watermarkpodautoscaler
+RELEASE_IMAGE_TAG := $(if $(CI_COMMIT_TAG),--tag $(RELEASE_IMAGE),)
 
 CRD_OPTIONS ?= "crd:trivialVersions=true,preserveUnknownFields=false"
 
@@ -119,6 +120,8 @@ docker-build-ci:
 docker-push:
 	docker push ${IMG}
 
+docker-buildx-ci:
+	docker buildx build . --build-arg LDFLAGS="${LDFLAGS}" --platform=linux/arm64,linux/amd64 --label target=build --push --tag ${IMG} ${RELEASE_IMAGE_TAG}
 
 ##@ Tools
 CONTROLLER_GEN = bin/$(PLATFORM)/controller-gen

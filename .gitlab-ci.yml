@@ -1,18 +1,19 @@
+---
 image: registry.ddbuild.io/images/mirror/golang:1.19-bullseye
 variables:
   GO111MODULE: "on"
   PROJECTNAME: "watermarkpodautoscaler"
   GOPATH: "$CI_PROJECT_DIR/.cache"
   TARGET_TAG: v$CI_PIPELINE_ID-$CI_COMMIT_SHORT_SHA
-  BUILD_DOCKER_REGISTRY: "486234852809.dkr.ecr.us-east-1.amazonaws.com/ci"
-  JOB_DOCKER_IMAGE: "486234852809.dkr.ecr.us-east-1.amazonaws.com/ci-containers-project:v2.0.0"
+  BUILD_DOCKER_REGISTRY: "registry.ddbuild.io/ci"
+  JOB_DOCKER_IMAGE: "registry.ddbuild.io/ci-containers-project:v2.0.0"
   DOCKER_REGISTRY_LOGIN_SSM_KEY: docker_hub_login
   DOCKER_REGISTRY_PWD_SSM_KEY: docker_hub_pwd
   DOCKER_REGISTRY_URL: docker.io
 cache: &global_cache
   key: ${CI_COMMIT_REF_SLUG}
   paths:
-  - .cache
+    - .cache
   policy: pull-push
 
 stages:
@@ -27,54 +28,33 @@ before_script:
 
 build:
   stage: build
-  tags: [ "runner:main", "size:large" ]
+  tags: ["runner:main", "size:large"]
   script:
-  - make build
+    - make build
 
 tests:
   stage: test
-  tags: [ "runner:main", "size:large" ]
+  tags: ["runner:main", "size:large"]
   script:
-  - make test
+    - make test
 
 generate_code:
   stage: test
-  tags: [ "runner:main", "size:large" ]
+  tags: ["runner:main", "size:large"]
   script:
-  - make generate
-  - git diff --exit-code
+    - make generate
+    - git diff --exit-code
 
-build_image_amd64:
+build_image:
   stage: image
-  tags: ["runner:docker", "size:large"]
+  tags:
+    - "arch:amd64"
   image: $JOB_DOCKER_IMAGE
   variables:
-    GOARCH: amd64
-    TARGET_IMAGE: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}-amd64
+    TARGET_IMAGE: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
     RELEASE_IMAGE: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG-amd64
-  before_script:
-    # DockerHub login for build to limit rate limit when pulling base images
-    - DOCKER_REGISTRY_LOGIN=$(aws ssm get-parameter --region us-east-1 --name ci.watermarkpodautoscaler.$DOCKER_REGISTRY_LOGIN_SSM_KEY --with-decryption --query "Parameter.Value" --out text)
-    - aws ssm get-parameter --region us-east-1 --name ci.watermarkpodautoscaler.$DOCKER_REGISTRY_PWD_SSM_KEY --with-decryption --query "Parameter.Value" --out text | docker login --username "$DOCKER_REGISTRY_LOGIN" --password-stdin "$DOCKER_REGISTRY_URL"
   script:
-    - IMG=$TARGET_IMAGE make docker-build-ci docker-push
-    - if [ -n "$CI_COMMIT_TAG" ]; then docker tag $TARGET_IMAGE $RELEASE_IMAGE && docker push $RELEASE_IMAGE; fi
-
-build_image_arm64:
-  stage: image
-  tags: ["runner:docker-arm", "platform:arm64"]
-  image: $JOB_DOCKER_IMAGE
-  variables:
-    GOARCH: arm64
-    TARGET_IMAGE: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}-arm64
-    RELEASE_IMAGE: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG-arm64
-  before_script:
-    # DockerHub login for build to limit rate limit when pulling base images
-    - DOCKER_REGISTRY_LOGIN=$(aws ssm get-parameter --region us-east-1 --name ci.watermarkpodautoscaler.$DOCKER_REGISTRY_LOGIN_SSM_KEY --with-decryption --query "Parameter.Value" --out text)
-    - aws ssm get-parameter --region us-east-1 --name ci.watermarkpodautoscaler.$DOCKER_REGISTRY_PWD_SSM_KEY --with-decryption --query "Parameter.Value" --out text | docker login --username "$DOCKER_REGISTRY_LOGIN" --password-stdin "$DOCKER_REGISTRY_URL"
-  script:
-    - IMG=$TARGET_IMAGE make docker-build-ci docker-push
-    - if [ -n "$CI_COMMIT_TAG" ]; then docker tag $TARGET_IMAGE $RELEASE_IMAGE && docker push $RELEASE_IMAGE; fi
+    - IMG=$TARGET_IMAGE make docker-buildx-ci
 
 publish_public_main:
   stage: release
@@ -87,7 +67,7 @@ publish_public_main:
     branch: main
     strategy: depend
   variables:
-    IMG_SOURCES: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}-amd64,$BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}-arm64
+    IMG_SOURCES: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
     IMG_DESTINATIONS: $PROJECTNAME:main
     IMG_SIGNING: "false"
 
@@ -102,7 +82,7 @@ publish_public_tag:
     branch: main
     strategy: depend
   variables:
-    IMG_SOURCES: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG-amd64,$BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG-arm64
+    IMG_SOURCES: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG
     IMG_DESTINATIONS: $PROJECTNAME:$CI_COMMIT_TAG
     IMG_SIGNING: "false"
 
@@ -117,7 +97,7 @@ publish_public_latest:
     branch: main
     strategy: depend
   variables:
-    IMG_SOURCES: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG-amd64,$BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG-arm64
+    IMG_SOURCES: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG
     IMG_DESTINATIONS: $PROJECTNAME:latest
     IMG_SIGNING: "false"
 
@@ -131,7 +111,7 @@ trigger_internal_image:
     branch: master
     strategy: depend
   variables:
-    IMAGE_VERSION: tmpl-v1
+    IMAGE_VERSION: tmpl-v2
     IMAGE_NAME: $PROJECTNAME
     RELEASE_TAG: ${CI_COMMIT_REF_SLUG}
     BUILD_TAG: ${CI_COMMIT_REF_SLUG}
