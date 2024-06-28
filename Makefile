@@ -161,7 +161,7 @@ release: bundle
 bundle: manifests
 	bin/$(PLATFORM)/operator-sdk generate kustomize manifests -q
 	cd config/manager && $(ROOT_DIR)/$(KUSTOMIZE) edit set image $(IMG_NAME)=$(IMG)
-	$(KUSTOMIZE) build config/manifests | ./bin/operator-sdk generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
+	$(KUSTOMIZE) build config/manifests | ./bin/$(PLATFORM)/operator-sdk generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
 	hack/patch-bundle.sh
 	bin/$(PLATFORM)/operator-sdk bundle validate ./bundle
 
