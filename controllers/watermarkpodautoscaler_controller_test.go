@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +18,8 @@ import (
 	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
 	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1/test"
 	"github.com/go-logr/logr"
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
@@ -482,11 +485,12 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
-		fields   fields
-		args     args
-		wantErr  bool
-		wantFunc func(c client.Client, desired int32, wpa *v1alpha1.WatermarkPodAutoscaler) error
+		name            string
+		fields          fields
+		args            args
+		wantErr         bool
+		wantFunc        func(c client.Client, desired int32, wpa *v1alpha1.WatermarkPodAutoscaler) error
+		wantPromMetrics map[string]float64
 	}{
 		{
 			name: "Target deployment has 0 replicas",
@@ -518,6 +522,23 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 					return fmt.Errorf("scaling should be disabled")
 				}
 				return nil
+			},
+			wantPromMetrics: map[string]float64{
+				"dryRun":                   0,
+				"value":                    0,
+				"highwm":                   0,
+				"highwmV2":                 0,
+				"lowwm":                    0,
+				"lowwmV2":                  0,
+				"replicaProposal":          0,
+				"replicaEffective":         0,
+				"replicaMin":               0,
+				"replicaMax":               0,
+				"restrictedScalingDownCap": 0,
+				"restrictedScalingUpCap":   0,
+				"restrictedScalingOk":      0,
+				// "transitionCountdownUp":    0,
+				// "transitionCountdownDown":  0,
 			},
 		},
 		{
@@ -556,6 +577,23 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				}
 				return nil
 			},
+			wantPromMetrics: map[string]float64{
+				"dryRun":                   0,
+				"value":                    0,
+				"highwm":                   0,
+				"highwmV2":                 0,
+				"lowwm":                    0,
+				"lowwmV2":                  0,
+				"replicaProposal":          0,
+				"replicaEffective":         0,
+				"replicaMin":               0,
+				"replicaMax":               0,
+				"restrictedScalingDownCap": 0,
+				"restrictedScalingUpCap":   0,
+				"restrictedScalingOk":      0,
+				// "transitionCountdownUp":    0,
+				// "transitionCountdownDown":  0,
+			},
 		},
 		{
 			name: "Target deployment has less than MinReplicas",
@@ -592,6 +630,23 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 					return fmt.Errorf("scaling should occur as we are above the MaxReplicas")
 				}
 				return nil
+			},
+			wantPromMetrics: map[string]float64{
+				"dryRun":                   0,
+				"value":                    0,
+				"highwm":                   0,
+				"highwmV2":                 0,
+				"lowwm":                    0,
+				"lowwmV2":                  0,
+				"replicaProposal":          0,
+				"replicaEffective":         0,
+				"replicaMin":               0,
+				"replicaMax":               0,
+				"restrictedScalingDownCap": 0,
+				"restrictedScalingUpCap":   0,
+				"restrictedScalingOk":      0,
+				// "transitionCountdownUp":    0,
+				// "transitionCountdownDown":  0,
 			},
 		},
 		{
@@ -685,6 +740,23 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				}
 				return nil
 			},
+			wantPromMetrics: map[string]float64{
+				"dryRun":                   0,
+				"value":                    0,
+				"highwm":                   80,
+				"highwmV2":                 80,
+				"lowwm":                    70,
+				"lowwmV2":                  70,
+				"replicaProposal":          8,
+				"replicaEffective":         5,
+				"replicaMin":               1,
+				"replicaMax":               5,
+				"restrictedScalingDownCap": 0,
+				"restrictedScalingUpCap":   1,
+				"restrictedScalingOk":      0,
+				// "transitionCountdownUp":    0.530732,
+				// "transitionCountdownDown":  0,
+			},
 		},
 		{
 			name: "Downscale blocked because the metric has not been under the watermark for long enough",
@@ -772,6 +844,23 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 					}
 				}
 				return nil
+			},
+			wantPromMetrics: map[string]float64{
+				"dryRun":                   0,
+				"value":                    0,
+				"highwm":                   80,
+				"highwmV2":                 80,
+				"lowwm":                    70,
+				"lowwmV2":                  70,
+				"replicaProposal":          1,
+				"replicaEffective":         3,
+				"replicaMin":               1,
+				"replicaMax":               5,
+				"restrictedScalingDownCap": 1,
+				"restrictedScalingUpCap":   0,
+				"restrictedScalingOk":      0,
+				// "transitionCountdownUp":    0,
+				// "transitionCountdownDown":  0,
 			},
 		},
 		{
@@ -871,6 +960,21 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				}
 				return nil
 			},
+			wantPromMetrics: map[string]float64{
+				"dryRun":                   0.0,
+				"value":                    0.0,
+				"highwm":                   80.0,
+				"highwmV2":                 80.0,
+				"lowwm":                    70.0,
+				"lowwmV2":                  70.0,
+				"replicaProposal":          5.0,
+				"replicaEffective":         5.0,
+				"replicaMin":               1.0,
+				"replicaMax":               5.0,
+				"restrictedScalingDownCap": 0.0,
+				"restrictedScalingUpCap":   0.0,
+				"restrictedScalingOk":      0.0,
+			},
 		},
 		{
 			name: "Converging while in stable regime",
@@ -961,6 +1065,21 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				}
 				return nil
 			},
+			wantPromMetrics: map[string]float64{
+				"dryRun":                   0.0,
+				"value":                    0.0,
+				"highwm":                   80.0,
+				"highwmV2":                 80.0,
+				"lowwm":                    70.0,
+				"lowwmV2":                  70.0,
+				"replicaProposal":          4.0,
+				"replicaEffective":         4.0,
+				"replicaMin":               1.0,
+				"replicaMax":               15.0,
+				"restrictedScalingDownCap": 0.0,
+				"restrictedScalingUpCap":   0.0,
+				"restrictedScalingOk":      0.0,
+			},
 		},
 		{
 			name: "Converging while in stable regime, blocked by forbidden window",
@@ -1050,6 +1169,21 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 					}
 				}
 				return nil
+			},
+			wantPromMetrics: map[string]float64{
+				"dryRun":                   0.0,
+				"value":                    0.0,
+				"highwm":                   80.0,
+				"highwmV2":                 80.0,
+				"lowwm":                    70.0,
+				"lowwmV2":                  70.0,
+				"replicaProposal":          4.0,
+				"replicaEffective":         5.0,
+				"replicaMin":               1.0,
+				"replicaMax":               15.0,
+				"restrictedScalingDownCap": 0.0,
+				"restrictedScalingUpCap":   0.0,
+				"restrictedScalingOk":      0.0,
 			},
 		},
 		{
@@ -1158,10 +1292,30 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				}
 				return nil
 			},
+			wantPromMetrics: map[string]float64{
+				"dryRun":                   0,
+				"value":                    0,
+				"highwm":                   80,
+				"highwmV2":                 80,
+				"lowwm":                    70,
+				"lowwmV2":                  70,
+				"replicaProposal":          5,
+				"replicaEffective":         5,
+				"replicaMin":               1,
+				"replicaMax":               10,
+				"restrictedScalingDownCap": 0,
+				// "restrictedScalingUpCap":   0,
+				// "restrictedScalingOk":      0,
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// reset possible existing state
+			resetPromMetrics(tt.args.wpa)
+			promMetrics := getPromMetrics(t, tt.args.wpa)
+			assertZeroMetrics(t, promMetrics)
+
 			r := &WatermarkPodAutoscalerReconciler{
 				Client:        tt.fields.client,
 				restMapper:    tt.fields.restmapper,
@@ -1198,6 +1352,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 					t.Errorf("ReconcileWatermarkPodAutoscaler.Reconcile() wantFunc validation error: %v", err)
 				}
 			}
+			assertWantPromMetrics(t, tt.wantPromMetrics, tt.args.wpa)
 		})
 	}
 }
@@ -2236,4 +2391,138 @@ func TestFillMissingWatermark(t *testing.T) {
 			assert.Equal(t, tt.wpa.Spec.Metrics[0], tt.want)
 		})
 	}
+}
+
+func getPromBaseLabels(wpa *v1alpha1.WatermarkPodAutoscaler) prometheus.Labels {
+	return prometheus.Labels{
+		wpaNamePromLabel:           wpa.Name,
+		wpaNamespacePromLabel:      wpa.Namespace,
+		resourceNamespacePromLabel: wpa.Namespace,
+		resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
+		resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
+	}
+}
+
+func getPromLabelsForMetric(wpa *v1alpha1.WatermarkPodAutoscaler, metricName string) prometheus.Labels {
+	labels := getPromBaseLabels(wpa)
+	labels[metricNamePromLabel] = metricName
+	return labels
+}
+
+func getTransitionCountdownLabels(wpa *v1alpha1.WatermarkPodAutoscaler, labelVal string) prometheus.Labels {
+	labels := getPromBaseLabels(wpa)
+	labels[transitionPromLabel] = labelVal
+	return labels
+}
+
+func getRestrictedScalingLabels(wpa *v1alpha1.WatermarkPodAutoscaler, labelVal string) prometheus.Labels {
+	labels := getPromBaseLabels(wpa)
+	labels[reasonPromLabel] = labelVal
+	return labels
+}
+
+func getGaugeVal(t *testing.T, metric prometheus.Metric) float64 {
+	dtoMetric := dto.Metric{}
+	err := metric.Write(&dtoMetric)
+	if err != nil {
+		t.Error("Couldn't get Prometheus metrics")
+	}
+	return *dtoMetric.Gauge.Value
+}
+
+func getMetricKeys() []string {
+	return []string{"dryRun",
+		"value",
+		"highwm",
+		"highwmV2",
+		"lowwm",
+		"lowwmV2",
+		"replicaProposal",
+		"replicaEffective",
+		"replicaMin",
+		"replicaMax",
+		"restrictedScalingDownCap",
+		"restrictedScalingUpCap",
+		"restrictedScalingOk",
+		// no easy way to compare these
+		// "transitionCountdownUp",
+		// "transitionCountdownDown",
+	}
+}
+
+func getPromMetrics(t *testing.T, wpa *v1alpha1.WatermarkPodAutoscaler) map[string]float64 {
+	// we verify first metric in the spec
+	metricName := ""
+	if len(wpa.Spec.Metrics) > 0 {
+		metricName = wpa.Spec.Metrics[0].External.MetricName
+	}
+	return map[string]float64{
+		"value":           getGaugeVal(t, value.With(getPromLabelsForMetric(wpa, metricName))),
+		"highwm":          getGaugeVal(t, highwm.With(getPromLabelsForMetric(wpa, metricName))),
+		"highwmV2":        getGaugeVal(t, highwmV2.With(getPromLabelsForMetric(wpa, metricName))),
+		"lowwm":           getGaugeVal(t, lowwm.With(getPromLabelsForMetric(wpa, metricName))),
+		"lowwmV2":         getGaugeVal(t, lowwmV2.With(getPromLabelsForMetric(wpa, metricName))),
+		"replicaProposal": getGaugeVal(t, replicaProposal.With(getPromLabelsForMetric(wpa, metricName))),
+
+		"replicaEffective": getGaugeVal(t, replicaEffective.With(getPromBaseLabels(wpa))),
+		"replicaMin":       getGaugeVal(t, replicaMin.With(getPromBaseLabels(wpa))),
+		"replicaMax":       getGaugeVal(t, replicaMax.With(getPromBaseLabels(wpa))),
+		"dryRun":           getGaugeVal(t, dryRun.With(getPromBaseLabels(wpa))),
+
+		"transitionCountdownUp":   getGaugeVal(t, transitionCountdown.With(getTransitionCountdownLabels(wpa, "downscale"))),
+		"transitionCountdownDown": getGaugeVal(t, transitionCountdown.With(getTransitionCountdownLabels(wpa, "upscale"))),
+
+		"restrictedScalingDownCap": getGaugeVal(t, restrictedScaling.With(getRestrictedScalingLabels(wpa, "downscale_capping"))),
+		"restrictedScalingUpCap":   getGaugeVal(t, restrictedScaling.With(getRestrictedScalingLabels(wpa, "upscale_capping"))),
+		"restrictedScalingOk":      getGaugeVal(t, restrictedScaling.With(getRestrictedScalingLabels(wpa, "within_bounds"))),
+	}
+}
+
+func resetPromMetrics(wpa *v1alpha1.WatermarkPodAutoscaler) {
+	metricName := ""
+	if len(wpa.Spec.Metrics) > 0 {
+		metricName = wpa.Spec.Metrics[0].External.MetricName
+	}
+	value.With(getPromLabelsForMetric(wpa, metricName)).Set(0.0)
+	highwm.With(getPromLabelsForMetric(wpa, metricName)).Set(0.0)
+	highwmV2.With(getPromLabelsForMetric(wpa, metricName)).Set(0.0)
+	lowwm.With(getPromLabelsForMetric(wpa, metricName)).Set(0.0)
+	lowwmV2.With(getPromLabelsForMetric(wpa, metricName)).Set(0.0)
+	replicaProposal.With(getPromLabelsForMetric(wpa, metricName)).Set(0.0)
+
+	replicaEffective.With(getPromBaseLabels(wpa)).Set(0.0)
+	replicaMin.With(getPromBaseLabels(wpa)).Set(0.0)
+	replicaMax.With(getPromBaseLabels(wpa)).Set(0.0)
+	dryRun.With(getPromBaseLabels(wpa)).Set(0.0)
+
+	transitionCountdown.With(getTransitionCountdownLabels(wpa, "downscale")).Set(0.0)
+	transitionCountdown.With(getTransitionCountdownLabels(wpa, "upscale")).Set(0.0)
+	restrictedScaling.With(getRestrictedScalingLabels(wpa, "downscale_capping")).Set(0.0)
+	restrictedScaling.With(getRestrictedScalingLabels(wpa, "upscale_capping")).Set(0.0)
+	restrictedScaling.With(getRestrictedScalingLabels(wpa, "within_bounds")).Set(0.0)
+}
+
+func assertZeroMetrics(t *testing.T, actual map[string]float64) {
+	for _, key := range getMetricKeys() {
+		t.Log("comparing 0 for key", key, fmt.Sprintf("want %.1f actual %.1f", 0.0, actual[key]))
+
+		assert.InDelta(t, 0, actual[key], 0.00001)
+	}
+}
+
+func assertWantPromMetrics(t *testing.T, want map[string]float64, wpa *v1alpha1.WatermarkPodAutoscaler) {
+	actual := getPromMetrics(t, wpa)
+	printPromMetrics(t, actual)
+	for _, key := range getMetricKeys() {
+		t.Log("comparing for key", key, fmt.Sprintf("want %.1f actual %.1f", want[key], actual[key]))
+		assert.InDelta(t, want[key], actual[key], 0.00001, "didn't match the values", key)
+	}
+}
+
+func printPromMetrics(t *testing.T, gaugeVals map[string]float64) {
+	var builder strings.Builder
+	for _, key := range getMetricKeys() {
+		builder.WriteString(fmt.Sprintf("\"%s\": %.1f,\n", key, gaugeVals[key]))
+	}
+	t.Log("Prometheus metrics\n", builder.String())
 }
