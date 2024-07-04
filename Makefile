@@ -206,7 +206,7 @@ bin/$(PLATFORM)/yq: Makefile
 	hack/install-yq.sh "bin/$(PLATFORM)" v4.31.2
 
 bin/$(PLATFORM)/golangci-lint: Makefile
-	hack/install-golangci-lint.sh -b "bin/$(PLATFORM)" v1.51.0
+	hack/install-golangci-lint.sh -b "bin/$(PLATFORM)" v1.56.0
 
 bin/$(PLATFORM)/operator-sdk: Makefile
 	hack/install-operator-sdk.sh v1.23.0

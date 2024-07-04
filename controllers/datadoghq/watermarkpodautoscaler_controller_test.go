@@ -1688,7 +1688,7 @@ func TestDefaultWatermarkPodAutoscaler(t *testing.T) {
 			if err != nil {
 				assert.Equal(t, err.Error(), tt.err.Error())
 			} else {
-				assert.Nil(t, tt.err)
+				assert.NoError(t, tt.err)
 			}
 		})
 	}
@@ -2388,7 +2388,7 @@ func TestFillMissingWatermark(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fillMissingWatermark(log, tt.wpa)
-			assert.Equal(t, tt.wpa.Spec.Metrics[0], tt.want)
+			assert.Equal(t, tt.want, tt.wpa.Spec.Metrics[0])
 		})
 	}
 }
@@ -2427,7 +2427,7 @@ func getGaugeVal(t *testing.T, metric prometheus.Metric) float64 {
 	if err != nil {
 		t.Error("Couldn't get Prometheus metrics")
 	}
-	return *dtoMetric.Gauge.Value
+	return dtoMetric.GetGauge().GetValue()
 }
 
 func getMetricKeys() []string {

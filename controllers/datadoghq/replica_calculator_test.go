@@ -2901,7 +2901,7 @@ func TestGetReadyPodsCount(t *testing.T) {
 			}
 
 			podList, err := replicaCalculator.podLister.Pods(tc.scale.Namespace).List(labels.SelectorFromSet(f.selector))
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			val, _, err := replicaCalculator.getReadyPodsCount(logf.Log, tc.scale.Name, podList, readinessDelay*time.Second)
 			assert.Equal(t, f.expected, val)
