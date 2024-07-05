@@ -1,17 +1,29 @@
 domain: datadoghq.com
-layout: go.kubebuilder.io/v2
+layout:
+- go.kubebuilder.io/v3
+multigroup: true
+plugins:
+  manifests.sdk.operatorframework.io/v2: {}
+  scorecard.sdk.operatorframework.io/v2: {}
 projectName: watermarkpodautoscaler
 repo: github.com/DataDog/watermarkpodautoscaler
 resources:
--
-  # TODO(user): Uncomment the below line if this resource implements a controller, else delete it.
-  # controller: true
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
   domain: datadoghq.com
   group: datadoghq
   kind: WatermarkPodAutoscaler
-  # TODO(user): Update the package path for your API if the below value is incorrect.
-  path: github.com/DataDog/watermarkpodautoscaler/api/v1alpha1
+  path: github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: datadoghq.com
+  group: datadoghq
+  kind: RecommendWatermarkPodAutoscaler
+  path: github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1
   version: v1alpha1
 version: "3"
-plugins:
-  go.sdk.operatorframework.io/v2-alpha: {}

@@ -28,8 +28,8 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
-	wpatest "github.com/DataDog/watermarkpodautoscaler/api/v1alpha1/test"
+	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
+	wpatest "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1/test"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/util"
 	"github.com/DataDog/watermarkpodautoscaler/test/e2e/metricsserver"
 	"github.com/DataDog/watermarkpodautoscaler/test/e2e/utils"
@@ -77,7 +77,7 @@ func ginkgoLog(format string, a ...interface{}) {
 var alreadyExistingObjs = map[dynclient.Object]bool{}
 
 func objectsBeforeEachFunc() {
-	objs, err := metricsserver.InitMetricsServerFiles(GinkgoWriter, "../../test/e2e/metricsserver/deploy", namespace)
+	objs, err := metricsserver.InitMetricsServerFiles(GinkgoWriter, "../../../test/e2e/metricsserver/deploy", namespace)
 	Expect(err).Should(Succeed())
 	info("We extracted all the files")
 	Expect(err).Should(Succeed())

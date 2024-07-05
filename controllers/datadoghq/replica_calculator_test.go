@@ -3,14 +3,14 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
 // Copyright 2016-present Datadog, Inc.
 
-package controllers
+package datadoghq
 
 import (
 	"fmt"
 	"testing"
 	"time"
 
-	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
+	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 	"github.com/DataDog/watermarkpodautoscaler/third_party/kubernetes/pkg/controller/podautoscaler/metrics"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -2901,7 +2901,7 @@ func TestGetReadyPodsCount(t *testing.T) {
 			}
 
 			podList, err := replicaCalculator.podLister.Pods(tc.scale.Namespace).List(labels.SelectorFromSet(f.selector))
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			val, _, err := replicaCalculator.getReadyPodsCount(logf.Log, tc.scale.Name, podList, readinessDelay*time.Second)
 			assert.Equal(t, f.expected, val)

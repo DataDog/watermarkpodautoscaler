@@ -3,12 +3,12 @@
 {
 	"name": "Go",
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
-	"image": "mcr.microsoft.com/devcontainers/go:0-1.19",
+	"image": "mcr.microsoft.com/devcontainers/go:1-1.21",
 	"features": {
 		"ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {},
 		"ghcr.io/devcontainers-contrib/features/kubectx-kubens": {},
 		"ghcr.io/mpriscella/features/kind": {}
-	}
+	},
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	// "features": {},
@@ -24,4 +24,5 @@
 
 	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
 	// "remoteUser": "root"
+	"postStartCommand": ["git", "config", "--global", "--add", "safe.directory", "/workspaces/watermarkpodautoscaler"]
 }

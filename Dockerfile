@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.19 as builder
+FROM golang:1.21 as builder
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
@@ -11,7 +11,7 @@ RUN go mod download
 
 # Copy the go source
 COPY main.go main.go
-COPY api/ api/
+COPY apis/ apis/
 COPY controllers/ controllers/
 COPY pkg/ pkg/
 COPY third_party/ third_party/

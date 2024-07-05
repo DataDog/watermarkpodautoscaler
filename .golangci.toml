@@ -75,6 +75,8 @@
     "varcheck",
     "rowserrcheck",
     "sqlclosecheck",
+    "depguard",
+    "perfsprint",
   ]
 
 [issues]

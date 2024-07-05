@@ -15,6 +15,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -27,9 +28,9 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
-	"github.com/DataDog/watermarkpodautoscaler/controllers"
-	"github.com/DataDog/watermarkpodautoscaler/controllers/test/utils"
+	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
+	controllers "github.com/DataDog/watermarkpodautoscaler/controllers/datadoghq"
+	"github.com/DataDog/watermarkpodautoscaler/controllers/datadoghq/test/utils"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -68,7 +69,7 @@ var _ = BeforeSuite(func(done Done) {
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
 		UseExistingCluster: datadoghqv1alpha1.NewBool(testConfig.useExistingCluster),
-		CRDDirectoryPaths:  []string{filepath.Join("../..", "config", "crd", "bases", testConfig.crdVersion)},
+		CRDDirectoryPaths:  []string{filepath.Join("../../..", "config", "crd", "bases", testConfig.crdVersion)},
 	}
 
 	// Not present in envtest.Environment

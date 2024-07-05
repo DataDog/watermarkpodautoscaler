@@ -19,17 +19,17 @@ import (
 
 func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenAPIDefinition {
 	return map[string]common.OpenAPIDefinition{
-		"./api/v1alpha1.CrossVersionObjectReference":  schema__api_v1alpha1_CrossVersionObjectReference(ref),
-		"./api/v1alpha1.ExternalMetricSource":         schema__api_v1alpha1_ExternalMetricSource(ref),
-		"./api/v1alpha1.MetricSpec":                   schema__api_v1alpha1_MetricSpec(ref),
-		"./api/v1alpha1.ResourceMetricSource":         schema__api_v1alpha1_ResourceMetricSource(ref),
-		"./api/v1alpha1.WatermarkPodAutoscaler":       schema__api_v1alpha1_WatermarkPodAutoscaler(ref),
-		"./api/v1alpha1.WatermarkPodAutoscalerSpec":   schema__api_v1alpha1_WatermarkPodAutoscalerSpec(ref),
-		"./api/v1alpha1.WatermarkPodAutoscalerStatus": schema__api_v1alpha1_WatermarkPodAutoscalerStatus(ref),
+		"./apis/datadoghq/v1alpha1.CrossVersionObjectReference":  schema__apis_datadoghq_v1alpha1_CrossVersionObjectReference(ref),
+		"./apis/datadoghq/v1alpha1.ExternalMetricSource":         schema__apis_datadoghq_v1alpha1_ExternalMetricSource(ref),
+		"./apis/datadoghq/v1alpha1.MetricSpec":                   schema__apis_datadoghq_v1alpha1_MetricSpec(ref),
+		"./apis/datadoghq/v1alpha1.ResourceMetricSource":         schema__apis_datadoghq_v1alpha1_ResourceMetricSource(ref),
+		"./apis/datadoghq/v1alpha1.WatermarkPodAutoscaler":       schema__apis_datadoghq_v1alpha1_WatermarkPodAutoscaler(ref),
+		"./apis/datadoghq/v1alpha1.WatermarkPodAutoscalerSpec":   schema__apis_datadoghq_v1alpha1_WatermarkPodAutoscalerSpec(ref),
+		"./apis/datadoghq/v1alpha1.WatermarkPodAutoscalerStatus": schema__apis_datadoghq_v1alpha1_WatermarkPodAutoscalerStatus(ref),
 	}
 }
 
-func schema__api_v1alpha1_CrossVersionObjectReference(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema__apis_datadoghq_v1alpha1_CrossVersionObjectReference(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -66,7 +66,7 @@ func schema__api_v1alpha1_CrossVersionObjectReference(ref common.ReferenceCallba
 	}
 }
 
-func schema__api_v1alpha1_ExternalMetricSource(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema__apis_datadoghq_v1alpha1_ExternalMetricSource(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -106,7 +106,7 @@ func schema__api_v1alpha1_ExternalMetricSource(ref common.ReferenceCallback) com
 	}
 }
 
-func schema__api_v1alpha1_MetricSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema__apis_datadoghq_v1alpha1_MetricSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -124,13 +124,13 @@ func schema__api_v1alpha1_MetricSpec(ref common.ReferenceCallback) common.OpenAP
 					"external": {
 						SchemaProps: spec.SchemaProps{
 							Description: "external refers to a global metric that is not associated with any Kubernetes object. It allows autoscaling based on information coming from components running outside of cluster (for example length of queue in cloud messaging service, or QPS from loadbalancer running outside of cluster).",
-							Ref:         ref("./api/v1alpha1.ExternalMetricSource"),
+							Ref:         ref("./apis/datadoghq/v1alpha1.ExternalMetricSource"),
 						},
 					},
 					"resource": {
 						SchemaProps: spec.SchemaProps{
 							Description: "resource refers to a resource metric (such as those specified in requests and limits) known to Kubernetes describing each pod in the current scale target (e.g. CPU or memory). Such metrics are built in to Kubernetes, and have special scaling options on top of those available to normal per-pod metrics using the \"pods\" source.",
-							Ref:         ref("./api/v1alpha1.ResourceMetricSource"),
+							Ref:         ref("./apis/datadoghq/v1alpha1.ResourceMetricSource"),
 						},
 					},
 				},
@@ -138,11 +138,11 @@ func schema__api_v1alpha1_MetricSpec(ref common.ReferenceCallback) common.OpenAP
 			},
 		},
 		Dependencies: []string{
-			"./api/v1alpha1.ExternalMetricSource", "./api/v1alpha1.ResourceMetricSource"},
+			"./apis/datadoghq/v1alpha1.ExternalMetricSource", "./apis/datadoghq/v1alpha1.ResourceMetricSource"},
 	}
 }
 
-func schema__api_v1alpha1_ResourceMetricSource(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema__apis_datadoghq_v1alpha1_ResourceMetricSource(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -182,7 +182,7 @@ func schema__api_v1alpha1_ResourceMetricSource(ref common.ReferenceCallback) com
 	}
 }
 
-func schema__api_v1alpha1_WatermarkPodAutoscaler(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema__apis_datadoghq_v1alpha1_WatermarkPodAutoscaler(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -212,24 +212,24 @@ func schema__api_v1alpha1_WatermarkPodAutoscaler(ref common.ReferenceCallback) c
 					"spec": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("./api/v1alpha1.WatermarkPodAutoscalerSpec"),
+							Ref:     ref("./apis/datadoghq/v1alpha1.WatermarkPodAutoscalerSpec"),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("./api/v1alpha1.WatermarkPodAutoscalerStatus"),
+							Ref:     ref("./apis/datadoghq/v1alpha1.WatermarkPodAutoscalerStatus"),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"./api/v1alpha1.WatermarkPodAutoscalerSpec", "./api/v1alpha1.WatermarkPodAutoscalerStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
+			"./apis/datadoghq/v1alpha1.WatermarkPodAutoscalerSpec", "./apis/datadoghq/v1alpha1.WatermarkPodAutoscalerStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
 	}
 }
 
-func schema__api_v1alpha1_WatermarkPodAutoscalerSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema__apis_datadoghq_v1alpha1_WatermarkPodAutoscalerSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -319,7 +319,7 @@ func schema__api_v1alpha1_WatermarkPodAutoscalerSpec(ref common.ReferenceCallbac
 						SchemaProps: spec.SchemaProps{
 							Description: "part of HorizontalPodAutoscalerSpec, see comments in the k8s-1.10.8 repo: staging/src/k8s.io/api/autoscaling/v1/types.go reference to scaled resource; horizontal pod autoscaler will learn the current resource consumption and will set the desired number of pods by using its Scale subresource.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("./api/v1alpha1.CrossVersionObjectReference"),
+							Ref:         ref("./apis/datadoghq/v1alpha1.CrossVersionObjectReference"),
 						},
 					},
 					"metrics": {
@@ -335,7 +335,7 @@ func schema__api_v1alpha1_WatermarkPodAutoscalerSpec(ref common.ReferenceCallbac
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("./api/v1alpha1.MetricSpec"),
+										Ref:     ref("./apis/datadoghq/v1alpha1.MetricSpec"),
 									},
 								},
 							},
@@ -371,11 +371,11 @@ func schema__api_v1alpha1_WatermarkPodAutoscalerSpec(ref common.ReferenceCallbac
 			},
 		},
 		Dependencies: []string{
-			"./api/v1alpha1.CrossVersionObjectReference", "./api/v1alpha1.MetricSpec", "k8s.io/apimachinery/pkg/api/resource.Quantity"},
+			"./apis/datadoghq/v1alpha1.CrossVersionObjectReference", "./apis/datadoghq/v1alpha1.MetricSpec", "k8s.io/apimachinery/pkg/api/resource.Quantity"},
 	}
 }
 
-func schema__api_v1alpha1_WatermarkPodAutoscalerStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema__apis_datadoghq_v1alpha1_WatermarkPodAutoscalerStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{

@@ -3,7 +3,7 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
 // Copyright 2016-present Datadog, Inc.
 
-package controllers
+package datadoghq
 
 import (
 	"context"
@@ -15,8 +15,8 @@ import (
 	"time"
 
 	monitorv1alpha1 "github.com/DataDog/datadog-operator/apis/datadoghq/v1alpha1"
-	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1"
-	"github.com/DataDog/watermarkpodautoscaler/api/v1alpha1/test"
+	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
+	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1/test"
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
@@ -1688,7 +1688,7 @@ func TestDefaultWatermarkPodAutoscaler(t *testing.T) {
 			if err != nil {
 				assert.Equal(t, err.Error(), tt.err.Error())
 			} else {
-				assert.Nil(t, tt.err)
+				assert.NoError(t, tt.err)
 			}
 		})
 	}
@@ -2388,7 +2388,7 @@ func TestFillMissingWatermark(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fillMissingWatermark(log, tt.wpa)
-			assert.Equal(t, tt.wpa.Spec.Metrics[0], tt.want)
+			assert.Equal(t, tt.want, tt.wpa.Spec.Metrics[0])
 		})
 	}
 }
@@ -2427,7 +2427,7 @@ func getGaugeVal(t *testing.T, metric prometheus.Metric) float64 {
 	if err != nil {
 		t.Error("Couldn't get Prometheus metrics")
 	}
-	return *dtoMetric.Gauge.Value
+	return dtoMetric.GetGauge().GetValue()
 }
 
 func getMetricKeys() []string {
