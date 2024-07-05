@@ -260,6 +260,8 @@ var (
 )
 
 func init() {
+	sigmetrics.Registry.MustRegister(upscale)
+	sigmetrics.Registry.MustRegister(downscale)
 	sigmetrics.Registry.MustRegister(value)
 	sigmetrics.Registry.MustRegister(highwm)
 	sigmetrics.Registry.MustRegister(highwmV2)
@@ -324,6 +326,8 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 		highwm.Delete(promLabelsForWpa)
 		highwmV2.Delete(promLabelsForWpa)
 		value.Delete(promLabelsForWpa)
+		upscale.Delete(promLabelsForWpa)
+		downscale.Delete(promLabelsForWpa)
 	}
 	// TODO this only be cleaned up as part of the finalizer.
 	// Until the feature is moved to the Spec, updating the annotation to disable the feature will not clean up the metric.
