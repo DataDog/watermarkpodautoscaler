@@ -1079,6 +1079,8 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				"restrictedScalingDownCap": 0.0,
 				"restrictedScalingUpCap":   0.0,
 				"restrictedScalingOk":      0.0,
+				"downscale":                1.0,
+				"upscale":                  0.0,
 			},
 		},
 		{
@@ -1184,6 +1186,8 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				"restrictedScalingDownCap": 0.0,
 				"restrictedScalingUpCap":   0.0,
 				"restrictedScalingOk":      0.0,
+				"downscale":                0.0,
+				"upscale":                  0.0,
 			},
 		},
 		{
@@ -1345,7 +1349,6 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			err := r.reconcileWPA(context.TODO(), logf.Log.WithName(tt.name), originalWPAStatus, wpa)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ReconcileWatermarkPodAutoscaler.Reconcile() error = %v, wantErr %v", err, tt.wantErr)
-				return
 			}
 			if tt.wantFunc != nil {
 				if err := tt.wantFunc(r.Client, tt.args.wantReplicasCount, wpa); err != nil {
@@ -2430,6 +2433,15 @@ func getGaugeVal(t *testing.T, metric prometheus.Metric) float64 {
 	return dtoMetric.GetGauge().GetValue()
 }
 
+func getCounterVal(t *testing.T, metric prometheus.Metric) float64 {
+	dtoMetric := dto.Metric{}
+	err := metric.Write(&dtoMetric)
+	if err != nil {
+		t.Error("Couldn't get Prometheus metrics")
+	}
+	return dtoMetric.GetCounter().GetValue()
+}
+
 func getMetricKeys() []string {
 	return []string{"dryRun",
 		"value",
@@ -2441,6 +2453,8 @@ func getMetricKeys() []string {
 		"replicaEffective",
 		"replicaMin",
 		"replicaMax",
+		"upscale",
+		"downscale",
 		"restrictedScalingDownCap",
 		"restrictedScalingUpCap",
 		"restrictedScalingOk",
@@ -2468,6 +2482,8 @@ func getPromMetrics(t *testing.T, wpa *v1alpha1.WatermarkPodAutoscaler) map[stri
 		"replicaMin":       getGaugeVal(t, replicaMin.With(getPromBaseLabels(wpa))),
 		"replicaMax":       getGaugeVal(t, replicaMax.With(getPromBaseLabels(wpa))),
 		"dryRun":           getGaugeVal(t, dryRun.With(getPromBaseLabels(wpa))),
+		"upscale":          getCounterVal(t, upscale.With(getPromBaseLabels(wpa))),
+		"downscale":        getCounterVal(t, downscale.With(getPromBaseLabels(wpa))),
 
 		"transitionCountdownUp":   getGaugeVal(t, transitionCountdown.With(getTransitionCountdownLabels(wpa, "downscale"))),
 		"transitionCountdownDown": getGaugeVal(t, transitionCountdown.With(getTransitionCountdownLabels(wpa, "upscale"))),
@@ -2494,6 +2510,8 @@ func resetPromMetrics(wpa *v1alpha1.WatermarkPodAutoscaler) {
 	replicaMin.With(getPromBaseLabels(wpa)).Set(0.0)
 	replicaMax.With(getPromBaseLabels(wpa)).Set(0.0)
 	dryRun.With(getPromBaseLabels(wpa)).Set(0.0)
+	upscale.Reset()
+	downscale.Reset()
 
 	transitionCountdown.With(getTransitionCountdownLabels(wpa, "downscale")).Set(0.0)
 	transitionCountdown.With(getTransitionCountdownLabels(wpa, "upscale")).Set(0.0)
@@ -2513,7 +2531,8 @@ func assertZeroMetrics(t *testing.T, actual map[string]float64) {
 func assertWantPromMetrics(t *testing.T, want map[string]float64, wpa *v1alpha1.WatermarkPodAutoscaler) {
 	actual := getPromMetrics(t, wpa)
 	printPromMetrics(t, actual)
-	for _, key := range getMetricKeys() {
+	// only look at the keys we care about by looping against the `want` map
+	for key := range want {
 		t.Log("comparing for key", key, fmt.Sprintf("want %.1f actual %.1f", want[key], actual[key]))
 		assert.InDelta(t, want[key], actual[key], 0.00001, "didn't match the values", key)
 	}
