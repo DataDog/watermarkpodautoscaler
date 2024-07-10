@@ -1,8 +1,6 @@
 name: Release
-
 env:
   GO_VERSION: 1.21
-
 on:
   push:
     branches:
@@ -10,7 +8,6 @@ on:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
       - "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
-
 jobs:
   build-linux-binary:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -33,9 +30,9 @@ jobs:
         id: latest_version
         uses: pozetroninc/github-action-get-latest-release@master
         with:
-            owner: ${{ github.repository_owner }}
-            repo: watermarkpodautoscaler
-            excludes: prerelease, draft
+          owner: ${{ github.repository_owner }}
+          repo: watermarkpodautoscaler
+          excludes: prerelease, draft
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v3
         with:
@@ -69,9 +66,9 @@ jobs:
         id: latest_version
         uses: pozetroninc/github-action-get-latest-release@master
         with:
-            owner: ${{ github.repository_owner }}
-            repo: watermarkpodautoscaler
-            excludes: prerelease, draft
+          owner: ${{ github.repository_owner }}
+          repo: watermarkpodautoscaler
+          excludes: prerelease, draft
       - name: Build
         uses: goreleaser/goreleaser-action@v3
         with:
@@ -103,9 +100,9 @@ jobs:
         id: latest_version
         uses: pozetroninc/github-action-get-latest-release@master
         with:
-            owner: ${{ github.repository_owner }}
-            repo: watermarkpodautoscaler
-            excludes: prerelease, draft
+          owner: ${{ github.repository_owner }}
+          repo: watermarkpodautoscaler
+          excludes: prerelease, draft
       - name: Build
         uses: goreleaser/goreleaser-action@v3
         with:

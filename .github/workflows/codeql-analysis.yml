@@ -1,15 +1,12 @@
 name: "CodeQL"
-
 env:
   GO_VERSION: 1.21
-
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
     # The branches below must be a subset of the branches above
-    branches: [ main ]
-
+    branches: [main]
 jobs:
   analyze:
     name: Analyze
@@ -18,51 +15,45 @@ jobs:
       actions: read
       contents: read
       security-events: write
-
     strategy:
       fail-fast: false
       matrix:
-        language: [ 'go' ]
+        language: ['go']
         # CodeQL supports [ 'cpp', 'csharp', 'go', 'java', 'javascript', 'python', 'ruby' ]
         # Learn more about CodeQL language support at https://git.io/codeql-language-support
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
-
-    # Initializes the CodeQL tools for scanning.
-    - name: Initialize CodeQL
-      uses: github/codeql-action/init@v2
-      with:
-        languages: ${{ matrix.language }}
-        # If you wish to specify custom queries, you can do so here or in a config file.
-        # By default, queries listed here will override any specified in a config file.
-        # Prefix the list here with "+" to use these queries and those in the config file.
-        # queries: ./path/to/local/query, your-org/your-repo/queries@main
-
-    # Autobuild attempts to build any compiled languages (C/C++, C#, Go, or Java).
-    # If this step fails, then you should remove it and run the build manually (see below).
-    # see doc: https://github.com/github/codeql-action
-    #- name: Autobuild
-    #  uses: github/codeql-action/autobuild@v2
-      
-    - name: Set up Go
-      uses: actions/setup-go@v1
-      with:
-        go-version: ${{ env.GO_VERSION }}
-      id: go
-    - name: Install required packages
-      uses: mstksg/get-package@v1
-      with:
-        apt-get: mercurial jq build-essential
-    - name: Check out code into the Go module directory
-      uses: actions/checkout@v1
-    - name: Install tools
-      run: |
-        make install-tools
-    - name: Run build
-      run: |
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      # Initializes the CodeQL tools for scanning.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          languages: ${{ matrix.language }}
+          # If you wish to specify custom queries, you can do so here or in a config file.
+          # By default, queries listed here will override any specified in a config file.
+          # Prefix the list here with "+" to use these queries and those in the config file.
+          # queries: ./path/to/local/query, your-org/your-repo/queries@main
+      # Autobuild attempts to build any compiled languages (C/C++, C#, Go, or Java).
+      # If this step fails, then you should remove it and run the build manually (see below).
+      # see doc: https://github.com/github/codeql-action
+      #- name: Autobuild
+      #  uses: github/codeql-action/autobuild@v2
+      - name: Set up Go
+        uses: actions/setup-go@v1
+        with:
+          go-version: ${{ env.GO_VERSION }}
+        id: go
+      - name: Install required packages
+        uses: mstksg/get-package@v1
+        with:
+          apt-get: mercurial jq build-essential
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v1
+      - name: Install tools
+        run: |
+          make install-tools
+      - name: Run build
+        run: |
           make manager
-
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v2
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
