@@ -170,11 +170,16 @@ bundle: manifests
 bundle-build:
 	docker build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
 
+# Update the golang version in different repository files from the version present in go.mod file
+.PHONY: update-golang
+update-golang:
+	hack/update-golang.sh
+
 #
 # Datadog Custom part
 #
 .PHONY: install-tools
-install-tools: bin/$(PLATFORM)/golangci-lint bin/$(PLATFORM)/operator-sdk bin/$(PLATFORM)/yq bin/$(PLATFORM)/kubebuilder bin/$(PLATFORM)/kubebuilder-tools bin/$(PLATFORM)/go-licenses bin/$(PLATFORM)/openapi-gen bin/$(PLATFORM)/controller-gen bin/$(PLATFORM)/openapi-gen bin/$(PLATFORM)/kustomize
+install-tools: bin/$(PLATFORM)/golangci-lint bin/$(PLATFORM)/operator-sdk bin/$(PLATFORM)/yq bin/$(PLATFORM)/jq bin/$(PLATFORM)/kubebuilder bin/$(PLATFORM)/kubebuilder-tools bin/$(PLATFORM)/go-licenses bin/$(PLATFORM)/openapi-gen bin/$(PLATFORM)/controller-gen bin/$(PLATFORM)/openapi-gen bin/$(PLATFORM)/kustomize
 
 .PHONY: generate-openapi
 generate-openapi: bin/$(PLATFORM)/openapi-gen
@@ -204,6 +209,9 @@ tidy:
 
 bin/$(PLATFORM)/yq: Makefile
 	hack/install-yq.sh "bin/$(PLATFORM)" v4.31.2
+
+bin/$(PLATFORM)/jq: Makefile
+	hack/install-jq.sh "bin/$(PLATFORM)" 1.7.1
 
 bin/$(PLATFORM)/golangci-lint: Makefile
 	hack/install-golangci-lint.sh -b "bin/$(PLATFORM)" v1.56.0

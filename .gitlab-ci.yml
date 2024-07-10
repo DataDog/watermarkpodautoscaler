@@ -45,6 +45,13 @@ generate_code:
     - make generate
     - git diff --exit-code
 
+check-golang-version:
+  stage: test
+  tags: ["runner:main", "size:large"]
+  script:
+    - make update-golang
+    - git diff --exit-code
+
 build_image:
   stage: image
   tags:
