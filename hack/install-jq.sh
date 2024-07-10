@@ -8,11 +8,17 @@ SCRIPTS_DIR="$(dirname "$0")"
 # Provides $OS,$ARCH,$PLATFORM,$ROOT variables
 source "$SCRIPTS_DIR/install-common.sh"
 
+
+
 INSTALL_PATH=$1
 VERSION=$2
 
 BIN_ARCH=$(uname_arch)
-BINARY="yq_$(uname)_$BIN_ARCH"
+OS=$(uname| tr [:upper:] [:lower:])
+if [ "$OS" == "darwin" ]; then
+    OS="macos"
+fi
+BINARY="jq-$OS-$BIN_ARCH"
 
 if [ -z "$VERSION" ];
 then
@@ -21,8 +27,9 @@ then
 fi
 
 cd $WORK_DIR
-curl -Lo ${BINARY} https://github.com/mikefarah/yq/releases/download/$VERSION/$BINARY
+# https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-arm64
+curl -Lo ${BINARY} https://github.com/jqlang/jq/releases/download/jq-$VERSION/$BINARY
 
 chmod +x $BINARY
 mkdir -p $ROOT/$INSTALL_PATH/
-mv $BINARY $ROOT/$INSTALL_PATH/yq
+mv $BINARY $ROOT/$INSTALL_PATH/jq

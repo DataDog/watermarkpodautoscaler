@@ -1,5 +1,5 @@
 ---
-image: registry.ddbuild.io/images/mirror/golang:1.19-bullseye
+image: registry.ddbuild.io/images/mirror/golang:1.21
 variables:
   GO111MODULE: "on"
   PROJECTNAME: "watermarkpodautoscaler"
@@ -28,21 +28,28 @@ before_script:
 
 build:
   stage: build
-  tags: ["runner:main", "size:large"]
+  tags: ["arch:amd64"]
   script:
     - make build
 
 tests:
   stage: test
-  tags: ["runner:main", "size:large"]
+  tags: ["arch:amd64"]
   script:
     - make test
 
 generate_code:
   stage: test
-  tags: ["runner:main", "size:large"]
+  tags: ["arch:amd64"]
   script:
     - make generate
+    - git diff --exit-code
+
+check-golang-version:
+  stage: test
+  tags: ["arch:amd64"]
+  script:
+    - make update-golang
     - git diff --exit-code
 
 build_image:
