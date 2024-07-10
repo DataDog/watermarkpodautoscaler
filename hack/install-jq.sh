@@ -8,10 +8,7 @@ SCRIPTS_DIR="$(dirname "$0")"
 # Provides $OS,$ARCH,$PLATFORM,$ROOT variables
 source "$SCRIPTS_DIR/install-common.sh"
 
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap "cleanup" EXIT SIGINT
+
 
 INSTALL_PATH=$1
 VERSION=$2
