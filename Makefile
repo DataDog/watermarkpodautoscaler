@@ -126,7 +126,7 @@ docker-buildx-ci:
 ##@ Tools
 CONTROLLER_GEN = bin/$(PLATFORM)/controller-gen
 $(CONTROLLER_GEN): Makefile  ## Download controller-gen locally if necessary.
-	$(call go-get-tool,$@,sigs.k8s.io/controller-tools/cmd/controller-gen@v0.6.1)
+	$(call go-get-tool,$@,sigs.k8s.io/controller-tools/cmd/controller-gen@v0.16.3)
 
 KUSTOMIZE = bin/$(PLATFORM)/kustomize
 $(KUSTOMIZE): Makefile  ## Download kustomize locally if necessary.
@@ -183,7 +183,7 @@ install-tools: bin/$(PLATFORM)/golangci-lint bin/$(PLATFORM)/operator-sdk bin/$(
 
 .PHONY: generate-openapi
 generate-openapi: bin/$(PLATFORM)/openapi-gen
-	bin/$(PLATFORM)/openapi-gen --logtostderr=true -o "" -i ./apis/datadoghq/v1alpha1 -O zz_generated.openapi -p ./apis/datadoghq/v1alpha1 -h ./hack/boilerplate.go.txt -r "-"
+	bin/$(PLATFORM)/openapi-gen --logtostderr --output-dir apis/datadoghq/v1alpha1 --output-file zz_generated.openapi.go --output-pkg apis/datadoghq/v1alpha1 --go-header-file ./hack/boilerplate.go.txt
 
 .PHONY: patch-crds
 patch-crds: bin/$(PLATFORM)/yq

@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	monitorv1alpha1 "github.com/DataDog/datadog-operator/apis/datadoghq/v1alpha1"
+	monitorv1alpha1 "github.com/DataDog/datadog-operator/api/datadoghq/v1alpha1"
 	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1/test"
 	"github.com/go-logr/logr"
