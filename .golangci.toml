@@ -5,13 +5,10 @@
 [linters-settings]
 
   [linters-settings.govet]
-    check-shadowing = true
+    shadowing = true
 
   [linters-settings.gocyclo]
     min-complexity = 12.0
-
-  [linters-settings.maligned]
-    suggest-new = true
 
   [linters-settings.goconst]
     min-len = 3.0
@@ -24,15 +21,10 @@
   enable-all = true
   disable = [
     "exhaustruct",
-    "nosnakecase",
-    "logrlint",
     "nonamedreturns",
-    "maligned",
     "revive",
     "lll",
-    "gas",
     "dupl",
-    "scopelint",
     "gocyclo",
     "gochecknoinits",
     "gochecknoglobals",
@@ -41,16 +33,15 @@
     "cyclop",
     "gomnd",
     "wrapcheck",
-    "exhaustivestruct",
     "forcetypeassert",
-    "goerr113",
     "testpackage",
     "wastedassign",
     "thelper",
     "paralleltest",
     "nestif",
     "exhaustive",
-    "interfacer",
+    "err113",
+    "gosec",
     "gci",
     "wsl",
     "godox",
@@ -63,16 +54,11 @@
     "nilnil",
     "ireturn",
     "maintidx",
-    "ifshort",
     "gocritic",
     "errchkjson",
     "gofumpt",
-    "golint",
     "gomoddirectives",
     "prealloc",
-    "structcheck",
-    "deadcode",
-    "varcheck",
     "rowserrcheck",
     "sqlclosecheck",
     "depguard",
