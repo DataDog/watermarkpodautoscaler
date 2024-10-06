@@ -245,20 +245,19 @@ func (o *dryrunOptions) list(wpas []v1alpha1.WatermarkPodAutoscaler) error {
 	if len(wpas) == 0 {
 		return fmt.Errorf("no matching WatermarkPodAutoscaler intance")
 	}
-
 	var writerFunc func(w io.Writer, wpa *v1alpha1.WatermarkPodAutoscaler)
 	switch o.outputFormat {
 	case "csv":
 		csvWriter := csv.NewWriter(o.Out)
 		writerFunc = func(w io.Writer, wpa *v1alpha1.WatermarkPodAutoscaler) {
 			if err := csvWriter.Write([]string{wpa.Namespace, wpa.Name, dryRunString(wpa)}); err != nil {
-				fmt.Fprintf(o.ErrOut, "error")
+				_, _ = fmt.Fprintf(o.ErrOut, "error")
 			}
 		}
 		defer csvWriter.Flush()
 	default:
 		writerFunc = func(w io.Writer, wpa *v1alpha1.WatermarkPodAutoscaler) {
-			fmt.Fprintf(w, "WatermarkPodAutoscaler '%s/%s' dry-run option is: %v\n", wpa.Namespace, wpa.Name, wpa.Spec.DryRun)
+			_, _ = fmt.Fprintf(w, "WatermarkPodAutoscaler '%s/%s' dry-run option is: %v\n", wpa.Namespace, wpa.Name, wpa.Spec.DryRun)
 		}
 	}
 
@@ -276,9 +275,9 @@ func (o *dryrunOptions) patch(wpas []v1alpha1.WatermarkPodAutoscaler) error {
 	for _, wpa := range wpas {
 		err := patchWPA(o.client, &wpa, o.enabledDryRun)
 		if err != nil {
-			fmt.Fprintf(o.ErrOut, "error: %v", err)
+			_, _ = fmt.Fprintf(o.ErrOut, "error: %v", err)
 		} else {
-			fmt.Fprintf(o.Out, "WatermarkPodAutoscaler '%s/%s' dry-run option is now %v\n", wpa.Namespace, wpa.Name, o.enabledDryRun)
+			_, _ = fmt.Fprintf(o.Out, "WatermarkPodAutoscaler '%s/%s' dry-run option is now %v\n", wpa.Namespace, wpa.Name, o.enabledDryRun)
 		}
 	}
 	return nil
@@ -322,7 +321,7 @@ func (o *dryrunOptions) runRevert() error {
 		defer func() {
 			errClose := f.Close()
 			if errClose != nil {
-				fmt.Fprintf(o.ErrOut, "unable to close the file: %v", errClose)
+				_, _ = fmt.Fprintf(o.ErrOut, "unable to close the file: %v", errClose)
 			}
 		}()
 		input = f
@@ -335,16 +334,16 @@ func (o *dryrunOptions) runRevert() error {
 			break
 		}
 		if err != nil {
-			fmt.Fprintf(o.ErrOut, "error: %v", err)
+			_, _ = fmt.Fprintf(o.ErrOut, "error: %v", err)
 			continue
 		}
 		if len(record) != 3 {
-			fmt.Fprintf(o.ErrOut, "invalid line: %v", record)
+			_, _ = fmt.Fprintf(o.ErrOut, "invalid line: %v", record)
 			continue
 		}
 		wpa, err := getWpa(o.client, record[0], record[1])
 		if err != nil {
-			fmt.Fprintf(o.ErrOut, "error: %v", err)
+			_, _ = fmt.Fprintf(o.ErrOut, "error: %v", err)
 			continue
 		}
 		previousDryRunValue := o.dryRunBool(record[2])
@@ -353,9 +352,9 @@ func (o *dryrunOptions) runRevert() error {
 		}
 		err = patchWPA(o.client, wpa, previousDryRunValue)
 		if err != nil {
-			fmt.Fprintf(o.ErrOut, "error: %v", err)
+			_, _ = fmt.Fprintf(o.ErrOut, "error: %v", err)
 		} else {
-			fmt.Fprintf(o.Out, "WatermarkPodAutoscaler '%s/%s' dry-run option is now %v\n", wpa.Namespace, wpa.Name, previousDryRunValue)
+			_, _ = fmt.Fprintf(o.Out, "WatermarkPodAutoscaler '%s/%s' dry-run option is now %v\n", wpa.Namespace, wpa.Name, previousDryRunValue)
 		}
 	}
 
@@ -399,7 +398,7 @@ func (o *dryrunOptions) dryRunBool(input string) bool {
 	case enabledString:
 		return true
 	default:
-		fmt.Fprintf(o.ErrOut, "warning: Incorrect value for dry-run: %s, defaulting to true \n", input)
+		_, _ = fmt.Fprintf(o.ErrOut, "warning: Incorrect value for dry-run: %s, defaulting to true \n", input)
 		return true
 	}
 }

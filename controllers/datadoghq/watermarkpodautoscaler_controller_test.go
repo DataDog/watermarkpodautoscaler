@@ -65,6 +65,10 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 	s.AddKnownTypes(v1alpha1.SchemeGroupVersion, &v1alpha1.WatermarkPodAutoscaler{})
 	s.AddKnownTypes(v1alpha1.SchemeGroupVersion, &monitorv1alpha1.DatadogMonitor{})
 
+	newClientFunc := func() client.Client {
+		return fake.NewClientBuilder().WithStatusSubresource(&v1alpha1.WatermarkPodAutoscaler{}).Build()
+	}
+
 	type fields struct {
 		client        client.Client
 		scaleclient   scale.ScalesGetter
@@ -88,7 +92,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 		{
 			name: "WatermarkPodAutoscaler not found",
 			fields: fields{
-				client:        fake.NewClientBuilder().Build(),
+				client:        newClientFunc(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				scheme:        s,
 				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
@@ -103,7 +107,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 		{
 			name: "WatermarkPodAutoscaler found, but not defaulted",
 			fields: fields{
-				client:        fake.NewClientBuilder().Build(),
+				client:        newClientFunc(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				scheme:        s,
 				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
@@ -121,7 +125,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 		{
 			name: "WatermarkPodAutoscalerfound and defaulted but invalid metric spec",
 			fields: fields{
-				client:        fake.NewClientBuilder().Build(),
+				client:        newClientFunc(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				scheme:        s,
 				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
@@ -174,7 +178,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 		{
 			name: "WatermarkPodAutoscaler found and defaulted but invalid spec",
 			fields: fields{
-				client:        fake.NewClientBuilder().Build(),
+				client:        newClientFunc(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				scheme:        s,
 				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
@@ -222,7 +226,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 		{
 			name: "WatermarkPodAutoscaler found and defaulted but invalid watermarks",
 			fields: fields{
-				client:        fake.NewClientBuilder().Build(),
+				client:        newClientFunc(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				scheme:        s,
 				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
@@ -267,10 +271,10 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 					return err
 				}
 				cond := &v2beta1.HorizontalPodAutoscalerCondition{
-					Message: "Invalid WPA specification: Low WaterMark of External metric deadbeef{map[label:value]} has to be strictly inferior to the High Watermark",
+					Message: "Invalid WPA specification: low WaterMark of External metric deadbeef{map[label:value]} has to be strictly inferior to the High Watermark",
 				}
 				if wpa.Status.Conditions[0].Message != cond.Message {
-					return fmt.Errorf("Unexpected Condition for incorrectly configured WPA")
+					return fmt.Errorf("Unexpected Condition for incorrectly configured WPA, msg: %s, cond.msg: %s", wpa.Status.Conditions[0].Message, cond.Message)
 				}
 				return nil
 			},
@@ -278,7 +282,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 		{
 			name: "Lifecycle Control enabled, DatadogMonitor does not exist",
 			fields: fields{
-				client:        fake.NewClientBuilder().Build(),
+				client:        newClientFunc(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				scheme:        s,
 				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
@@ -320,7 +324,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 		{
 			name: "Lifecycle Control enabled, DatadogMonitor exist and is OK",
 			fields: fields{
-				client:        fake.NewClientBuilder().Build(),
+				client:        newClientFunc(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				scheme:        s,
 				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
@@ -464,6 +468,10 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventRecorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "TestReconcileWatermarkPodAutoscaler"})
 
+	newClientFunc := func() client.Client {
+		return fake.NewClientBuilder().WithStatusSubresource(&v1alpha1.WatermarkPodAutoscaler{}).Build()
+	}
+
 	logf.SetLogger(zap.New())
 	s := scheme.Scheme
 
@@ -481,7 +489,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 		scale                 *autoscalingv1.Scale
 		wantReplicasCount     int32
 		replicaCalculatorFunc func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error)
-		loadFunc              func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler)
+		loadFunc              func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) error
 	}
 
 	tests := []struct {
@@ -495,7 +503,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 		{
 			name: "Target deployment has 0 replicas",
 			fields: fields{
-				client:        fake.NewClientBuilder().Build(),
+				client:        newClientFunc(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
 				scheme:        s,
@@ -506,17 +514,16 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				scale:                 newScaleForDeployment(0),
 				wantReplicasCount:     0,
 				replicaCalculatorFunc: nil,
-				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) {
+				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) error {
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
-
-					_ = c.Create(context.TODO(), wpa)
+					return c.Create(context.TODO(), wpa)
 				},
 			},
 			wantErr: false,
 			wantFunc: func(c client.Client, desired int32, wpa *v1alpha1.WatermarkPodAutoscaler) error {
 				if wpa.Status.DesiredReplicas != desired {
-					return fmt.Errorf(fmt.Sprintf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas))
+					return fmt.Errorf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas)
 				}
 				if wpa.Status.Conditions[1].Type == v2beta1.ScalingActive && wpa.Status.Conditions[1].Status != "False" {
 					return fmt.Errorf("scaling should be disabled")
@@ -544,7 +551,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 		{
 			name: "Target deployment has more than MaxReplicas",
 			fields: fields{
-				client:        fake.NewClientBuilder().Build(),
+				client:        newClientFunc(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
 				scheme:        s,
@@ -560,17 +567,17 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				replicaCalculatorFunc: nil,
 				scale:                 newScaleForDeployment(18),
 				wantReplicasCount:     10,
-				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) {
+				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) error {
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
 
-					_ = c.Create(context.TODO(), wpa)
+					return c.Create(context.TODO(), wpa)
 				},
 			},
 			wantErr: false,
 			wantFunc: func(c client.Client, desired int32, wpa *v1alpha1.WatermarkPodAutoscaler) error {
 				if wpa.Status.DesiredReplicas != desired {
-					return fmt.Errorf(fmt.Sprintf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas))
+					return fmt.Errorf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas)
 				}
 				if wpa.Status.Conditions[0].Reason == v1alpha1.ConditionReasonSuccessfulScale && wpa.Status.Conditions[0].Message != fmt.Sprintf("the WPA controller was able to update the target scale to %d", wpa.Status.DesiredReplicas) {
 					return fmt.Errorf("scaling should occur as we are above the MaxReplicas")
@@ -598,7 +605,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 		{
 			name: "Target deployment has less than MinReplicas",
 			fields: fields{
-				client:        fake.NewClientBuilder().Build(),
+				client:        newClientFunc(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
 				scheme:        s,
@@ -614,17 +621,17 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				}),
 				scale:             newScaleForDeployment(6),
 				wantReplicasCount: 10,
-				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) {
+				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) error {
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
 
-					_ = c.Create(context.TODO(), wpa)
+					return c.Create(context.TODO(), wpa)
 				},
 			},
 			wantErr: false,
 			wantFunc: func(c client.Client, desired int32, wpa *v1alpha1.WatermarkPodAutoscaler) error {
 				if wpa.Status.DesiredReplicas != desired {
-					return fmt.Errorf(fmt.Sprintf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas))
+					return fmt.Errorf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas)
 				}
 				if wpa.Status.Conditions[0].Reason == v1alpha1.ConditionReasonSuccessfulScale && wpa.Status.Conditions[0].Message != fmt.Sprintf("the WPA controller was able to update the target scale to %d", wpa.Status.DesiredReplicas) {
 					return fmt.Errorf("scaling should occur as we are above the MaxReplicas")
@@ -652,7 +659,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 		{
 			name: "Forbidden window uses the right timestamp",
 			fields: fields{
-				client:        fake.NewClientBuilder().Build(),
+				client:        newClientFunc(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
 				scheme:        s,
@@ -703,16 +710,16 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				}),
 				wantReplicasCount: 5,
 				scale:             newScaleForDeployment(3),
-				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) {
+				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) error {
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
-					_ = c.Create(context.TODO(), wpa)
+					return c.Create(context.TODO(), wpa)
 				},
 			},
 			wantErr: false,
 			wantFunc: func(c client.Client, desired int32, wpa *v1alpha1.WatermarkPodAutoscaler) error {
 				if wpa.Status.DesiredReplicas != desired {
-					return fmt.Errorf(fmt.Sprintf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas))
+					return fmt.Errorf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas)
 				}
 				if len(wpa.Status.Conditions) != 6 {
 					return fmt.Errorf("incomplete reconciliation process, missing conditions")
@@ -730,7 +737,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 						}
 					case v2beta1.ScalingLimited:
 						if c.Message != "the desired replica count is increasing faster than the maximum scale rate" {
-							return fmt.Errorf("scaling incorrectly throttled")
+							return fmt.Errorf("scaling incorrectly throttled, message: %s", c.Message)
 						}
 					case v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark:
 						if c.Status != corev1.ConditionTrue {
@@ -761,7 +768,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 		{
 			name: "Downscale blocked because the metric has not been under the watermark for long enough",
 			fields: fields{
-				client:        fake.NewClientBuilder().Build(),
+				client:        newClientFunc(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
 				scheme:        s,
@@ -812,16 +819,16 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				}),
 				wantReplicasCount: 3,
 				scale:             newScaleForDeployment(3),
-				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) {
+				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) error {
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
-					_ = c.Create(context.TODO(), wpa)
+					return c.Create(context.TODO(), wpa)
 				},
 			},
 			wantErr: false,
 			wantFunc: func(c client.Client, desired int32, wpa *v1alpha1.WatermarkPodAutoscaler) error {
 				if wpa.Status.DesiredReplicas != desired {
-					return fmt.Errorf(fmt.Sprintf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas))
+					return fmt.Errorf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas)
 				}
 				if len(wpa.Status.Conditions) != 6 {
 					return fmt.Errorf("incomplete reconciliation process, missing conditions")
@@ -866,7 +873,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 		{
 			name: "Multi metric support with delaying downscale and allow upscale burst",
 			fields: fields{
-				client:        fake.NewClientBuilder().Build(),
+				client:        newClientFunc(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
 				scheme:        s,
@@ -927,16 +934,16 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				}),
 				wantReplicasCount: 5,
 				scale:             newScaleForDeployment(3),
-				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) {
+				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) error {
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
-					_ = c.Create(context.TODO(), wpa)
+					return c.Create(context.TODO(), wpa)
 				},
 			},
 			wantErr: false,
 			wantFunc: func(c client.Client, desired int32, wpa *v1alpha1.WatermarkPodAutoscaler) error {
 				if wpa.Status.DesiredReplicas != desired {
-					return fmt.Errorf(fmt.Sprintf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas))
+					return fmt.Errorf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas)
 				}
 				if len(wpa.Status.Conditions) != 6 {
 					return fmt.Errorf("incomplete reconciliation process, missing conditions")
@@ -979,7 +986,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 		{
 			name: "Converging while in stable regime",
 			fields: fields{
-				client:        fake.NewClientBuilder().Build(),
+				client:        newClientFunc(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
 				scheme:        s,
@@ -1032,16 +1039,16 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				}),
 				wantReplicasCount: 4,
 				scale:             newScaleForDeployment(5),
-				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) {
+				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) error {
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
-					_ = c.Create(context.TODO(), wpa)
+					return c.Create(context.TODO(), wpa)
 				},
 			},
 			wantErr: false,
 			wantFunc: func(c client.Client, desired int32, wpa *v1alpha1.WatermarkPodAutoscaler) error {
 				if wpa.Status.DesiredReplicas != desired {
-					return fmt.Errorf(fmt.Sprintf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas))
+					return fmt.Errorf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas)
 				}
 				if len(wpa.Status.Conditions) != 6 {
 					return fmt.Errorf("incomplete reconciliation process, missing conditions")
@@ -1086,7 +1093,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 		{
 			name: "Converging while in stable regime, blocked by forbidden window",
 			fields: fields{
-				client:        fake.NewClientBuilder().Build(),
+				client:        newClientFunc(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
 				scheme:        s,
@@ -1139,16 +1146,16 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				}),
 				wantReplicasCount: 5,
 				scale:             newScaleForDeployment(5),
-				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) {
+				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) error {
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
-					_ = c.Create(context.TODO(), wpa)
+					return c.Create(context.TODO(), wpa)
 				},
 			},
 			wantErr: false,
 			wantFunc: func(c client.Client, desired int32, wpa *v1alpha1.WatermarkPodAutoscaler) error {
 				if wpa.Status.DesiredReplicas != desired {
-					return fmt.Errorf(fmt.Sprintf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas))
+					return fmt.Errorf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas)
 				}
 				if len(wpa.Status.Conditions) != 6 {
 					return fmt.Errorf("incomplete reconciliation process, missing conditions")
@@ -1193,7 +1200,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 		{
 			name: "Multi metric support with delaying downscale with only one metric downscaling",
 			fields: fields{
-				client:        fake.NewClientBuilder().Build(),
+				client:        newClientFunc(),
 				scaleclient:   &fakescale.FakeScaleClient{},
 				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
 				scheme:        s,
@@ -1255,16 +1262,16 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				}),
 				wantReplicasCount: 5,
 				scale:             newScaleForDeployment(8),
-				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) {
+				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) error {
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
-					_ = c.Create(context.TODO(), wpa)
+					return c.Create(context.TODO(), wpa)
 				},
 			},
 			wantErr: false,
 			wantFunc: func(c client.Client, desired int32, wpa *v1alpha1.WatermarkPodAutoscaler) error {
 				if wpa.Status.DesiredReplicas != desired {
-					return fmt.Errorf(fmt.Sprintf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas))
+					return fmt.Errorf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas)
 				}
 				if len(wpa.Status.Conditions) != 6 {
 					return fmt.Errorf("incomplete reconciliation process, missing conditions")
@@ -1339,16 +1346,17 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			}
 
 			if tt.args.loadFunc != nil {
-				tt.args.loadFunc(r.Client, tt.args.wpa)
+				if err := tt.args.loadFunc(r.Client, tt.args.wpa); err != nil {
+					t.Errorf("unable to load test data, err: %v", err)
+				}
 			}
 			wpa := &v1alpha1.WatermarkPodAutoscaler{}
 			if err := r.Client.Get(context.TODO(), types.NamespacedName{Name: tt.args.wpa.Name, Namespace: tt.args.wpa.Namespace}, wpa); err != nil {
 				t.Errorf("unable to get wpa, err: %v", err)
 			}
 			originalWPAStatus := wpa.Status.DeepCopy()
-			err := r.reconcileWPA(context.TODO(), logf.Log.WithName(tt.name), originalWPAStatus, wpa)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ReconcileWatermarkPodAutoscaler.Reconcile() error = %v, wantErr %v", err, tt.wantErr)
+			if err := r.reconcileWPA(context.TODO(), logf.Log.WithName(tt.name), originalWPAStatus, wpa); (err != nil) != tt.wantErr {
+				t.Errorf("ReconcileWatermarkPodAutoscaler.Reconcile() error = \"%v\", wantErr %v", err, tt.wantErr)
 			}
 			if tt.wantFunc != nil {
 				if err := tt.wantFunc(r.Client, tt.args.wantReplicasCount, wpa); err != nil {

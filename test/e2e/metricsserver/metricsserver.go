@@ -40,7 +40,7 @@ func InitMetricsServerFiles(r io.Writer, deployDir, namespace string) ([]client.
 		if file.IsDir() {
 			continue
 		}
-		fmt.Fprintf(r, "metrics-server resource: %s", file.Name())
+		_, _ = fmt.Fprintf(r, "metrics-server resource: %s", file.Name())
 
 		var bytes []byte
 		bytes, err = os.ReadFile(filepath.Join(deployDir, file.Name()))
@@ -102,7 +102,7 @@ func InitMetricsServerFiles(r io.Writer, deployDir, namespace string) ([]client.
 			}
 			apiServiceList = append(apiServiceList, o)
 		default:
-			fmt.Fprintf(r, "unknow resource: %v", o)
+			_, _ = fmt.Fprintf(r, "unknow resource: %v", o)
 		}
 	}
 	var objs []client.Object

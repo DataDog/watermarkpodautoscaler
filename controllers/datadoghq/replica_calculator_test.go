@@ -93,7 +93,7 @@ func (tc *replicaCalcTestCase) getFakeResourceClient() *metricsfake.Clientset {
 				Containers: []metricsapi.ContainerMetrics{},
 			}
 
-			for j := 0; j < numContainersPerPod; j++ {
+			for j := range numContainersPerPod {
 				cm := metricsapi.ContainerMetrics{
 					Name: fmt.Sprintf("%s-%d-container-%d", podNamePrefix, i, j),
 					Usage: corev1.ResourceList{
@@ -164,7 +164,7 @@ func (tc *replicaCalcTestCase) prepareTestClientSet() *fake.Clientset {
 		if tc.podPhase != nil && len(tc.podPhase) > podsCount {
 			podsCount = len(tc.podPhase)
 		}
-		for i := 0; i < podsCount; i++ {
+		for i := range podsCount {
 			podReadiness := corev1.ConditionTrue
 			podTransitionTime := metav1.Now()
 			if tc.podCondition != nil && i < len(tc.podCondition) {

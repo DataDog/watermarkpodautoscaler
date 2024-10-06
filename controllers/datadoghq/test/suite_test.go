@@ -90,7 +90,7 @@ var _ = BeforeSuite(func(done Done) {
 
 	if !testConfig.useExistingCluster {
 		// Create some Nodes
-		for i := 0; i < fakeNodesCount; i++ {
+		for i := range fakeNodesCount {
 			nodei := utils.NewNode(fmt.Sprintf("node%d", i+1), nil)
 			Expect(k8sClient.Create(context.Background(), nodei)).Should(Succeed())
 		}

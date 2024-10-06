@@ -8,6 +8,7 @@ package datadoghq
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -21,7 +22,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2beta1"
 	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -116,7 +117,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 	instance := &datadoghqv1alpha1.WatermarkPodAutoscaler{}
 	err = r.Client.Get(ctx, request.NamespacedName, instance)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
 			// Return and don't requeue
@@ -173,7 +174,8 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 	enabled, err := strconv.ParseBool(enabledValue)
 	if err != nil && enabledValue != "" {
 		log.Error(err, "lifecycle control config annotation could not be parsed, it will be ignored")
-		setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedGetDatadogMonitor, fmt.Sprintf("Lifecycle Control is not correctly enabled: %s", err.Error()))
+		msg := fmt.Sprintf("Lifecycle Control is not correctly enabled: %s", err.Error())
+		setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedGetDatadogMonitor, msg)
 	}
 
 	// TODO Add telemetry on the associated DatadogMonitor
@@ -265,7 +267,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	currentScale, targetGR, err := r.getScaleForResourceMappings(ctx, wpa.Namespace, wpa.Spec.ScaleTargetRef.Name, mappings)
 	if currentScale == nil && strings.Contains(err.Error(), scaleNotFoundErr) {
 		// it is possible that one of the GK in the mappings was not found, but if we have at least one that works, we can continue reconciling.
-		return err
+		return fmt.Errorf("getScaleForResourceMappings error: %w", err)
 	}
 	currentReplicas := currentScale.Status.Replicas
 	logger.Info("Target deploy", "replicas", currentReplicas)
@@ -427,7 +429,7 @@ func (r *WatermarkPodAutoscalerReconciler) getScaleForResourceMappings(ctx conte
 		errs = append(errs, fmt.Errorf("could not get scale for the GV %s, error: %w", mapping.GroupVersionKind.GroupVersion().String(), err))
 	}
 	if scale == nil {
-		errs = append(errs, fmt.Errorf(scaleNotFoundErr))
+		errs = append(errs, errors.New(scaleNotFoundErr))
 	}
 	// make sure we handle an empty set of mappings
 	return scale, targetGR, utilerrors.NewAggregate(errs)
@@ -525,7 +527,11 @@ func (r *WatermarkPodAutoscalerReconciler) updateStatusIfNeeded(ctx context.Cont
 }
 
 func (r *WatermarkPodAutoscalerReconciler) updateWPAStatus(ctx context.Context, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) error {
-	return r.Client.Status().Update(ctx, wpa)
+	err := r.Client.Status().Update(ctx, wpa)
+	if err != nil {
+		return fmt.Errorf("failed to update WPA status: %w", err)
+	}
+	return nil
 }
 
 // setStatus recreates the status of the given WPA, updating the current and
@@ -612,7 +618,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 				errMsg := "invalid external metric source: the high watermark and the low watermark are required"
 				r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedGetExternalMetric", errMsg)
 				setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedGetExternalMetrics, "the WPA was unable to compute the replica count: %v", err)
-				return 0, "", nil, time.Time{}, 0, false, fmt.Errorf(errMsg)
+				return 0, "", nil, time.Time{}, 0, false, errors.New(errMsg)
 			}
 		case datadoghqv1alpha1.ResourceMetricSourceType:
 			if metricSpec.Resource.HighWatermark != nil && metricSpec.Resource.LowWatermark != nil {
@@ -659,7 +665,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 				errMsg := "invalid resource metric source: the high watermark and the low watermark are required"
 				r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedGetResourceMetric, errMsg)
 				setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedGetResourceMetric, "the WPA was unable to compute the replica count: %v", err)
-				return 0, "", nil, time.Time{}, 0, false, fmt.Errorf(errMsg)
+				return 0, "", nil, time.Time{}, 0, false, errors.New(errMsg)
 			}
 
 		default:
@@ -697,7 +703,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 // and message.  The message and args are treated like a format string.  The condition will be added if it is
 // not present.
 func setCondition(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, conditionType autoscalingv2.HorizontalPodAutoscalerConditionType, status corev1.ConditionStatus, reason, message string, args ...interface{}) {
-	wpa.Status.Conditions = setConditionInList(wpa.Status.Conditions, conditionType, status, reason, message, args...)
+	wpa.Status.Conditions = setConditionInList(wpa.Status.Conditions, conditionType, status, reason, message, args)
 	wpa.Status.LastConditionState = string(status)
 	wpa.Status.LastConditionType = string(conditionType)
 }
@@ -716,7 +722,7 @@ func getCondition(wpaStatus *datadoghqv1alpha1.WatermarkPodAutoscalerStatus, con
 // setConditionInList sets the specific condition type on the given WPA to the specified value with the given
 // reason and message.  The message and args are treated like a format string.  The condition will be added if
 // it is not present.  The new list will be returned.
-func setConditionInList(inputList []autoscalingv2.HorizontalPodAutoscalerCondition, conditionType autoscalingv2.HorizontalPodAutoscalerConditionType, status corev1.ConditionStatus, reason, message string, args ...interface{}) []autoscalingv2.HorizontalPodAutoscalerCondition {
+func setConditionInList(inputList []autoscalingv2.HorizontalPodAutoscalerCondition, conditionType autoscalingv2.HorizontalPodAutoscalerConditionType, status corev1.ConditionStatus, reason, message string, args []interface{}) []autoscalingv2.HorizontalPodAutoscalerCondition {
 	resList := inputList
 	var existingCond *autoscalingv2.HorizontalPodAutoscalerCondition
 	for i, condition := range resList {

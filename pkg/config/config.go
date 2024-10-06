@@ -48,7 +48,7 @@ func ManagerOptionsWithNamespaces(logger logr.Logger, opt ctrl.Options) ctrl.Opt
 		opt.Namespace = namespaces[0]
 	case len(namespaces) > 1:
 		// configure cluster-scoped with MultiNamespacedCacheBuilder
-		logger.Info("Manager will be watching multiple namespaces", namespaces)
+		logger.Info("Manager will be watching multiple namespaces", "namespaces", strings.Join(namespaces, ","))
 		opt.Namespace = ""
 		opt.NewCache = cache.MultiNamespacedCacheBuilder(namespaces)
 	}

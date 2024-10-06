@@ -27,9 +27,9 @@ var (
 
 // PrintVersionWriter print versions information in to writer interface
 func PrintVersionWriter(writer io.Writer) {
-	fmt.Fprintf(writer, "Version:\n")
+	_, _ = fmt.Fprintf(writer, "Version:\n")
 	for _, val := range printVersionSlice() {
-		fmt.Fprintf(writer, "- %s\n", val)
+		_, _ = fmt.Fprintf(writer, "- %s\n", val)
 	}
 }
 
