@@ -20,7 +20,7 @@ GOARCH?=amd64
 IMG_NAME=gcr.io/datadoghq/watermarkpodautoscaler
 RELEASE_IMAGE_TAG := $(if $(CI_COMMIT_TAG),--tag $(RELEASE_IMAGE),)
 
-CRD_OPTIONS ?= "crd:trivialVersions=true,preserveUnknownFields=false"
+CRD_OPTIONS ?= crd
 
 # Default bundle image tag
 BUNDLE_IMG ?= controller-bundle:$(VERSION)
@@ -92,11 +92,10 @@ undeploy: $(KUSTOMIZE) ## Undeploy controller from the K8s cluster specified in 
 	$(KUSTOMIZE) build $(KUSTOMIZE_CONFIG) | kubectl delete -f -
 
 # Generate manifests e.g. CRD, RBAC etc.
-manifests: generate-manifests patch-crds
+manifests: generate-manifests
 
 generate-manifests: $(CONTROLLER_GEN)
-	$(CONTROLLER_GEN) $(CRD_OPTIONS),crdVersions=v1 rbac:roleName=manager webhook paths="./..." output:crd:artifacts:config=config/crd/bases/v1
-	$(CONTROLLER_GEN) $(CRD_OPTIONS),crdVersions=v1beta1 rbac:roleName=manager webhook paths="./..." output:crd:artifacts:config=config/crd/bases/v1beta1
+	$(CONTROLLER_GEN) $(CRD_OPTIONS):crdVersions=v1 rbac:roleName=manager webhook paths="./..." output:crd:artifacts:config=config/crd/bases/v1
 
 # Run go fmt against code
 fmt:
@@ -184,10 +183,6 @@ install-tools: bin/$(PLATFORM)/golangci-lint bin/$(PLATFORM)/operator-sdk bin/$(
 .PHONY: generate-openapi
 generate-openapi: bin/$(PLATFORM)/openapi-gen
 	bin/$(PLATFORM)/openapi-gen --logtostderr --output-dir apis/datadoghq/v1alpha1 --output-file zz_generated.openapi.go --output-pkg apis/datadoghq/v1alpha1 --go-header-file ./hack/boilerplate.go.txt
-
-.PHONY: patch-crds
-patch-crds: bin/$(PLATFORM)/yq
-	hack/patch-crds.sh
 
 .PHONY: lint
 lint: bin/$(PLATFORM)/golangci-lint fmt vet

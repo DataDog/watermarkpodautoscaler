@@ -413,9 +413,9 @@ func checkOwnerRef(ownerRef []metav1.OwnerReference, targetName string) bool {
 	return false
 }
 
-func groupPods(logger logr.Logger, podList []*corev1.Pod, targetName string, metrics metricsclient.PodMetricsInfo, resource corev1.ResourceName, delayOfInitialReadinessStatus time.Duration) (readyPods, ignoredPods sets.String) {
-	readyPods = sets.NewString()
-	ignoredPods = sets.NewString()
+func groupPods(logger logr.Logger, podList []*corev1.Pod, targetName string, metrics metricsclient.PodMetricsInfo, resource corev1.ResourceName, delayOfInitialReadinessStatus time.Duration) (readyPods, ignoredPods sets.Set[string]) {
+	readyPods = sets.New[string]()
+	ignoredPods = sets.New[string]()
 	missing := sets.NewString()
 	var incorrectTargetPodsCount int
 	for _, pod := range podList {
@@ -463,7 +463,7 @@ func groupPods(logger logr.Logger, podList []*corev1.Pod, targetName string, met
 	return readyPods, ignoredPods
 }
 
-func removeMetricsForPods(metrics metricsclient.PodMetricsInfo, pods sets.String) {
+func removeMetricsForPods(metrics metricsclient.PodMetricsInfo, pods sets.Set[string]) {
 	for _, pod := range pods.UnsortedList() {
 		delete(metrics, pod)
 	}

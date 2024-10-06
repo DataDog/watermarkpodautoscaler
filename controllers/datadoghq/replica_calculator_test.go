@@ -2202,7 +2202,7 @@ func TestGroupPods(t *testing.T) {
 		metrics             metrics.PodMetricsInfo
 		resource            corev1.ResourceName
 		expectReadyPodCount int
-		expectIgnoredPods   sets.String
+		expectIgnoredPods   sets.Set[string]
 	}{
 		{
 			"void",
@@ -2211,7 +2211,7 @@ func TestGroupPods(t *testing.T) {
 			metrics.PodMetricsInfo{},
 			corev1.ResourceCPU,
 			0,
-			sets.NewString(),
+			sets.New[string](),
 		},
 		{
 			"count in a ready pod - memory",
@@ -2235,7 +2235,7 @@ func TestGroupPods(t *testing.T) {
 			},
 			corev1.ResourceMemory,
 			1,
-			sets.NewString(),
+			sets.New[string](),
 		},
 		{
 			"ignore a pod without ready condition - CPU",
@@ -2262,7 +2262,7 @@ func TestGroupPods(t *testing.T) {
 			},
 			corev1.ResourceCPU,
 			0,
-			sets.NewString("lucretius"),
+			sets.New[string]("lucretius"),
 		},
 		{
 			"count in a ready pod with fresh metrics during initialization period - CPU",
@@ -2296,7 +2296,7 @@ func TestGroupPods(t *testing.T) {
 			},
 			corev1.ResourceCPU,
 			1,
-			sets.NewString(),
+			sets.New[string](),
 		},
 		{
 			"ignore an unready pod during initialization period - CPU",
@@ -2330,7 +2330,7 @@ func TestGroupPods(t *testing.T) {
 			},
 			corev1.ResourceCPU,
 			0,
-			sets.NewString("lucretius"),
+			sets.New[string]("lucretius"),
 		},
 		{
 			"count in a ready pod without fresh metrics after initialization period - CPU",
@@ -2365,7 +2365,7 @@ func TestGroupPods(t *testing.T) {
 			},
 			corev1.ResourceCPU,
 			1,
-			sets.NewString(),
+			sets.New[string](),
 		},
 
 		{
@@ -2400,7 +2400,7 @@ func TestGroupPods(t *testing.T) {
 			},
 			corev1.ResourceCPU,
 			0,
-			sets.NewString("lucretius"),
+			sets.New[string]("lucretius"),
 		},
 		{
 			"ignore pod that has never been ready after initialization period - CPU",
@@ -2434,7 +2434,7 @@ func TestGroupPods(t *testing.T) {
 			},
 			corev1.ResourceCPU,
 			0,
-			sets.NewString("lucretius"),
+			sets.New[string]("lucretius"),
 		},
 		{
 			"a missing pod",
@@ -2459,7 +2459,7 @@ func TestGroupPods(t *testing.T) {
 			metrics.PodMetricsInfo{},
 			corev1.ResourceCPU,
 			0,
-			sets.NewString(),
+			sets.New[string](),
 		},
 		{
 			"several pods",
@@ -2524,7 +2524,7 @@ func TestGroupPods(t *testing.T) {
 			},
 			corev1.ResourceCPU,
 			0,
-			sets.NewString("lucretius", "niccolo"),
+			sets.New[string]("lucretius", "niccolo"),
 		},
 		{
 			"too many pods in scope with labels",
@@ -2597,7 +2597,7 @@ func TestGroupPods(t *testing.T) {
 			},
 			corev1.ResourceCPU,
 			0,
-			sets.NewString("epicurus"),
+			sets.New[string]("epicurus"),
 		},
 		{
 			name:       "pending pods are ignored",
@@ -2619,7 +2619,7 @@ func TestGroupPods(t *testing.T) {
 			metrics:             metrics.PodMetricsInfo{},
 			resource:            corev1.ResourceCPU,
 			expectReadyPodCount: 0,
-			expectIgnoredPods:   sets.NewString("unscheduled"),
+			expectIgnoredPods:   sets.New[string]("unscheduled"),
 		},
 		{
 			name:       "pods from other Deployments are ignored",
@@ -2641,7 +2641,7 @@ func TestGroupPods(t *testing.T) {
 			metrics:             metrics.PodMetricsInfo{},
 			resource:            corev1.ResourceCPU,
 			expectReadyPodCount: 0,
-			expectIgnoredPods:   sets.NewString(),
+			expectIgnoredPods:   sets.New[string](),
 		},
 	}
 	for _, tc := range tests {
@@ -2699,7 +2699,7 @@ func TestRemoveMetricsForPods(t *testing.T) {
 		}
 	}
 
-	podsToRm := sets.NewString("pod2", "pod3")
+	podsToRm := sets.New[string]("pod2", "pod3")
 
 	t.Run("test remove metrics for pods", func(t *testing.T) {
 		removeMetricsForPods(fakePodMetrics, podsToRm)
