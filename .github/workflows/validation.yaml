@@ -3,7 +3,7 @@ on: [push, pull_request]
 env:
   GO111MODULE: "on"
   PROJECTNAME: "watermarkpodautoscaler"
-  GO_VERSION: 1.21
+  GO_VERSION: 1.23
 jobs:
   build:
     runs-on: ubuntu-latest

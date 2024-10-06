@@ -1,6 +1,6 @@
 module github.com/DataDog/watermarkpodautoscaler
 
-go 1.21
+go 1.23
 
 require (
 	github.com/DataDog/datadog-operator v1.3.0

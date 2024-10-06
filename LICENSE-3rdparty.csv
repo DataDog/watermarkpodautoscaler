@@ -21,7 +21,6 @@ core,github.com/PuerkitoBio/urlesc,BSD-3-Clause
 core,github.com/beorn7/perks/quantile,MIT
 core,github.com/cespare/xxhash/v2,MIT
 core,github.com/davecgh/go-spew/spew,ISC
-core,github.com/ebitengine/purego,Apache-2.0
 core,github.com/emicklei/go-restful,MIT
 core,github.com/evanphx/json-patch,BSD-3-Clause
 core,github.com/fsnotify/fsnotify,BSD-3-Clause
