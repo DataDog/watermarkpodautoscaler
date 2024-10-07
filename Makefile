@@ -45,7 +45,7 @@ endif
 
 all: install-tools manager test
 
-build: manager kubectl-wpa
+build: build-manager kubectl-wpa
 
 # Run tests
 test: manager manifests verify-license
@@ -59,8 +59,11 @@ goe2e:
 
 # Build manager binary
 .PHONY: manager
-manager: generate lint fmt vet
+manager:
 	go build -o bin/manager main.go
+
+.PHONY: build-manager
+build-manager: generate lint fmt vet manager
 
 .PHONY: kubectl-wpa
 kubectl-wpa: fmt vet lint
@@ -100,10 +103,12 @@ generate-manifests: $(CONTROLLER_GEN)
 # Run go fmt against code
 fmt:
 	go fmt ./...
+	@echo "go fmt passed"
 
 # Run go vet against code
 vet:
 	go vet ./...
+	@echo "go vet passed"
 
 # Generate code
 generate: $(CONTROLLER_GEN) generate-openapi
@@ -186,7 +191,8 @@ generate-openapi: bin/$(PLATFORM)/openapi-gen
 
 .PHONY: lint
 lint: bin/$(PLATFORM)/golangci-lint fmt vet
-	bin/$(PLATFORM)/golangci-lint run ./...
+	bin/$(PLATFORM)/golangci-lint run ./...  -v
+	@echo "go lint passed"
 
 
 .PHONY: licenses

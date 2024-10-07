@@ -1,20 +1,13 @@
 ---
 image: registry.ddbuild.io/images/mirror/golang:1.23
 variables:
-  GO111MODULE: "on"
   PROJECTNAME: "watermarkpodautoscaler"
-  GOPATH: "$CI_PROJECT_DIR/.cache"
   TARGET_TAG: v$CI_PIPELINE_ID-$CI_COMMIT_SHORT_SHA
   BUILD_DOCKER_REGISTRY: "registry.ddbuild.io/ci"
   JOB_DOCKER_IMAGE: "registry.ddbuild.io/ci-containers-project:v2.0.0"
   DOCKER_REGISTRY_LOGIN_SSM_KEY: docker_hub_login
   DOCKER_REGISTRY_PWD_SSM_KEY: docker_hub_pwd
   DOCKER_REGISTRY_URL: docker.io
-cache: &global_cache
-  key: ${CI_COMMIT_REF_SLUG}
-  paths:
-    - .cache
-  policy: pull-push
 
 stages:
   - build
@@ -23,7 +16,6 @@ stages:
   - release
 
 before_script:
-  - mkdir -p .cache
   - make install-tools
 
 build:
