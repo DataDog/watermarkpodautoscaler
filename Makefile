@@ -4,7 +4,7 @@
 ROOT_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 BUILDINFOPKG=github.com/DataDog/watermarkpodautoscaler/pkg/version
 GIT_TAG?=$(shell git tag -l --contains HEAD | tail -1)
-TAG_HASH=$(shell git tag | tail -1)_$(shell git rev-parse --short HEAD)
+TAG_HASH=$(shell git tag | tail -1)-$(shell git rev-parse --short HEAD)
 GIT_VERSION?=$(if $(GIT_TAG),$(GIT_TAG),$(TAG_HASH))
 VERSION?=$(GIT_VERSION:v%=%)
 IMG_VERSION?=$(if $(VERSION),$(VERSION),latest)
