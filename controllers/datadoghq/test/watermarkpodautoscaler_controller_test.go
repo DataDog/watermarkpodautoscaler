@@ -43,7 +43,7 @@ var _ = Describe("WatermarkPodAutoscaler Controller", func() {
 			Eventually(func() bool {
 				err = k8sClient.List(ctx, podList)
 				if err != nil {
-					fmt.Fprint(GinkgoWriter, err)
+					_, _ = fmt.Fprint(GinkgoWriter, err)
 					return false
 				}
 				return true
@@ -57,7 +57,7 @@ var _ = Describe("WatermarkPodAutoscaler Controller", func() {
 			Eventually(func() bool {
 				err = k8sClient.Get(ctx, key, wpa)
 				if err != nil {
-					fmt.Fprint(GinkgoWriter, err)
+					_, _ = fmt.Fprint(GinkgoWriter, err)
 					return false
 				}
 				return true
