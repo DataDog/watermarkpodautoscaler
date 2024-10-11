@@ -117,6 +117,9 @@ type WatermarkPodAutoscalerSpec struct {
 	// +optional
 	// +listType=atomic
 	Metrics []MetricSpec `json:"metrics,omitempty"`
+	// recommender that can be used to request the desired replica count
+	// +optional
+	Recommender RecommenderSpec `json:"recommender,omitempty"`
 	// +kubebuilder:validation:Minimum=1
 	MinReplicas *int32 `json:"minReplicas,omitempty"`
 	// MinAvailableReplicaPercentage indicates the minimum percentage of replicas that need to be available in order for the
@@ -127,6 +130,33 @@ type WatermarkPodAutoscalerSpec struct {
 	MaxReplicas int32 `json:"maxReplicas,omitempty"`
 	// +kubebuilder:validation:Minimum=1
 	ReadinessDelaySeconds int32 `json:"readinessDelaySeconds,omitempty"`
+}
+
+// RecommenderSpec indicates which recommender service to use to calculate the desired replica count
+//
+// See https://github.com/DataDog/agent-payload/pull/348 for details about the API.
+//
+// +k8s:openapi-gen=true
+type RecommenderSpec struct {
+	// URL of the recommender service to use
+	URL string `json:"url"`
+
+	// Settings to pass to the recommender service
+	// +optional
+	Settings map[string]string `json:"Settings,omitempty"`
+
+	// These three fields are used to determine the target value for the recommender service
+	// They will map to a `datadog.autoscaling.kubernetes.WorkloadRecommendationTarget` but we want
+	// a simpler API for existing WPA users.
+
+	// TargetType is the type of target the recommender service should use.
+	// +optional
+	TargetType string `json:"targetType,omitempty"`
+
+	// These will map to lowerBound/upperBound in the recommender service
+	// +optional
+	HighWaterMark *resource.Quantity `json:"highWaterMark,omitempty"`
+	LowWaterMark  *resource.Quantity `json:"lowWaterMark,omitempty"`
 }
 
 // ExternalMetricSource indicates how to scale on a metric not associated with

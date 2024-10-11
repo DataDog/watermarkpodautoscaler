@@ -16,6 +16,19 @@ func Max(x, y int32) int32 {
 	return x
 }
 
+// Min returns minimum of x and x.
+func Min(x, y int32) int32 {
+	if x > y {
+		return y
+	}
+	return x
+}
+
+// Cap returns the value of x capped to the range [min, max].
+func Cap(x, min, max int32) int32 {
+	return Max(min, Min(x, max))
+}
+
 // Floor returns the greatest integer value less than or equal to x.
 func Floor(a float64) int32 {
 	return int32(math.Floor(a))

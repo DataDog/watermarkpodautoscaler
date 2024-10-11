@@ -286,6 +286,39 @@ spec:
                 format: int32
                 minimum: 1
                 type: integer
+              recommender:
+                description: recommender that can be used to request the desired replica
+                  count
+                properties:
+                  Settings:
+                    additionalProperties:
+                      type: string
+                    description: Settings to pass to the recommender service
+                    type: object
+                  highWaterMark:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: These will map to lowerBound/upperBound in the recommender
+                      service
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  lowWaterMark:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  targetType:
+                    description: TargetType is the type of target the recommender
+                      service should use.
+                    type: string
+                  url:
+                    description: Url of the recommender service to use
+                    type: string
+                required:
+                - url
+                type: object
               replicaScalingAbsoluteModulo:
                 description: |-
                   Number of replicas to scale by at a time. When set, replicas added or removed must be a multiple of this parameter.
