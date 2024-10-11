@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
-	"github.com/DataDog/watermarkpodautoscaler/third_party/kubernetes/pkg/controller/podautoscaler/metrics"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
@@ -32,6 +30,10 @@ import (
 	emfake "k8s.io/metrics/pkg/client/external_metrics/fake"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+
+	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
+	"github.com/DataDog/watermarkpodautoscaler/controllers/datadoghq/recommenderclient"
+	"github.com/DataDog/watermarkpodautoscaler/third_party/kubernetes/pkg/controller/podautoscaler/metrics"
 )
 
 type resourceInfo struct {
@@ -52,11 +54,12 @@ type replicaCalcTestCase struct {
 	readyReplicas    int32
 	pos              metricPosition
 
-	namespace string
-	metric    *metricInfo
-	resource  *resourceInfo
-	scale     *autoscalingv1.Scale
-	wpa       *v1alpha1.WatermarkPodAutoscaler
+	namespace           string
+	metric              *metricInfo
+	recommenderResponse *recommenderclient.ReplicaRecommendationResponse
+	resource            *resourceInfo
+	scale               *autoscalingv1.Scale
+	wpa                 *v1alpha1.WatermarkPodAutoscaler
 
 	podCondition         []corev1.PodCondition
 	podStartTime         []metav1.Time
@@ -249,8 +252,9 @@ func (tc *replicaCalcTestCase) runTest(t *testing.T) {
 	rClient := tc.getFakeResourceClient()
 
 	mClient := metrics.NewRESTMetricsClient(rClient.MetricsV1beta1(), nil, emClient)
+	recoClient := recommenderclient.NewMockRecommenderClient()
 
-	replicaCalculator := NewReplicaCalculator(mClient, informer.Lister())
+	replicaCalculator := NewReplicaCalculator(mClient, recoClient, informer.Lister())
 
 	stop := make(chan struct{})
 	defer close(stop)
@@ -261,29 +265,29 @@ func (tc *replicaCalcTestCase) runTest(t *testing.T) {
 
 	var replicaCalculation ReplicaCalculation
 	var err error
-	if tc.metric.spec.Resource != nil {
+	if tc.recommenderResponse != nil {
+		recoClient.ReturnedResponse = *tc.recommenderResponse
+		recoClient.Error = tc.expectedError
+		replicaCalculation, err = replicaCalculator.GetRecommenderReplicas(logf.Log, tc.scale, tc.wpa)
+	} else if tc.metric.spec.Resource != nil {
 		// Resource metric tests
 		// Update with the correct labels.
 		replicaCalculation, err = replicaCalculator.GetResourceReplicas(logf.Log, tc.scale, tc.metric.spec, tc.wpa)
-
-		if tc.expectedError != nil {
-			require.Error(t, err, "there should be an error calculating the replica count")
-			assert.Contains(t, err.Error(), tc.expectedError.Error(), "the error message should have contained the expected error message")
-			return
-		}
 	} else if tc.metric.spec.External != nil {
 		// External metric tests
 		replicaCalculation, err = replicaCalculator.GetExternalMetricReplicas(logf.Log, tc.scale, tc.metric.spec, tc.wpa)
-		if tc.expectedError != nil {
-			require.Error(t, err, "there should be an error calculating the replica count")
-			assert.Contains(t, err.Error(), tc.expectedError.Error(), "the error message should have contained the expected error message")
-			return
-		}
+	}
+	if tc.expectedError != nil {
+		require.Error(t, err, "there should be an error calculating the replica count")
+		assert.Contains(t, err.Error(), tc.expectedError.Error(), "the error message should have contained the expected error message")
+		return
 	}
 
 	require.NoError(t, err, "there should not have been an error calculating the replica count")
 	assert.Equal(t, tc.expectedReplicas, replicaCalculation.replicaCount, "replicas should be as expected")
-	assert.Equal(t, tc.metric.expectedUtilization, replicaCalculation.utilization, "utilization should be as expected")
+	if tc.metric != nil {
+		assert.Equal(t, tc.metric.expectedUtilization, replicaCalculation.utilization, "utilization should be as expected")
+	}
 	assert.True(t, tc.timestamp.Equal(replicaCalculation.timestamp), "timestamp should be as expected")
 	assert.Equal(t, tc.readyReplicas, replicaCalculation.readyReplicas, "ready replicas should be as expected")
 	assert.Equal(t, tc.pos.isAbove, replicaCalculation.pos.isAbove, "metric should be above the Watermark")
@@ -468,6 +472,8 @@ func TestScaleIntervalReplicaCalcConvergeNoScaleDown(t *testing.T) {
 				Metrics:                      []v1alpha1.MetricSpec{metric1},
 				ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
 				ConvergeTowardsWatermark:     "highwatermark",
+				MinReplicas:                  v1alpha1.NewInt32(1),
+				MaxReplicas:                  10,
 			},
 		},
 		metric: &metricInfo{
@@ -502,6 +508,8 @@ func TestScaleIntervalReplicaCalcConvergeDefault(t *testing.T) {
 				Metrics:                      []v1alpha1.MetricSpec{metric1},
 				ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
 				ConvergeTowardsWatermark:     "",
+				MinReplicas:                  v1alpha1.NewInt32(1),
+				MaxReplicas:                  10,
 			},
 		},
 		metric: &metricInfo{
@@ -570,6 +578,8 @@ func TestScaleIntervalReplicaCalcConvergeScaleUp(t *testing.T) {
 				Metrics:                      []v1alpha1.MetricSpec{metric1},
 				ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
 				ConvergeTowardsWatermark:     "lowwatermark",
+				MinReplicas:                  v1alpha1.NewInt32(1),
+				MaxReplicas:                  10,
 			},
 		},
 		metric: &metricInfo{
@@ -604,6 +614,8 @@ func TestScaleIntervalReplicaCalcConvergeScaleDown(t *testing.T) {
 				Metrics:                      []v1alpha1.MetricSpec{metric1},
 				ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
 				ConvergeTowardsWatermark:     "highwatermark",
+				MinReplicas:                  v1alpha1.NewInt32(1),
+				MaxReplicas:                  10,
 			},
 		},
 		metric: &metricInfo{
@@ -1736,6 +1748,8 @@ func TestReplicaCountConvergingDownwardBlocked(t *testing.T) {
 				Tolerance:                    *resource.NewMilliQuantity(10, resource.DecimalSI),
 				Metrics:                      []v1alpha1.MetricSpec{metric1},
 				ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
+				MinReplicas:                  v1alpha1.NewInt32(1),
+				MaxReplicas:                  10,
 			},
 		},
 		metric: &metricInfo{
@@ -1743,6 +1757,119 @@ func TestReplicaCountConvergingDownwardBlocked(t *testing.T) {
 			levels:              []int64{80000}, // We are within the watermarks
 			expectedUtilization: 80000,
 		},
+	}
+	tc.runTest(t)
+}
+
+func TestReplicaCalcWithRecommender(t *testing.T) {
+	logf.SetLogger(zap.New())
+	recommender := v1alpha1.RecommenderSpec{
+		URL:           "http://recommender.example.com",
+		Settings:      map[string]string{"foo": "bar"},
+		TargetType:    "cpu",
+		HighWaterMark: resource.NewMilliQuantity(700, resource.DecimalSI),
+		LowWaterMark:  resource.NewMilliQuantity(200, resource.DecimalSI),
+	}
+	wpa := &v1alpha1.WatermarkPodAutoscaler{
+		Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+			Recommender:                  recommender,
+			ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
+			MinReplicas:                  v1alpha1.NewInt32(1),
+			MaxReplicas:                  10,
+		},
+	}
+	ts := time.Now()
+	tcs := []replicaCalcTestCase{
+		// No doing anything.
+		{
+			expectedReplicas: 3,
+			readyReplicas:    3,
+			timestamp:        ts,
+			pos: metricPosition{
+				isAbove: false,
+				isBelow: false,
+			},
+			scale: makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+			wpa:   wpa,
+			recommenderResponse: &recommenderclient.ReplicaRecommendationResponse{
+				Replicas:           3,
+				ReplicasLowerBound: 2,
+				ReplicasUpperBound: 6,
+				Timestamp:          ts,
+				Details:            "Fake",
+			},
+		},
+		// Upscale
+		{
+			expectedReplicas: 5,
+			readyReplicas:    1,
+			timestamp:        ts,
+			pos: metricPosition{
+				isAbove: true,
+				isBelow: false,
+			},
+			scale: makeScale(testDeploymentName, 1, map[string]string{"name": "test-pod"}),
+			wpa:   wpa,
+			recommenderResponse: &recommenderclient.ReplicaRecommendationResponse{
+				Replicas:           5,
+				ReplicasLowerBound: 2,
+				ReplicasUpperBound: 6,
+				Timestamp:          ts,
+				Details:            "Fake",
+			},
+		},
+		// Downscale
+		{
+			expectedReplicas: 2,
+			readyReplicas:    10,
+			timestamp:        ts,
+			pos: metricPosition{
+				isAbove: false,
+				isBelow: true,
+			},
+			scale: makeScale(testDeploymentName, 10, map[string]string{"name": "test-pod"}),
+			wpa:   wpa,
+			recommenderResponse: &recommenderclient.ReplicaRecommendationResponse{
+				Replicas:           2,
+				ReplicasLowerBound: 2,
+				ReplicasUpperBound: 6,
+				Timestamp:          ts,
+				Details:            "Fake",
+			},
+		},
+	}
+	for i, tc := range tcs {
+		t.Run(fmt.Sprintf("test-%d", i), tc.runTest)
+	}
+}
+
+func TestReplicasWithRecommenderError(t *testing.T) {
+	logf.SetLogger(zap.New())
+	recommender := v1alpha1.RecommenderSpec{
+		URL:           "http://recommender.example.com",
+		Settings:      map[string]string{"foo": "bar"},
+		TargetType:    "cpu",
+		HighWaterMark: resource.NewMilliQuantity(700, resource.DecimalSI),
+		LowWaterMark:  resource.NewMilliQuantity(200, resource.DecimalSI),
+	}
+	tc := replicaCalcTestCase{
+		expectedReplicas: 3,
+		readyReplicas:    3,
+		pos: metricPosition{
+			isAbove: false,
+			isBelow: false,
+		},
+		scale: makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				Recommender:                  recommender,
+				ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
+				MinReplicas:                  v1alpha1.NewInt32(1),
+				MaxReplicas:                  10,
+			},
+		},
+		recommenderResponse: &recommenderclient.ReplicaRecommendationResponse{},
+		expectedError:       fmt.Errorf("no recommendation received from recommender"),
 	}
 	tc.runTest(t)
 }
@@ -2891,7 +3018,7 @@ func TestGetReadyPodsCount(t *testing.T) {
 			informerFactory := informers.NewSharedInformerFactory(fakeClient, 0)
 			informer := informerFactory.Core().V1().Pods()
 
-			replicaCalculator := NewReplicaCalculator(nil, informer.Lister())
+			replicaCalculator := NewReplicaCalculator(nil, nil, informer.Lister())
 
 			stop := make(chan struct{})
 			defer close(stop)

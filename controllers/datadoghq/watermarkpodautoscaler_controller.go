@@ -16,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DataDog/watermarkpodautoscaler/third_party/kubernetes/pkg/controller/podautoscaler/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2beta1"
@@ -46,6 +45,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	"github.com/DataDog/watermarkpodautoscaler/controllers/datadoghq/recommenderclient"
+	"github.com/DataDog/watermarkpodautoscaler/third_party/kubernetes/pkg/controller/podautoscaler/metrics"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -899,6 +901,7 @@ func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, wo
 		nil,
 		external_metrics.NewForConfigOrDie(podConfig),
 	)
+	rc := recommenderclient.NewRecommenderClient()
 	var stop chan struct{}
 	pl := initializePodInformer(podConfig, stop)
 
@@ -916,7 +919,7 @@ func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, wo
 	if err != nil {
 		return err
 	}
-	replicaCalc := NewReplicaCalculator(mc, pl)
+	replicaCalc := NewReplicaCalculator(mc, rc, pl)
 
 	r.replicaCalc = replicaCalc
 	r.scaleClient = scaleClient

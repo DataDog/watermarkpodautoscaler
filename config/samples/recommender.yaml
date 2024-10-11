@@ -1,0 +1,25 @@
+apiVersion: datadoghq.com/v1alpha1
+kind: WatermarkPodAutoscaler
+metadata:
+  name: example-external-recommender
+spec:
+  downscaleForbiddenWindowSeconds: 60
+  upscaleForbiddenWindowSeconds: 30
+  scaleDownLimitFactor: 30
+  scaleUpLimitFactor: 50
+  minReplicas: 4
+  maxReplicas: 9
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: my-app
+  recommender:
+    url: http://recommender:8080
+    lowWatermark: 150m
+    highWatermark: 400m
+    targetType: load
+    settings:
+      foo: bar
+
+
+  tolerance: 0.01
