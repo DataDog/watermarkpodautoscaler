@@ -87,12 +87,10 @@ func IsDefaultWatermarkPodAutoscaler(wpa *WatermarkPodAutoscaler) bool {
 // return nil if valid, else an error
 func CheckWPAValidity(wpa *WatermarkPodAutoscaler) error {
 	if wpa.Spec.ScaleTargetRef.Kind == "" || wpa.Spec.ScaleTargetRef.Name == "" {
-		msg := fmt.Sprintf("the Spec.ScaleTargetRef should be populated, currently Kind:%s and/or Name:%s are not set properly", wpa.Spec.ScaleTargetRef.Kind, wpa.Spec.ScaleTargetRef.Name)
-		return fmt.Errorf(msg)
+		return fmt.Errorf("the Spec.ScaleTargetRef should be populated, currently Kind:%s and/or Name:%s are not set properly", wpa.Spec.ScaleTargetRef.Kind, wpa.Spec.ScaleTargetRef.Name)
 	}
 	if wpa.Spec.MinReplicas == nil || wpa.Spec.MaxReplicas < *wpa.Spec.MinReplicas {
-		msg := "watermark pod autoscaler requires the minimum number of replicas to be configured and inferior to the maximum"
-		return fmt.Errorf(msg)
+		return fmt.Errorf("watermark pod autoscaler requires the minimum number of replicas to be configured and inferior to the maximum")
 	}
 	if wpa.Spec.Tolerance.MilliValue() > 1000 || wpa.Spec.Tolerance.MilliValue() < 0 {
 		return fmt.Errorf("tolerance should be set as a quantity between 0 and 1, currently set to : %v, which is %.0f%%", wpa.Spec.Tolerance.String(), float64(wpa.Spec.Tolerance.MilliValue())/10)
@@ -120,17 +118,14 @@ func checkWPAMetricsValidity(wpa *WatermarkPodAutoscaler) (err error) {
 				return fmt.Errorf("metric.External is nil while metric.Type is '%s'", metric.Type)
 			}
 			if metric.External.LowWatermark == nil && metric.External.HighWatermark == nil {
-				msg := fmt.Sprintf("Watermarks are not set correctly, removing the WPA %s/%s from the Reconciler", wpa.Namespace, wpa.Name)
-				return fmt.Errorf(msg)
+				return fmt.Errorf("watermarks are not set correctly, removing the WPA %s/%s from the Reconciler", wpa.Namespace, wpa.Name)
 			}
 			if metric.External.MetricSelector == nil {
-				msg := fmt.Sprintf("Missing Labels for the External metric %s", metric.External.MetricName)
-				return fmt.Errorf(msg)
+				return fmt.Errorf("missing Labels for the External metric %s", metric.External.MetricName)
 			}
 			if metric.External.LowWatermark != nil && metric.External.HighWatermark != nil {
 				if metric.External.HighWatermark.MilliValue() < metric.External.LowWatermark.MilliValue() {
-					msg := fmt.Sprintf("Low WaterMark of External metric %s{%s} has to be strictly inferior to the High Watermark", metric.External.MetricName, metric.External.MetricSelector.MatchLabels)
-					return fmt.Errorf(msg)
+					return fmt.Errorf("low WaterMark of External metric %s{%s} has to be strictly inferior to the High Watermark", metric.External.MetricName, metric.External.MetricSelector.MatchLabels)
 				}
 			}
 		case ResourceMetricSourceType:
@@ -138,17 +133,14 @@ func checkWPAMetricsValidity(wpa *WatermarkPodAutoscaler) (err error) {
 				return fmt.Errorf("metric.Resource is nil while metric.Type is '%s'", metric.Type)
 			}
 			if metric.Resource.LowWatermark == nil && metric.Resource.HighWatermark == nil {
-				msg := fmt.Sprintf("Watermarks are not set correctly, removing the WPA %s/%s from the Reconciler", wpa.Namespace, wpa.Name)
-				return fmt.Errorf(msg)
+				return fmt.Errorf("watermarks are not set correctly, removing the WPA %s/%s from the Reconciler", wpa.Namespace, wpa.Name)
 			}
 			if metric.Resource.MetricSelector == nil {
-				msg := fmt.Sprintf("Missing Labels for the Resource metric %s", metric.Resource.Name)
-				return fmt.Errorf(msg)
+				return fmt.Errorf("missing Labels for the Resource metric %s", metric.Resource.Name)
 			}
 			if metric.Resource.LowWatermark != nil && metric.Resource.HighWatermark != nil {
 				if metric.Resource.HighWatermark.MilliValue() < metric.Resource.LowWatermark.MilliValue() {
-					msg := fmt.Sprintf("Low WaterMark of Resource metric %s{%s} has to be strictly inferior to the High Watermark", metric.Resource.Name, metric.Resource.MetricSelector.MatchLabels)
-					return fmt.Errorf(msg)
+					return fmt.Errorf("low WaterMark of Resource metric %s{%s} has to be strictly inferior to the High Watermark", metric.Resource.Name, metric.Resource.MetricSelector.MatchLabels)
 				}
 			}
 		default:

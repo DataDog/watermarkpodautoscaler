@@ -21,10 +21,12 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth" // Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	ctrlzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	monitorv1alpha1 "github.com/DataDog/datadog-operator/apis/datadoghq/v1alpha1"
+	monitorv1alpha1 "github.com/DataDog/datadog-operator/api/datadoghq/v1alpha1"
 
 	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 	datadoghqcontrollers "github.com/DataDog/watermarkpodautoscaler/controllers/datadoghq"
@@ -114,14 +116,17 @@ func main() {
 		restConfig.Timeout = clientTimeoutDuration
 	}
 	mgr, err := ctrl.NewManager(restConfig, config.ManagerOptionsWithNamespaces(setupLog, ctrl.Options{
-		Scheme:                     scheme,
-		MetricsBindAddress:         fmt.Sprintf("%s:%d", host, metricsPort),
-		Port:                       9443,
+		Scheme: scheme,
+		Metrics: metricsserver.Options{
+			BindAddress: fmt.Sprintf("%s:%d", host, metricsPort),
+		},
 		LeaderElection:             enableLeaderElection,
 		LeaderElectionID:           "watermarkpodautoscaler-lock",
 		LeaderElectionResourceLock: leaderElectionResourceLock,
 		HealthProbeBindAddress:     fmt.Sprintf("%s:%d", host, healthPort),
-		SyncPeriod:                 &syncDuration,
+		Cache: cache.Options{
+			SyncPeriod: &syncDuration,
+		},
 	}))
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

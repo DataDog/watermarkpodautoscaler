@@ -1,5 +1,14 @@
 # WatermarkPodAutoscaler Helm chart changelog
 
+## v0.5
+
+> [!IMPORTANT]
+> From `v0.5`, the chart requires Kubernetes version `>= v1.16.0` since the support of `apiextensions.k8s.io/v1beta1` `CustomResourceDefinition` was removed.
+
+### v0.5.0
+
+* Remove support of `apiextensions.k8s.io/v1beta1` `CustomResourceDefinition`.
+
 ## v0.4
 
 ### v0.4.0
