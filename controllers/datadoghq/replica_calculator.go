@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
-	"github.com/DataDog/watermarkpodautoscaler/controllers/datadoghq/recommenderclient"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/math32"
 
 	"github.com/go-logr/logr"
@@ -66,12 +65,12 @@ type ReplicaCalculatorItf interface {
 // It contains all the needed information
 type ReplicaCalculator struct {
 	metricsClient     metricsclient.MetricsClient
-	recommenderClient recommenderclient.RecommenderClient
+	recommenderClient RecommenderClient
 	podLister         corelisters.PodLister
 }
 
 // NewReplicaCalculator returns a ReplicaCalculator object reference
-func NewReplicaCalculator(metricsClient metricsclient.MetricsClient, recommenderClient recommenderclient.RecommenderClient, podLister corelisters.PodLister) *ReplicaCalculator {
+func NewReplicaCalculator(metricsClient metricsclient.MetricsClient, recommenderClient RecommenderClient, podLister corelisters.PodLister) *ReplicaCalculator {
 	return &ReplicaCalculator{
 		metricsClient:     metricsClient,
 		recommenderClient: recommenderClient,
@@ -275,7 +274,7 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(logger logr.Logger, target *a
 	var metricName = wpa.Spec.Recommender.URL
 
 	// TODO: We'll need more stuff here.
-	var request = recommenderclient.ReplicaRecommendationRequest{
+	var request = ReplicaRecommendationRequest{
 		Namespace:            wpa.Namespace,
 		TargetRef:            &wpa.Spec.ScaleTargetRef,
 		Recommender:          wpa.Spec.Recommender,
@@ -316,7 +315,6 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(logger logr.Logger, target *a
 	replicaCount, utilizationQuantity, metricPos := adjustReplicaCount(logger, target.Status.Replicas, currentReadyReplicas, wpa, metricName, int32(reco.Replicas), int32(reco.ReplicasLowerBound), int32(reco.ReplicasUpperBound))
 	logger.Info("Replicas Recommender replica calculation", "metricName", metricName, "replicaCount", replicaCount, "utilizationQuantity", utilizationQuantity, "timestamp", reco.Timestamp, "currentReadyReplicas", currentReadyReplicas)
 	return ReplicaCalculation{replicaCount, utilizationQuantity, reco.Timestamp, currentReadyReplicas, metricPos}, nil
-
 }
 
 func getReplicaCountUpscale(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, highMark *resource.Quantity) (replicaCount int32) {
@@ -381,11 +379,10 @@ func tryToConvergeToWatermarkForUsage(logger logr.Logger, convergingType v1alpha
 	var lowerBoundReplicaCount, upperBoundReplicaCount int32
 	lowerBoundReplicaCount = math32.Cap(math32.Ceil(float64(currentReadyReplicas)/float64(highMark.MilliValue())*adjustedUsage), minReplicas, maxReplicas)
 	upperBoundReplicaCount = math32.Cap(math32.Floor(float64(currentReadyReplicas)/float64(lowMark.MilliValue())*adjustedUsage), minReplicas, maxReplicas)
-	return tryToConvergeToWatermark(logger, convergingType, currentReplicas, currentReadyReplicas, wpa, currentReplicas, lowerBoundReplicaCount, upperBoundReplicaCount)
+	return tryToConvergeToWatermark(logger, convergingType, currentReplicas, currentReadyReplicas, wpa, lowerBoundReplicaCount, upperBoundReplicaCount)
 }
 
-func tryToConvergeToWatermark(logger logr.Logger, convergingType v1alpha1.ConvergeTowardsWatermarkType, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, replicaCount, lowerBoundReplicaCount, upperBoundReplicaCount int32) (optimisedReplicaCount int32) {
-	optimisedReplicaCount = replicaCount
+func tryToConvergeToWatermark(logger logr.Logger, convergingType v1alpha1.ConvergeTowardsWatermarkType, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, lowerBoundReplicaCount, upperBoundReplicaCount int32) (optimisedReplicaCount int32) {
 	scaleBy := *wpa.Spec.ReplicaScalingAbsoluteModulo
 
 	switch convergingType {
@@ -486,7 +483,7 @@ func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplica
 		msg = "Within bounds of the watermarks"
 		position.isAbove = false
 		position.isBelow = false
-		replicaCount = tryToConvergeToWatermark(logger, wpa.Spec.ConvergeTowardsWatermark, currentReplicas, currentReadyReplicas, wpa, recommendedReplicaCount, lowerBoundReplicas, upperBoundReplicas)
+		replicaCount = tryToConvergeToWatermark(logger, wpa.Spec.ConvergeTowardsWatermark, currentReplicas, currentReadyReplicas, wpa, lowerBoundReplicas, upperBoundReplicas)
 	}
 
 	logger.Info(msg, "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "recommendedReplicaCount", recommendedReplicaCount, "upperBoundReplicas", upperBoundReplicas, "lowerBoundReplicas", lowerBoundReplicas)

@@ -46,7 +46,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"github.com/DataDog/watermarkpodautoscaler/controllers/datadoghq/recommenderclient"
 	"github.com/DataDog/watermarkpodautoscaler/third_party/kubernetes/pkg/controller/podautoscaler/metrics"
 
 	"github.com/go-logr/logr"
@@ -546,8 +545,6 @@ func setStatus(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, d
 }
 
 func (r *WatermarkPodAutoscalerReconciler) computeReplicas(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, readyReplicas int32, stableRegime bool, err error) {
-	statuses = make([]autoscalingv2.MetricStatus, len(wpa.Spec.Metrics))
-
 	labels := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}
 	minReplicas := float64(0)
 	if wpa.Spec.MinReplicas != nil {
@@ -959,7 +956,7 @@ func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, wo
 		nil,
 		external_metrics.NewForConfigOrDie(podConfig),
 	)
-	rc := recommenderclient.NewRecommenderClient()
+	rc := NewRecommenderClient()
 	var stop chan struct{}
 	pl := initializePodInformer(podConfig, stop)
 

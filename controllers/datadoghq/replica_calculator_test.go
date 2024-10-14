@@ -32,7 +32,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
-	"github.com/DataDog/watermarkpodautoscaler/controllers/datadoghq/recommenderclient"
 	"github.com/DataDog/watermarkpodautoscaler/third_party/kubernetes/pkg/controller/podautoscaler/metrics"
 )
 
@@ -56,7 +55,7 @@ type replicaCalcTestCase struct {
 
 	namespace           string
 	metric              *metricInfo
-	recommenderResponse *recommenderclient.ReplicaRecommendationResponse
+	recommenderResponse *ReplicaRecommendationResponse
 	resource            *resourceInfo
 	scale               *autoscalingv1.Scale
 	wpa                 *v1alpha1.WatermarkPodAutoscaler
@@ -252,7 +251,7 @@ func (tc *replicaCalcTestCase) runTest(t *testing.T) {
 	rClient := tc.getFakeResourceClient()
 
 	mClient := metrics.NewRESTMetricsClient(rClient.MetricsV1beta1(), nil, emClient)
-	recoClient := recommenderclient.NewMockRecommenderClient()
+	recoClient := NewMockRecommenderClient()
 
 	replicaCalculator := NewReplicaCalculator(mClient, recoClient, informer.Lister())
 
@@ -1791,7 +1790,7 @@ func TestReplicaCalcWithRecommender(t *testing.T) {
 			},
 			scale: makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 			wpa:   wpa,
-			recommenderResponse: &recommenderclient.ReplicaRecommendationResponse{
+			recommenderResponse: &ReplicaRecommendationResponse{
 				Replicas:           3,
 				ReplicasLowerBound: 2,
 				ReplicasUpperBound: 6,
@@ -1810,7 +1809,7 @@ func TestReplicaCalcWithRecommender(t *testing.T) {
 			},
 			scale: makeScale(testDeploymentName, 1, map[string]string{"name": "test-pod"}),
 			wpa:   wpa,
-			recommenderResponse: &recommenderclient.ReplicaRecommendationResponse{
+			recommenderResponse: &ReplicaRecommendationResponse{
 				Replicas:           5,
 				ReplicasLowerBound: 2,
 				ReplicasUpperBound: 6,
@@ -1829,7 +1828,7 @@ func TestReplicaCalcWithRecommender(t *testing.T) {
 			},
 			scale: makeScale(testDeploymentName, 10, map[string]string{"name": "test-pod"}),
 			wpa:   wpa,
-			recommenderResponse: &recommenderclient.ReplicaRecommendationResponse{
+			recommenderResponse: &ReplicaRecommendationResponse{
 				Replicas:           2,
 				ReplicasLowerBound: 2,
 				ReplicasUpperBound: 6,
@@ -1868,7 +1867,7 @@ func TestReplicasWithRecommenderError(t *testing.T) {
 				MaxReplicas:                  10,
 			},
 		},
-		recommenderResponse: &recommenderclient.ReplicaRecommendationResponse{},
+		recommenderResponse: &ReplicaRecommendationResponse{},
 		expectedError:       fmt.Errorf("no recommendation received from recommender"),
 	}
 	tc.runTest(t)
