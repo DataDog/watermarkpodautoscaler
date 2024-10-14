@@ -295,7 +295,7 @@ spec:
                       type: string
                     description: Settings to pass to the recommender service
                     type: object
-                  highWaterMark:
+                  highWatermark:
                     anyOf:
                     - type: integer
                     - type: string
@@ -303,7 +303,7 @@ spec:
                       service
                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                     x-kubernetes-int-or-string: true
-                  lowWaterMark:
+                  lowWatermark:
                     anyOf:
                     - type: integer
                     - type: string
@@ -314,7 +314,7 @@ spec:
                       service should use.
                     type: string
                   url:
-                    description: Url of the recommender service to use
+                    description: URL of the recommender service to use
                     type: string
                 required:
                 - url

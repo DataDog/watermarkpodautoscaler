@@ -278,7 +278,7 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(logger logr.Logger, target *a
 	var request = recommenderclient.ReplicaRecommendationRequest{
 		Namespace:            wpa.Namespace,
 		TargetRef:            &wpa.Spec.ScaleTargetRef,
-		Recommender:          &wpa.Spec.Recommender,
+		Recommender:          wpa.Spec.Recommender,
 		CurrentReadyReplicas: currentReadyReplicas,
 		CurrentReplicas:      target.Status.Replicas,
 	}

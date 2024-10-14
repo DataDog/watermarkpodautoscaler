@@ -119,7 +119,7 @@ type WatermarkPodAutoscalerSpec struct {
 	Metrics []MetricSpec `json:"metrics,omitempty"`
 	// recommender that can be used to request the desired replica count
 	// +optional
-	Recommender RecommenderSpec `json:"recommender,omitempty"`
+	Recommender *RecommenderSpec `json:"recommender,omitempty"`
 	// +kubebuilder:validation:Minimum=1
 	MinReplicas *int32 `json:"minReplicas,omitempty"`
 	// MinAvailableReplicaPercentage indicates the minimum percentage of replicas that need to be available in order for the
@@ -155,8 +155,8 @@ type RecommenderSpec struct {
 
 	// These will map to lowerBound/upperBound in the recommender service
 	// +optional
-	HighWaterMark *resource.Quantity `json:"highWaterMark,omitempty"`
-	LowWaterMark  *resource.Quantity `json:"lowWaterMark,omitempty"`
+	HighWatermark *resource.Quantity `json:"highWatermark,omitempty"`
+	LowWatermark  *resource.Quantity `json:"lowWatermark,omitempty"`
 }
 
 // ExternalMetricSource indicates how to scale on a metric not associated with

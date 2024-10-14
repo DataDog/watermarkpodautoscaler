@@ -95,13 +95,13 @@ func (in *RecommenderSpec) DeepCopyInto(out *RecommenderSpec) {
 			(*out)[key] = val
 		}
 	}
-	if in.HighWaterMark != nil {
-		in, out := &in.HighWaterMark, &out.HighWaterMark
+	if in.HighWatermark != nil {
+		in, out := &in.HighWatermark, &out.HighWatermark
 		x := (*in).DeepCopy()
 		*out = &x
 	}
-	if in.LowWaterMark != nil {
-		in, out := &in.LowWaterMark, &out.LowWaterMark
+	if in.LowWatermark != nil {
+		in, out := &in.LowWatermark, &out.LowWatermark
 		x := (*in).DeepCopy()
 		*out = &x
 	}
@@ -233,7 +233,11 @@ func (in *WatermarkPodAutoscalerSpec) DeepCopyInto(out *WatermarkPodAutoscalerSp
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
-	in.Recommender.DeepCopyInto(&out.Recommender)
+	if in.Recommender != nil {
+		in, out := &in.Recommender, &out.Recommender
+		*out = new(RecommenderSpec)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.MinReplicas != nil {
 		in, out := &in.MinReplicas, &out.MinReplicas
 		*out = new(int32)
