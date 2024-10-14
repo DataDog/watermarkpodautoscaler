@@ -1767,12 +1767,12 @@ func TestReplicaCalcWithRecommender(t *testing.T) {
 		URL:           "http://recommender.example.com",
 		Settings:      map[string]string{"foo": "bar"},
 		TargetType:    "cpu",
-		HighWaterMark: resource.NewMilliQuantity(700, resource.DecimalSI),
-		LowWaterMark:  resource.NewMilliQuantity(200, resource.DecimalSI),
+		HighWatermark: resource.NewMilliQuantity(700, resource.DecimalSI),
+		LowWatermark:  resource.NewMilliQuantity(200, resource.DecimalSI),
 	}
 	wpa := &v1alpha1.WatermarkPodAutoscaler{
 		Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-			Recommender:                  recommender,
+			Recommender:                  &recommender,
 			ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
 			MinReplicas:                  v1alpha1.NewInt32(1),
 			MaxReplicas:                  10,
@@ -1849,8 +1849,8 @@ func TestReplicasWithRecommenderError(t *testing.T) {
 		URL:           "http://recommender.example.com",
 		Settings:      map[string]string{"foo": "bar"},
 		TargetType:    "cpu",
-		HighWaterMark: resource.NewMilliQuantity(700, resource.DecimalSI),
-		LowWaterMark:  resource.NewMilliQuantity(200, resource.DecimalSI),
+		HighWatermark: resource.NewMilliQuantity(700, resource.DecimalSI),
+		LowWatermark:  resource.NewMilliQuantity(200, resource.DecimalSI),
 	}
 	tc := replicaCalcTestCase{
 		expectedReplicas: 3,
@@ -1862,7 +1862,7 @@ func TestReplicasWithRecommenderError(t *testing.T) {
 		scale: makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
-				Recommender:                  recommender,
+				Recommender:                  &recommender,
 				ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
 				MinReplicas:                  v1alpha1.NewInt32(1),
 				MaxReplicas:                  10,

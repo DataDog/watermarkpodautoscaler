@@ -369,9 +369,8 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				cond := &v2beta1.HorizontalPodAutoscalerCondition{
 					Message: fmt.Sprintf("monitor %s/%s is in a OK state, allowing the WPA from proceeding", testingNamespace, testingWPAName),
 				}
-				if wpa.Status.Conditions[6].Message != cond.Message {
-					return fmt.Errorf("Unexpected Condition for existent DatadogMonitor")
-				}
+				assert.Len(t, wpa.Status.Conditions, 7)
+				assert.Equal(t, wpa.Status.Conditions[6].Message, cond.Message)
 				return nil
 			},
 		},
@@ -1365,7 +1364,7 @@ func getReplicas(v int32) *int32 {
 	return &v
 }
 
-func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T) {
+func TestReconcileWatermarkPodAutoscaler_computeReplicas(t *testing.T) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventRecorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "TestReconcileWatermarkPodAutoscaler"})
 
@@ -1506,6 +1505,65 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 			},
 			err: nil,
 		},
+		{
+			name: "Recommender Case",
+			fields: fields{
+				eventRecorder: eventRecorder,
+			},
+			args: args{
+				validMetrics: 1,
+				replicas:     10,
+				MetricName:   "recommender{targetType:fake}",
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Labels: map[string]string{"foo-key": "bar-value"},
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						Recommender: &v1alpha1.RecommenderSpec{
+							URL:           "http://recommender:8080",
+							TargetType:    "fake",
+							HighWatermark: resource.NewQuantity(10, resource.DecimalSI),
+							LowWatermark:  resource.NewQuantity(5, resource.DecimalSI),
+						},
+						MinReplicas: getReplicas(4),
+						MaxReplicas: 12,
+					},
+				}),
+				scale: &autoscalingv1.Scale{Spec: autoscalingv1.ScaleSpec{Replicas: 8}, Status: autoscalingv1.ScaleStatus{Replicas: 8}},
+			},
+			wantFunc: func(metric *v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
+				assert.Nil(t, metric)
+				return ReplicaCalculation{10, 5, time.Time{}, 8, metricPosition{false, false}}, nil
+			},
+			err: nil,
+		},
+		{
+			name: "Recommender Error Case",
+			fields: fields{
+				eventRecorder: eventRecorder,
+			},
+			args: args{
+				validMetrics: 0,
+				replicas:     0,
+				MetricName:   "",
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Labels: map[string]string{"foo-key": "bar-value"},
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						Recommender: &v1alpha1.RecommenderSpec{
+							URL:           "http://recommender:8080",
+							TargetType:    "fake",
+							HighWatermark: resource.NewQuantity(10, resource.DecimalSI),
+							LowWatermark:  resource.NewQuantity(5, resource.DecimalSI),
+						},
+						MinReplicas: getReplicas(4),
+						MaxReplicas: 12,
+					},
+				}),
+				scale: &autoscalingv1.Scale{Spec: autoscalingv1.ScaleSpec{Replicas: 8}, Status: autoscalingv1.ScaleStatus{Replicas: 8}},
+			},
+			wantFunc: func(metric *v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
+				return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, fmt.Errorf("recommender failed")
+			},
+			err: fmt.Errorf("failed to get the recommendation from http://recommender:8080: recommender failed"),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1518,19 +1576,14 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 			}
 			// If we have 2 metrics, we can assert on the two statuses
 			// We can also use the returned replica, metric etc that is from the highest scaling event
-			replicas, metric, statuses, _, _, _, err := r.computeReplicasForMetrics(logf.Log.WithName(tt.name), tt.args.wpa, tt.args.scale)
-			if err != nil && err.Error() != tt.err.Error() {
-				t.Errorf("Unexpected error %v", err)
+			replicas, metric, statuses, _, _, _, err := r.computeReplicas(logf.Log.WithName(tt.name), tt.args.wpa, tt.args.scale)
+			if err != nil || tt.err != nil {
+				assert.Error(t, err)
+				assert.Equal(t, tt.err.Error(), err.Error())
 			}
-			if tt.args.replicas != replicas {
-				t.Errorf("Proposed number of replicas is incorrect")
-			}
-			if tt.args.MetricName != metric {
-				t.Errorf("Scaling metric is incorrect")
-			}
-			if len(statuses) != tt.args.validMetrics {
-				t.Errorf("Incorrect number of valid metrics")
-			}
+			assert.Equal(t, tt.args.replicas, replicas)
+			assert.Equal(t, tt.args.MetricName, metric)
+			assert.Len(t, statuses, tt.args.validMetrics)
 		})
 	}
 }

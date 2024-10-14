@@ -104,6 +104,9 @@ func CheckWPAValidity(wpa *WatermarkPodAutoscaler) error {
 	if wpa.Spec.ScaleDownLimitFactor.MilliValue() >= 100000 || wpa.Spec.ScaleDownLimitFactor.MilliValue() < 0 {
 		return fmt.Errorf("scaledownlimitfactor should be set as a quantity between 0 and 100 (exc.), currently set to : %v, which could yield a %.0f%% decrease", wpa.Spec.ScaleDownLimitFactor.String(), float64(wpa.Spec.ScaleDownLimitFactor.MilliValue())/1000)
 	}
+	if wpa.Spec.Recommender != nil && wpa.Spec.Metrics != nil && len(wpa.Spec.Metrics) > 0 {
+		return fmt.Errorf("recommender and metrics can't be set at the same time, please choose one")
+	}
 	return checkWPAMetricsValidity(wpa)
 }
 
