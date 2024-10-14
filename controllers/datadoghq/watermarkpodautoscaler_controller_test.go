@@ -1578,12 +1578,12 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicas(t *testing.T) {
 			// We can also use the returned replica, metric etc that is from the highest scaling event
 			replicas, metric, statuses, _, _, _, err := r.computeReplicas(logf.Log.WithName(tt.name), tt.args.wpa, tt.args.scale)
 			if err != nil || tt.err != nil {
-				assert.Error(t, err)
-				assert.Equal(t, tt.err.Error(), err.Error())
+				require.Error(t, err)
+				require.Equal(t, tt.err.Error(), err.Error())
 			}
-			assert.Equal(t, tt.args.replicas, replicas)
-			assert.Equal(t, tt.args.MetricName, metric)
-			assert.Len(t, statuses, tt.args.validMetrics)
+			require.Equal(t, tt.args.replicas, replicas)
+			require.Equal(t, tt.args.MetricName, metric)
+			require.Len(t, statuses, tt.args.validMetrics)
 		})
 	}
 }

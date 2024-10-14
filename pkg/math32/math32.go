@@ -24,9 +24,9 @@ func Min(x, y int32) int32 {
 	return x
 }
 
-// Cap returns the value of x capped to the range [min, max].
-func Cap(x, min, max int32) int32 {
-	return Max(min, Min(x, max))
+// Cap returns the value of x capped to the range [a, b].
+func Cap(x, a, b int32) int32 {
+	return Max(a, Min(x, b))
 }
 
 // Floor returns the greatest integer value less than or equal to x.
