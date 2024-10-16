@@ -60,16 +60,3 @@ type RecommenderClientMock struct {
 	ReturnedResponse ReplicaRecommendationResponse
 	Error            error
 }
-
-func NewMockRecommenderClient() *RecommenderClientMock {
-	return &RecommenderClientMock{
-		ReplicaRecommendationResponse{2, 1, 3, time.Now(), "because"},
-		nil,
-	}
-}
-
-func (m *RecommenderClientMock) GetReplicaRecommendation(request *ReplicaRecommendationRequest) (ReplicaRecommendationResponse, error) {
-	return m.ReturnedResponse, m.Error
-}
-
-var _ RecommenderClient = &RecommenderClientMock{}
