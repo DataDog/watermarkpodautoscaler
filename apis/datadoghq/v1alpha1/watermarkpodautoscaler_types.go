@@ -143,7 +143,7 @@ type RecommenderSpec struct {
 
 	// Settings to pass to the recommender service
 	// +optional
-	Settings map[string]string `json:"Settings,omitempty"`
+	Settings map[string]string `json:"settings,omitempty"`
 
 	// These three fields are used to determine the target value for the recommender service
 	// They will map to a `datadog.autoscaling.kubernetes.WorkloadRecommendationTarget` but we want

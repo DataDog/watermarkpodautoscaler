@@ -273,13 +273,19 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(logger logr.Logger, target *a
 	// This is because most of the code expects a metric name, so we assume that the recommender is the metric name.
 	var metricName = wpa.Spec.Recommender.URL
 
-	// TODO: We'll need more stuff here.
+	minReplicas := int32(0)
+	if wpa.Spec.MinReplicas != nil {
+		minReplicas = *wpa.Spec.MinReplicas
+	}
 	var request = ReplicaRecommendationRequest{
 		Namespace:            wpa.Namespace,
 		TargetRef:            &wpa.Spec.ScaleTargetRef,
 		Recommender:          wpa.Spec.Recommender,
 		CurrentReadyReplicas: currentReadyReplicas,
 		CurrentReplicas:      target.Status.Replicas,
+		DesiredReplicas:      target.Spec.Replicas,
+		MinReplicas:          minReplicas,
+		MaxReplicas:          wpa.Spec.MaxReplicas,
 	}
 	reco, err := c.recommenderClient.GetReplicaRecommendation(&request)
 	if err != nil {

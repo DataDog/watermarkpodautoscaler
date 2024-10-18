@@ -282,11 +282,6 @@ spec:
                 recommender:
                   description: recommender that can be used to request the desired replica count
                   properties:
-                    Settings:
-                      additionalProperties:
-                        type: string
-                      description: Settings to pass to the recommender service
-                      type: object
                     highWatermark:
                       anyOf:
                         - type: integer
@@ -300,6 +295,11 @@ spec:
                         - type: string
                       pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                       x-kubernetes-int-or-string: true
+                    settings:
+                      additionalProperties:
+                        type: string
+                      description: Settings to pass to the recommender service
+                      type: object
                     targetType:
                       description: TargetType is the type of target the recommender service should use.
                       type: string

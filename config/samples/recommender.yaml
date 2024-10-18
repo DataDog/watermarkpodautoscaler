@@ -20,6 +20,3 @@ spec:
     targetType: load
     settings:
       foo: bar
-
-
-  tolerance: 0.01
