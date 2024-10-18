@@ -5,6 +5,7 @@ go 1.22.0
 toolchain go1.22.7
 
 require (
+	github.com/DataDog/agent-payload/v5 v5.0.135-0.20241016074204-82c61e7189e0
 	github.com/DataDog/datadog-operator v0.7.1-0.20241010110733-dbbe6d120655
 	github.com/go-logr/logr v1.4.2
 	github.com/onsi/ginkgo v1.16.5
@@ -15,6 +16,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.9.0
 	go.uber.org/zap v1.26.0
+	google.golang.org/protobuf v1.34.2
 	gopkg.in/DataDog/dd-trace-go.v1 v1.68.0
 	k8s.io/api v0.31.1
 	k8s.io/apimachinery v0.31.1
@@ -33,7 +35,6 @@ require (
 
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
-	github.com/DataDog/agent-payload/v5 v5.0.135-0.20241016074204-82c61e7189e0 // indirect
 	github.com/DataDog/datadog-api-client-go/v2 v2.27.0 // indirect
 	github.com/DataDog/datadog-go/v5 v5.5.0 // indirect
 	github.com/DataDog/gostackparse v0.7.0 // indirect
@@ -100,7 +101,6 @@ require (
 	golang.org/x/time v0.6.0 // indirect
 	golang.org/x/tools v0.25.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
-	google.golang.org/protobuf v1.34.2 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
