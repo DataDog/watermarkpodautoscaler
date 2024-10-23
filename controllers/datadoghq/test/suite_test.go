@@ -24,7 +24,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
-	"sigs.k8s.io/controller-runtime/pkg/envtest/printer"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -60,7 +59,7 @@ func TestAPIs(t *testing.T) {
 
 	RunSpecsWithDefaultAndCustomReporters(t,
 		"Controller Suite",
-		[]Reporter{printer.NewlineReporter{}})
+		[]Reporter{})
 }
 
 var _ = BeforeSuite(func(done Done) {
@@ -90,7 +89,7 @@ var _ = BeforeSuite(func(done Done) {
 
 	if !testConfig.useExistingCluster {
 		// Create some Nodes
-		for i := 0; i < fakeNodesCount; i++ {
+		for i := range fakeNodesCount {
 			nodei := utils.NewNode(fmt.Sprintf("node%d", i+1), nil)
 			Expect(k8sClient.Create(context.Background(), nodei)).Should(Succeed())
 		}

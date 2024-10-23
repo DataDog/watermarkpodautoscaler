@@ -8,6 +8,7 @@ package datadoghq
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -21,7 +22,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2beta1"
 	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -51,7 +52,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	monitorv1alpha1 "github.com/DataDog/datadog-operator/apis/datadoghq/v1alpha1"
+	monitorv1alpha1 "github.com/DataDog/datadog-operator/api/datadoghq/v1alpha1"
 	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 )
 
@@ -116,7 +117,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 	instance := &datadoghqv1alpha1.WatermarkPodAutoscaler{}
 	err = r.Client.Get(ctx, request.NamespacedName, instance)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
 			// Return and don't requeue
@@ -173,7 +174,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 	enabled, err := strconv.ParseBool(enabledValue)
 	if err != nil && enabledValue != "" {
 		log.Error(err, "lifecycle control config annotation could not be parsed, it will be ignored")
-		setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedGetDatadogMonitor, fmt.Sprintf("Lifecycle Control is not correctly enabled: %s", err.Error()))
+		setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedGetDatadogMonitor, "Lifecycle Control is not correctly enabled: %s", err.Error())
 	}
 
 	// TODO Add telemetry on the associated DatadogMonitor
@@ -199,7 +200,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 			// DatadogMonitor not found, wait for a minute before trying again.
 			// not returning an error to adding to the main rate-limited queue.
 			r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedGetDatadogMonitor, err.Error())
-			setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionTrue, datadoghqv1alpha1.ReasonFailedGetDatadogMonitor, fmt.Sprintf("monitor %s not found, blocking the WPA from proceeding", dmon.String()))
+			setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionTrue, datadoghqv1alpha1.ReasonFailedGetDatadogMonitor, "monitor %s not found, blocking the WPA from proceeding", dmon.String())
 			if err = r.updateStatusIfNeeded(ctx, wpaStatusOriginal, instance); err != nil {
 				r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedUpdateStatus, err.Error())
 				return reconcile.Result{}, err
@@ -212,7 +213,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 			log.Info("Datadog Monitor is not OK, blocking reconcile loop for this WPA, will retry in a minute", "datadogMonitor", fmt.Sprintf("%s/%s", instance.Namespace, instance.Name), "state", mon.Status.MonitorState)
 			// Monitors are evaluated every minute, no need to reconcile the WPA before that duration if we are not in a OK state.
 			// TODO: Introduce more granular status handling if the monitor is in No Data or Alert.
-			setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionTrue, datadoghqv1alpha1.ReasonDatadogMonitorNotOK, fmt.Sprintf("monitor %s is in %s state, blocking the WPA from proceeding", dmon.String(), mon.Status.MonitorState))
+			setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionTrue, datadoghqv1alpha1.ReasonDatadogMonitorNotOK, "monitor %s is in %s state, blocking the WPA from proceeding", dmon.String(), mon.Status.MonitorState)
 			if err = r.updateStatusIfNeeded(ctx, wpaStatusOriginal, instance); err != nil {
 				r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedUpdateStatus, err.Error())
 				return reconcile.Result{}, err
@@ -220,7 +221,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 			return reconcile.Result{RequeueAfter: monitorStatusErrorDuration}, nil
 		}
 		lifecycleControlStatus.With(promLabels).Set(0)
-		setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionFalse, datadoghqv1alpha1.ReasonDatadogMonitorOK, fmt.Sprintf("monitor %s is in a OK state, allowing the WPA from proceeding", dmon.String()))
+		setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionFalse, datadoghqv1alpha1.ReasonDatadogMonitorOK, "monitor %s is in a OK state, allowing the WPA from proceeding", dmon.String())
 	}
 
 	fillMissingWatermark(log, instance)
@@ -427,7 +428,7 @@ func (r *WatermarkPodAutoscalerReconciler) getScaleForResourceMappings(ctx conte
 		errs = append(errs, fmt.Errorf("could not get scale for the GV %s, error: %w", mapping.GroupVersionKind.GroupVersion().String(), err))
 	}
 	if scale == nil {
-		errs = append(errs, fmt.Errorf(scaleNotFoundErr))
+		errs = append(errs, errors.New(scaleNotFoundErr))
 	}
 	// make sure we handle an empty set of mappings
 	return scale, targetGR, utilerrors.NewAggregate(errs)
@@ -612,7 +613,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 				errMsg := "invalid external metric source: the high watermark and the low watermark are required"
 				r.eventRecorder.Event(wpa, corev1.EventTypeWarning, "FailedGetExternalMetric", errMsg)
 				setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedGetExternalMetrics, "the WPA was unable to compute the replica count: %v", err)
-				return 0, "", nil, time.Time{}, 0, false, fmt.Errorf(errMsg)
+				return 0, "", nil, time.Time{}, 0, false, errors.New(errMsg)
 			}
 		case datadoghqv1alpha1.ResourceMetricSourceType:
 			if metricSpec.Resource.HighWatermark != nil && metricSpec.Resource.LowWatermark != nil {
@@ -659,7 +660,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 				errMsg := "invalid resource metric source: the high watermark and the low watermark are required"
 				r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedGetResourceMetric, errMsg)
 				setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedGetResourceMetric, "the WPA was unable to compute the replica count: %v", err)
-				return 0, "", nil, time.Time{}, 0, false, fmt.Errorf(errMsg)
+				return 0, "", nil, time.Time{}, 0, false, errors.New(errMsg)
 			}
 
 		default:
@@ -764,9 +765,9 @@ func normalizeDesiredReplicas(logger logr.Logger, wpa *datadoghqv1alpha1.Waterma
 	desiredReplicas, condition, reason := convertDesiredReplicasWithRules(logger, wpa, currentReplicas, prenormalizedDesiredReplicas, minReplicas, wpa.Spec.MaxReplicas, readyReplicas)
 
 	if desiredReplicas == prenormalizedDesiredReplicas {
-		setCondition(wpa, autoscalingv2.ScalingLimited, corev1.ConditionFalse, condition, reason)
+		setCondition(wpa, autoscalingv2.ScalingLimited, corev1.ConditionFalse, condition, "%s", reason)
 	} else {
-		setCondition(wpa, autoscalingv2.ScalingLimited, corev1.ConditionTrue, condition, reason)
+		setCondition(wpa, autoscalingv2.ScalingLimited, corev1.ConditionTrue, condition, "%s", reason)
 	}
 
 	return desiredReplicas

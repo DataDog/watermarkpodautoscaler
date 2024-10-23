@@ -1,20 +1,17 @@
 ---
-image: registry.ddbuild.io/images/mirror/golang:1.21
+image: registry.ddbuild.io/images/mirror/golang:1.22
 variables:
-  GO111MODULE: "on"
   PROJECTNAME: "watermarkpodautoscaler"
-  GOPATH: "$CI_PROJECT_DIR/.cache"
   TARGET_TAG: v$CI_PIPELINE_ID-$CI_COMMIT_SHORT_SHA
   BUILD_DOCKER_REGISTRY: "registry.ddbuild.io/ci"
-  JOB_DOCKER_IMAGE: "registry.ddbuild.io/ci-containers-project:v2.0.0"
+  JOB_DOCKER_IMAGE: "registry.ddbuild.io/ci-containers-project:v46367840-16ecadd-v3.0.0"
   DOCKER_REGISTRY_LOGIN_SSM_KEY: docker_hub_login
   DOCKER_REGISTRY_PWD_SSM_KEY: docker_hub_pwd
   DOCKER_REGISTRY_URL: docker.io
 cache: &global_cache
   key: ${CI_COMMIT_REF_SLUG}
   paths:
-    - .cache
-  policy: pull-push
+    - /go/pkg/mod
 
 stages:
   - build
@@ -23,18 +20,31 @@ stages:
   - release
 
 before_script:
-  - mkdir -p .cache
   - make install-tools
 
 build:
   stage: build
   tags: ["arch:amd64"]
+  variables:
+    KUBERNETES_MEMORY_REQUEST: 16Gi
+    KUBERNETES_MEMORY_LIMIT: 16Gi
+    KUBERNETES_CPU_REQUEST: 4
+    KUBERNETES_CPU_LIMIT: 4
+    GOMEMLIMIT: 15GiB
+    GOMAXPROCS: 4
   script:
     - make build
 
 tests:
   stage: test
   tags: ["arch:amd64"]
+  variables:
+    KUBERNETES_MEMORY_REQUEST: 16Gi
+    KUBERNETES_MEMORY_LIMIT: 16Gi
+    KUBERNETES_CPU_REQUEST: 4
+    KUBERNETES_CPU_LIMIT: 4
+    GOMEMLIMIT: 15GiB
+    GOMAXPROCS: 4
   script:
     - make test
 

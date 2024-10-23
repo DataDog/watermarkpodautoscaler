@@ -39,18 +39,8 @@ func GetWatchNamespaces() []string {
 
 // ManagerOptionsWithNamespaces returns an updated Options with namespaces information
 func ManagerOptionsWithNamespaces(logger logr.Logger, opt ctrl.Options) ctrl.Options {
-	namespaces := GetWatchNamespaces()
-	switch {
-	case len(namespaces) == 0:
-		logger.Info("Manager will watch and manage resources in all namespaces")
-	case len(namespaces) == 1:
-		logger.Info("Manager will be watching namespace", "namespace", namespaces[0])
-		opt.Namespace = namespaces[0]
-	case len(namespaces) > 1:
-		// configure cluster-scoped with MultiNamespacedCacheBuilder
-		logger.Info("Manager will be watching multiple namespaces", namespaces)
-		opt.Namespace = ""
-		opt.NewCache = cache.MultiNamespacedCacheBuilder(namespaces)
+	for _, namespace := range GetWatchNamespaces() {
+		opt.Cache.DefaultNamespaces[namespace] = cache.Config{}
 	}
 
 	return opt
