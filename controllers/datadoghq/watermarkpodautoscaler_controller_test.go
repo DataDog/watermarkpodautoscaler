@@ -14,9 +14,6 @@ import (
 	"testing"
 	"time"
 
-	monitorv1alpha1 "github.com/DataDog/datadog-operator/api/datadoghq/v1alpha1"
-	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
-	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1/test"
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
@@ -42,6 +39,10 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	monitorv1alpha1 "github.com/DataDog/datadog-operator/api/datadoghq/v1alpha1"
+	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
+	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1/test"
 )
 
 var (
@@ -368,9 +369,8 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				cond := &v2beta1.HorizontalPodAutoscalerCondition{
 					Message: fmt.Sprintf("monitor %s/%s is in a OK state, allowing the WPA from proceeding", testingNamespace, testingWPAName),
 				}
-				if wpa.Status.Conditions[6].Message != cond.Message {
-					return fmt.Errorf("Unexpected Condition for existent DatadogMonitor")
-				}
+				assert.Len(t, wpa.Status.Conditions, 7)
+				assert.Equal(t, wpa.Status.Conditions[6].Message, cond.Message)
 				return nil
 			},
 		},
@@ -480,7 +480,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 		wpa                   *v1alpha1.WatermarkPodAutoscaler
 		scale                 *autoscalingv1.Scale
 		wantReplicasCount     int32
-		replicaCalculatorFunc func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error)
+		replicaCalculatorFunc func(metric *v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error)
 		loadFunc              func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler)
 	}
 
@@ -659,7 +659,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				eventRecorder: eventRecorder,
 			},
 			args: args{
-				replicaCalculatorFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
+				replicaCalculatorFunc: func(metric *v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 					// With 3 replicas, we simulate wanting to have 8 replicas
 					// The metric's ts is old, using it as a reference would make it seem like LastScaleTime is in the future.
 					return ReplicaCalculation{8, 20, time.Now().Add(-60 * time.Second), 3, metricPosition{true, false}}, nil
@@ -768,7 +768,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				eventRecorder: eventRecorder,
 			},
 			args: args{
-				replicaCalculatorFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
+				replicaCalculatorFunc: func(metric *v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 					// utilization is low enough to warrant downscaling to 1 replica
 					return ReplicaCalculation{1, 20, time.Now().Add(-60 * time.Second), 3, metricPosition{false, true}}, nil
 				},
@@ -873,7 +873,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				eventRecorder: eventRecorder,
 			},
 			args: args{
-				replicaCalculatorFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
+				replicaCalculatorFunc: func(metric *v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 					// utilization is high enough to warrant upscaling to 5 replica
 					return ReplicaCalculation{5, 130, time.Now(), 3, metricPosition{true, false}}, nil
 				},
@@ -986,7 +986,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				eventRecorder: eventRecorder,
 			},
 			args: args{
-				replicaCalculatorFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
+				replicaCalculatorFunc: func(metric *v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 					// utilization is stable, we try to converge (successfully).
 					return ReplicaCalculation{4, 65, time.Now(), 3, metricPosition{false, false}}, nil
 				},
@@ -1093,7 +1093,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				eventRecorder: eventRecorder,
 			},
 			args: args{
-				replicaCalculatorFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
+				replicaCalculatorFunc: func(metric *v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 					// utilization is stable, we try to converge (successfully).
 					return ReplicaCalculation{4, 65, time.Now(), 3, metricPosition{false, false}}, nil
 				},
@@ -1200,7 +1200,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				eventRecorder: eventRecorder,
 			},
 			args: args{
-				replicaCalculatorFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
+				replicaCalculatorFunc: func(metric *v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 					// utilization is high enough to warrant upscaling to 5 replica
 					return ReplicaCalculation{5, 35, time.Now().Add(-60 * time.Second), 8, metricPosition{false, true}}, nil
 				},
@@ -1364,7 +1364,7 @@ func getReplicas(v int32) *int32 {
 	return &v
 }
 
-func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T) {
+func TestReconcileWatermarkPodAutoscaler_computeReplicas(t *testing.T) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventRecorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "TestReconcileWatermarkPodAutoscaler"})
 
@@ -1386,7 +1386,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 		fields   fields
 		args     args
 		err      error
-		wantFunc func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error)
+		wantFunc func(metric *v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error)
 	}{
 		{
 			name: "Nominal Case",
@@ -1418,7 +1418,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 				}),
 				scale: &autoscalingv1.Scale{Spec: autoscalingv1.ScaleSpec{Replicas: 8}, Status: autoscalingv1.ScaleStatus{Replicas: 8}},
 			},
-			wantFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
+			wantFunc: func(metric *v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 				// With 8 replicas, the avg algo and an external value returned of 100 we have 10 replicas and the utilization of 10
 				return ReplicaCalculation{10, 10, time.Time{}, 8, metricPosition{true, false}}, nil
 			},
@@ -1451,7 +1451,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 				}),
 				scale: &autoscalingv1.Scale{Spec: autoscalingv1.ScaleSpec{Replicas: 0}, Status: autoscalingv1.ScaleStatus{Replicas: 8}},
 			},
-			wantFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
+			wantFunc: func(metric *v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 				// With 8 replicas, the avg algo and an external value returned of 100 we have 10 replicas and the utilization of 10
 				return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, fmt.Errorf("unable to fetch metrics from external metrics API")
 			},
@@ -1496,7 +1496,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 				}),
 				scale: &autoscalingv1.Scale{Spec: autoscalingv1.ScaleSpec{Replicas: 8}, Status: autoscalingv1.ScaleStatus{Replicas: 8}},
 			},
-			wantFunc: func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
+			wantFunc: func(metric *v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 				// With 8 replicas, the avg algo and an external value returned of 100 we have 10 replicas and the utilization of 10
 				if metric.External.MetricName == "deadbeef" {
 					return ReplicaCalculation{10, 10, time.Time{}, 8, metricPosition{true, false}}, nil
@@ -1504,6 +1504,65 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 				return ReplicaCalculation{8, 5, time.Time{}, 8, metricPosition{false, false}}, nil
 			},
 			err: nil,
+		},
+		{
+			name: "Recommender Case",
+			fields: fields{
+				eventRecorder: eventRecorder,
+			},
+			args: args{
+				validMetrics: 1,
+				replicas:     10,
+				MetricName:   "recommender{targetType:fake}",
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Labels: map[string]string{"foo-key": "bar-value"},
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						Recommender: &v1alpha1.RecommenderSpec{
+							URL:           "http://recommender:8080",
+							TargetType:    "fake",
+							HighWatermark: resource.NewQuantity(10, resource.DecimalSI),
+							LowWatermark:  resource.NewQuantity(5, resource.DecimalSI),
+						},
+						MinReplicas: getReplicas(4),
+						MaxReplicas: 12,
+					},
+				}),
+				scale: &autoscalingv1.Scale{Spec: autoscalingv1.ScaleSpec{Replicas: 8}, Status: autoscalingv1.ScaleStatus{Replicas: 8}},
+			},
+			wantFunc: func(metric *v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
+				assert.Nil(t, metric)
+				return ReplicaCalculation{10, 5, time.Time{}, 8, metricPosition{false, false}}, nil
+			},
+			err: nil,
+		},
+		{
+			name: "Recommender Error Case",
+			fields: fields{
+				eventRecorder: eventRecorder,
+			},
+			args: args{
+				validMetrics: 0,
+				replicas:     0,
+				MetricName:   "",
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Labels: map[string]string{"foo-key": "bar-value"},
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						Recommender: &v1alpha1.RecommenderSpec{
+							URL:           "http://recommender:8080",
+							TargetType:    "fake",
+							HighWatermark: resource.NewQuantity(10, resource.DecimalSI),
+							LowWatermark:  resource.NewQuantity(5, resource.DecimalSI),
+						},
+						MinReplicas: getReplicas(4),
+						MaxReplicas: 12,
+					},
+				}),
+				scale: &autoscalingv1.Scale{Spec: autoscalingv1.ScaleSpec{Replicas: 8}, Status: autoscalingv1.ScaleStatus{Replicas: 8}},
+			},
+			wantFunc: func(metric *v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
+				return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, fmt.Errorf("recommender failed")
+			},
+			err: fmt.Errorf("failed to get the recommendation from http://recommender:8080: recommender failed"),
 		},
 	}
 	for _, tt := range tests {
@@ -1517,40 +1576,44 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicasForMetrics(t *testing.T)
 			}
 			// If we have 2 metrics, we can assert on the two statuses
 			// We can also use the returned replica, metric etc that is from the highest scaling event
-			replicas, metric, statuses, _, _, _, err := r.computeReplicasForMetrics(logf.Log.WithName(tt.name), tt.args.wpa, tt.args.scale)
-			if err != nil && err.Error() != tt.err.Error() {
-				t.Errorf("Unexpected error %v", err)
+			replicas, metric, statuses, _, _, _, err := r.computeReplicas(logf.Log.WithName(tt.name), tt.args.wpa, tt.args.scale)
+			if err != nil || tt.err != nil {
+				require.Error(t, err)
+				require.Equal(t, tt.err.Error(), err.Error())
 			}
-			if tt.args.replicas != replicas {
-				t.Errorf("Proposed number of replicas is incorrect")
-			}
-			if tt.args.MetricName != metric {
-				t.Errorf("Scaling metric is incorrect")
-			}
-			if len(statuses) != tt.args.validMetrics {
-				t.Errorf("Incorrect number of valid metrics")
-			}
+			require.Equal(t, tt.args.replicas, replicas)
+			require.Equal(t, tt.args.MetricName, metric)
+			require.Len(t, statuses, tt.args.validMetrics)
 		})
 	}
 }
 
 type fakeReplicaCalculator struct {
-	replicasFunc func(metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error)
+	replicasFunc func(metric *v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error)
 }
 
 func (f *fakeReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target *autoscalingv1.Scale, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 	if f.replicasFunc != nil {
-		return f.replicasFunc(metric, wpa)
+		return f.replicasFunc(&metric, wpa)
 	}
 	return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, nil
 }
 
 func (f *fakeReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *autoscalingv1.Scale, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 	if f.replicasFunc != nil {
-		return f.replicasFunc(metric, wpa)
+		return f.replicasFunc(&metric, wpa)
 	}
 	return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, nil
 }
+
+func (f *fakeReplicaCalculator) GetRecommenderReplicas(logger logr.Logger, target *autoscalingv1.Scale, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
+	if f.replicasFunc != nil {
+		return f.replicasFunc(nil, wpa)
+	}
+	return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, nil
+}
+
+var _ ReplicaCalculatorItf = &fakeReplicaCalculator{}
 
 func TestDefaultWatermarkPodAutoscaler(t *testing.T) {
 	logf.SetLogger(zap.New())
