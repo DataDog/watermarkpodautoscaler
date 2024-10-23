@@ -151,7 +151,7 @@ func buildWorkloadRecommendationRequest(request *ReplicaRecommendationRequest) (
 
 	req := &autoscaling.WorkloadRecommendationRequest{
 		State: &autoscaling.WorkloadState{
-			DesiredReplicas: request.CurrentReplicas,
+			DesiredReplicas: request.DesiredReplicas,
 			CurrentReplicas: &request.CurrentReplicas,
 			ReadyReplicas:   &request.CurrentReadyReplicas,
 		},
