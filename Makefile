@@ -183,7 +183,7 @@ install-tools: bin/$(PLATFORM)/golangci-lint bin/$(PLATFORM)/operator-sdk bin/$(
 
 .PHONY: generate-openapi
 generate-openapi: bin/$(PLATFORM)/openapi-gen
-	bin/$(PLATFORM)/openapi-gen --logtostderr --output-dir apis/datadoghq/v1alpha1 --output-file zz_generated.openapi.go --output-pkg apis/datadoghq/v1alpha1 --go-header-file ./hack/boilerplate.go.txt
+	bin/$(PLATFORM)/openapi-gen --logtostderr --output-dir apis/datadoghq/v1alpha1 --output-file zz_generated.openapi.go --output-pkg apis/datadoghq/v1alpha1 --go-header-file ./hack/boilerplate.go.txt ./apis/datadoghq/v1alpha1
 
 .PHONY: patch-crds
 patch-crds: bin/$(PLATFORM)/yq
