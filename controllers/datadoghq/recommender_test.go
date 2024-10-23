@@ -14,8 +14,8 @@ func NewMockRecommenderClient() *RecommenderClientMock {
 	}
 }
 
-func (m *RecommenderClientMock) GetReplicaRecommendation(request *ReplicaRecommendationRequest) (ReplicaRecommendationResponse, error) {
-	return m.ReturnedResponse, m.Error
+func (m *RecommenderClientMock) GetReplicaRecommendation(request *ReplicaRecommendationRequest) (*ReplicaRecommendationResponse, error) {
+	return &m.ReturnedResponse, m.Error
 }
 
 var _ RecommenderClient = &RecommenderClientMock{}
