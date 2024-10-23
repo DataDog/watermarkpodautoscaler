@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	url2 "net/url"
+	"net/url"
 	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
@@ -71,12 +71,12 @@ func (r *RecommenderClientImpl) GetReplicaRecommendation(request *ReplicaRecomme
 		return &ReplicaRecommendationResponse{}, fmt.Errorf("recommender spec is required")
 	}
 
-	url, err := url2.Parse(reco.URL)
+	u, err := url.Parse(reco.URL)
 	if err != nil {
 		return &ReplicaRecommendationResponse{}, fmt.Errorf("error parsing url: %w", err)
 	}
 
-	if url.Scheme != "http" && url.Scheme != "https" {
+	if u.Scheme != "http" && u.Scheme != "https" {
 		return &ReplicaRecommendationResponse{}, fmt.Errorf("only http and https schemes are supported")
 	}
 
@@ -93,7 +93,7 @@ func (r *RecommenderClientImpl) GetReplicaRecommendation(request *ReplicaRecomme
 	// TODO: We might want to make the timeout configurable later.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url.String(), bytes.NewReader(payload))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(payload))
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	if err != nil {
