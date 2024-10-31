@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -937,10 +938,10 @@ func updatePredicate(ev event.UpdateEvent) bool {
 }
 
 // SetupWithManager creates a new Watermarkpodautoscaler controller
-func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, workers int) error {
+func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, workers int, recoverPanic bool) error {
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&datadoghqv1alpha1.WatermarkPodAutoscaler{}, builder.WithPredicates(predicate.Funcs{UpdateFunc: updatePredicate})).
-		WithOptions(controller.Options{MaxConcurrentReconciles: workers})
+		WithOptions(controller.Options{MaxConcurrentReconciles: workers, RecoverPanic: &recoverPanic})
 	err := b.Complete(r)
 	if err != nil {
 		return err
@@ -956,7 +957,7 @@ func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, wo
 		nil,
 		external_metrics.NewForConfigOrDie(podConfig),
 	)
-	rc := NewRecommenderClient()
+	rc := NewRecommenderClient(http.DefaultClient)
 	var stop chan struct{}
 	pl := initializePodInformer(podConfig, stop)
 

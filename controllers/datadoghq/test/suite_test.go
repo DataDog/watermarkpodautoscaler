@@ -112,7 +112,7 @@ var _ = BeforeSuite(func(done Done) {
 	err = (&controllers.WatermarkPodAutoscalerReconciler{
 		Client: k8sManager.GetClient(),
 		Log:    ctrl.Log.WithName("controllers").WithName("WatermarkPodAutoscaler"),
-	}).SetupWithManager(k8sManager, 1)
+	}).SetupWithManager(k8sManager, 1, true)
 	Expect(err).ToNot(HaveOccurred())
 
 	go func() {
