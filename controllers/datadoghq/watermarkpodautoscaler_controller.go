@@ -938,10 +938,10 @@ func updatePredicate(ev event.UpdateEvent) bool {
 }
 
 // SetupWithManager creates a new Watermarkpodautoscaler controller
-func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, workers int, recoverPanic bool) error {
+func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, workers int) error {
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&datadoghqv1alpha1.WatermarkPodAutoscaler{}, builder.WithPredicates(predicate.Funcs{UpdateFunc: updatePredicate})).
-		WithOptions(controller.Options{MaxConcurrentReconciles: workers, RecoverPanic: &recoverPanic})
+		WithOptions(controller.Options{MaxConcurrentReconciles: workers})
 	err := b.Complete(r)
 	if err != nil {
 		return err
