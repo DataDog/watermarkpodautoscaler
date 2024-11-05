@@ -59,7 +59,6 @@ func main() {
 	var logTimestampFormat string
 	var syncPeriodSeconds int
 	var clientTimeoutDuration time.Duration
-	var leaderElectionResourceLock string
 	var ddProfilingEnabled bool
 	var workers int
 	var skipNotScalingEvents bool
@@ -72,7 +71,6 @@ func main() {
 	flag.StringVar(&logTimestampFormat, "log-timestamp-format", "millis", "log timestamp format ('millis', 'nanos', 'epoch', 'rfc3339' or 'rfc3339nano')")
 	flag.IntVar(&syncPeriodSeconds, "syncPeriodSeconds", 60*60, "The informers resync period in seconds")                                            // default 1 hour
 	flag.DurationVar(&clientTimeoutDuration, "client-timeout", 0, "The maximum length of time to wait before giving up on a kube-apiserver request") // is set to 0, keep default
-	flag.StringVar(&leaderElectionResourceLock, "leader-election-resource", "configmaps", "determines which resource lock to use for leader election. option:[configmapsleases|endpointsleases|configmaps]")
 	flag.BoolVar(&ddProfilingEnabled, "ddProfilingEnabled", false, "Enable the datadog profiler")
 	flag.IntVar(&workers, "workers", 1, "Maximum number of concurrent Reconciles which can be run")
 	flag.BoolVar(&skipNotScalingEvents, "skipNotScalingEvents", false, "Log NotScaling decisions instead of creating Kubernetes events")
@@ -81,13 +79,9 @@ func main() {
 
 	flag.Parse()
 
-	exitCode := 0
-	defer func() { os.Exit(exitCode) }()
-
 	if err := customSetupLogging(*logLevel, logEncoder, logTimestampFormat); err != nil {
 		setupLog.Error(err, "unable to setup the logger")
-		exitCode = 1
-		return
+		os.Exit(1)
 	}
 
 	if ddProfilingEnabled {
@@ -120,18 +114,16 @@ func main() {
 		Metrics: metricsserver.Options{
 			BindAddress: fmt.Sprintf("%s:%d", host, metricsPort),
 		},
-		LeaderElection:             enableLeaderElection,
-		LeaderElectionID:           "watermarkpodautoscaler-lock",
-		LeaderElectionResourceLock: leaderElectionResourceLock,
-		HealthProbeBindAddress:     fmt.Sprintf("%s:%d", host, healthPort),
+		LeaderElection:         enableLeaderElection,
+		LeaderElectionID:       "watermarkpodautoscaler-lock",
+		HealthProbeBindAddress: fmt.Sprintf("%s:%d", host, healthPort),
 		Cache: cache.Options{
 			SyncPeriod: &syncDuration,
 		},
 	}))
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
-		exitCode = 1
-		return
+		os.Exit(1)
 	}
 
 	managerLogger := ctrl.Log.WithName("controllers").WithName("WatermarkPodAutoscaler")
@@ -144,23 +136,22 @@ func main() {
 		Options: datadoghqcontrollers.Options{SkipNotScalingEvents: skipNotScalingEvents},
 	}).SetupWithManager(mgr, workers); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WatermarkPodAutoscaler")
-		exitCode = 1
-		return
+		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("health-probe", healthz.Ping); err != nil {
 		setupLog.Error(err, "Unable add liveness check")
-		exitCode = 1
-		return
+		os.Exit(1)
 	}
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
-		exitCode = 1
-		return
+		os.Exit(1)
 	}
+
+	os.Exit(0)
 }
 
 func customSetupLogging(logLevel zapcore.Level, logEncoder, logTimestampFormat string) error {
