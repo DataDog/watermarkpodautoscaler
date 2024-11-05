@@ -156,7 +156,7 @@ func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_RecommenderSpec(ref c
 							Format:      "",
 						},
 					},
-					"Settings": {
+					"settings": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Settings to pass to the recommender service",
 							Type:        []string{"object"},
