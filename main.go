@@ -13,8 +13,6 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/config"
-
 	"gopkg.in/DataDog/dd-trace-go.v1/profiler"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -63,7 +61,6 @@ func main() {
 	var clientTimeoutDuration time.Duration
 	var ddProfilingEnabled bool
 	var workers int
-	var recoverPanic bool
 	var skipNotScalingEvents bool
 	flag.BoolVar(&printVersionArg, "version", false, "print version and exit")
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
@@ -76,7 +73,6 @@ func main() {
 	flag.DurationVar(&clientTimeoutDuration, "client-timeout", 0, "The maximum length of time to wait before giving up on a kube-apiserver request") // is set to 0, keep default
 	flag.BoolVar(&ddProfilingEnabled, "ddProfilingEnabled", false, "Enable the datadog profiler")
 	flag.IntVar(&workers, "workers", 1, "Maximum number of concurrent Reconciles which can be run")
-	flag.BoolVar(&recoverPanic, "recoverPanic", true, "Recover from panics in the controller")
 	flag.BoolVar(&skipNotScalingEvents, "skipNotScalingEvents", false, "Log NotScaling decisions instead of creating Kubernetes events")
 
 	logLevel := zap.LevelFlag("loglevel", zapcore.InfoLevel, "Set log level")
@@ -124,9 +120,6 @@ func main() {
 		Cache: cache.Options{
 			SyncPeriod: &syncDuration,
 		},
-		Controller: ctrlconfig.Controller{
-			RecoverPanic: &recoverPanic,
-		},
 	}))
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
@@ -141,7 +134,7 @@ func main() {
 		Log:     managerLogger,
 		Scheme:  mgr.GetScheme(),
 		Options: datadoghqcontrollers.Options{SkipNotScalingEvents: skipNotScalingEvents},
-	}).SetupWithManager(mgr, workers, recoverPanic); err != nil {
+	}).SetupWithManager(mgr, workers); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WatermarkPodAutoscaler")
 		os.Exit(1)
 	}

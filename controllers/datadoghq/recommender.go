@@ -16,43 +16,12 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	sigmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
-
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	autoscaling "github.com/DataDog/agent-payload/v5/autoscaling/kubernetes"
 	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 )
-
-var (
-	requestDuration = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "http_client_request_duration_seconds",
-			Help:    "Tracks the latencies for HTTP requests.",
-			Buckets: []float64{0.1, 0.3, 0.6, 1, 3, 6, 9, 20},
-		},
-		[]string{"recommender", "method", "code"},
-	)
-	requestsTotal = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "http_client_requests_total",
-			Help: "Tracks the number of HTTP requests.",
-		}, []string{"recommender", "method", "code"},
-	)
-	responseInflight = prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "http_client_requests_inflight",
-			Help: "Tracks the number of client requests currently in progress.",
-		},
-	)
-)
-
-func init() {
-	sigmetrics.Registry.MustRegister(requestDuration)
-	sigmetrics.Registry.MustRegister(requestsTotal)
-	sigmetrics.Registry.MustRegister(responseInflight)
-}
 
 func metricNameForRecommender(spec *v1alpha1.WatermarkPodAutoscalerSpec) string {
 	if spec.Recommender == nil {
@@ -113,7 +82,7 @@ func instrumentRoundTripper(recommender string, rt http.RoundTripper) http.Round
 	return promhttp.InstrumentRoundTripperCounter(
 		requestsTotal.MustCurryWith(labels),
 		promhttp.InstrumentRoundTripperInFlight(
-			responseInflight,
+			responseInflight.With(labels),
 			promhttp.InstrumentRoundTripperDuration(requestDuration.MustCurryWith(labels), rt),
 		),
 	)

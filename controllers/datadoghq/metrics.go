@@ -257,6 +257,26 @@ var (
 		},
 		append(extraPromLabels, wpaNamePromLabel, wpaNamespacePromLabel, resourceNamespacePromLabel),
 	)
+	requestDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "http_client_request_duration_seconds",
+			Help:    "Tracks the latencies for HTTP requests.",
+			Buckets: []float64{0.1, 0.3, 0.6, 1, 3, 6, 9, 20},
+		},
+		[]string{"client", "method", "code"},
+	)
+	requestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "http_client_requests_total",
+			Help: "Tracks the number of HTTP requests.",
+		}, []string{"client", "method", "code"},
+	)
+	responseInflight = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "http_client_requests_inflight",
+			Help: "Tracks the number of client requests currently in progress.",
+		}, []string{"client"},
+	)
 )
 
 func init() {
@@ -276,6 +296,9 @@ func init() {
 	sigmetrics.Registry.MustRegister(replicaMax)
 	sigmetrics.Registry.MustRegister(dryRun)
 	sigmetrics.Registry.MustRegister(labelsInfo)
+	sigmetrics.Registry.MustRegister(requestDuration)
+	sigmetrics.Registry.MustRegister(requestsTotal)
+	sigmetrics.Registry.MustRegister(responseInflight)
 }
 
 func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onlyMetricsSpecific bool) {
