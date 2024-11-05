@@ -61,36 +61,44 @@ type ReplicaRecommendationResponse struct {
 	Details            string
 }
 
+// NewRecommenderClient returns a new RecommenderClient with the given http.Client.
 func NewRecommenderClient(client *http.Client) RecommenderClient {
+	if client.Transport == nil {
+		client.Transport = http.DefaultTransport
+	}
 	return &RecommenderClientImpl{
 		client: client,
 	}
 }
 
+// instrumentedClient returns a new http.Client that instruments requests to the given recommender.
+// The returned client is a shallow copy of the original client, with the Transport field replaced
+// with an instrumented RoundTripper (which just wraps the original Transport).
 func (r *RecommenderClientImpl) instrumentedClient(recommender string) *http.Client {
 	client := *r.client
 	client.Transport = instrumentRoundTripper(recommender, client.Transport)
 	return &client
 }
 
-func instrumentRoundTripper(recommender string, rt http.RoundTripper) http.RoundTripper {
+func instrumentRoundTripper(recommender string, transport http.RoundTripper) http.RoundTripper {
 	labels := prometheus.Labels{"recommender": recommender}
 
-	if rt == nil {
-		rt = http.DefaultTransport
-	}
 	return promhttp.InstrumentRoundTripperCounter(
 		requestsTotal.MustCurryWith(labels),
 		promhttp.InstrumentRoundTripperInFlight(
 			responseInflight.With(labels),
-			promhttp.InstrumentRoundTripperDuration(requestDuration.MustCurryWith(labels), rt),
+			promhttp.InstrumentRoundTripperDuration(
+				requestDuration.MustCurryWith(labels),
+				transport,
+			),
 		),
 	)
 }
 
 // GetReplicaRecommendation returns a recommendation for the number of replicas to scale to
 // based on the given ReplicaRecommendationRequest.
-// Current it supports http based recommendation service, but we need to implement grpc services too.
+//
+// Currently, it supports http based recommendation service, but we need to implement grpc services too.
 func (r *RecommenderClientImpl) GetReplicaRecommendation(request *ReplicaRecommendationRequest) (*ReplicaRecommendationResponse, error) {
 	reco := request.Recommender
 	if reco == nil {
@@ -224,8 +232,3 @@ func buildReplicaRecommendationResponse(reply *autoscaling.WorkloadRecommendatio
 }
 
 var _ RecommenderClient = &RecommenderClientImpl{}
-
-type RecommenderClientMock struct {
-	ReturnedResponse ReplicaRecommendationResponse
-	Error            error
-}
