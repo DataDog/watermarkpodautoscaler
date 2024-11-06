@@ -39,7 +39,7 @@ datadogCRDs:
     datadogMonitors: true
 
 # Determines which resource lock to use for leader election
-leaderElectionResourceLock: configmaps
+leaderElectionResourceLock: leases
 securityContext: {}
 # capabilities:
 #   drop:
