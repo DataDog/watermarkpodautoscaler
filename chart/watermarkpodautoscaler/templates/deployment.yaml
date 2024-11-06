@@ -47,7 +47,6 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --loglevel={{ .Values.logLevel }}
-            - --leader-election-resource={{ .Values.leaderElectionResourceLock }}
           env:
             - name: WATCH_NAMESPACE
             {{- if .Values.watchAllNamespaces }}

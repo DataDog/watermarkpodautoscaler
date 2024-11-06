@@ -38,8 +38,6 @@ datadogCRDs:
     # datadogCRDs.crds.datadogMonitors -- Set to true to deploy the DatadogMonitors CRD, depends on lifecycleControl.enabled
     datadogMonitors: true
 
-# Determines which resource lock to use for leader election
-leaderElectionResourceLock: configmaps
 securityContext: {}
 # capabilities:
 #   drop:
