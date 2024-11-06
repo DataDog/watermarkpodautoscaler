@@ -6,24 +6,6 @@ metadata:
   labels:
     {{- include "watermarkpodautoscaler.labels" . | nindent 4 }}
 rules:
-{{- if eq .Values.leaderElectionResourceLock "configmaps" }}
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
-  verbs:
-  - create
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
-  resourceNames:
-    - watermarkpodautoscaler-lock
-  verbs:
-  - update
-  - get
-{{- end }}
-{{- if eq .Values.leaderElectionResourceLock "leases" }}
 - apiGroups:
   - coordination.k8s.io
   resources:
@@ -39,7 +21,6 @@ rules:
   verbs:
   - update
   - get
-{{- end }}
 - apiGroups:
   - ""
   resources:
