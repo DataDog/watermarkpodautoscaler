@@ -14,6 +14,8 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -37,6 +39,7 @@ type RecommenderClient interface {
 }
 
 type RecommenderClientImpl struct {
+	client *http.Client
 }
 
 type ReplicaRecommendationRequest struct {
@@ -58,13 +61,45 @@ type ReplicaRecommendationResponse struct {
 	Details            string
 }
 
-func NewRecommenderClient() RecommenderClient {
-	return &RecommenderClientImpl{}
+// NewRecommenderClient returns a new RecommenderClient with the given http.Client.
+func NewRecommenderClient(client *http.Client) RecommenderClient {
+	if client.Transport == nil {
+		client.Transport = http.DefaultTransport
+	}
+	return &RecommenderClientImpl{
+		client: client,
+	}
+}
+
+// instrumentedClient returns a copy of the client with an instrumented Transport for this recommender.
+//
+// The returned client is a shallow copy of the original client, with the Transport field replaced
+// with an instrumented RoundTripper (which just wraps the original Transport).
+func (r *RecommenderClientImpl) instrumentedClient(recommender string) *http.Client {
+	client := *r.client
+	client.Transport = instrumentRoundTripper(recommender, client.Transport)
+	return &client
+}
+
+func instrumentRoundTripper(recommender string, transport http.RoundTripper) http.RoundTripper {
+	labels := prometheus.Labels{"recommender": recommender}
+
+	return promhttp.InstrumentRoundTripperCounter(
+		requestsTotal.MustCurryWith(labels),
+		promhttp.InstrumentRoundTripperInFlight(
+			responseInflight.With(labels),
+			promhttp.InstrumentRoundTripperDuration(
+				requestDuration.MustCurryWith(labels),
+				transport,
+			),
+		),
+	)
 }
 
 // GetReplicaRecommendation returns a recommendation for the number of replicas to scale to
 // based on the given ReplicaRecommendationRequest.
-// Current it supports http based recommendation service, but we need to implement grpc services too.
+//
+// Currently, it supports http based recommendation service, but we need to implement grpc services too.
 func (r *RecommenderClientImpl) GetReplicaRecommendation(request *ReplicaRecommendationRequest) (*ReplicaRecommendationResponse, error) {
 	reco := request.Recommender
 	if reco == nil {
@@ -93,13 +128,17 @@ func (r *RecommenderClientImpl) GetReplicaRecommendation(request *ReplicaRecomme
 	// TODO: We might want to make the timeout configurable later.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	client := r.instrumentedClient(request.Recommender.URL)
+
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(payload))
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("User-Agent", "wpa-controller")
 
 	if err != nil {
 		return &ReplicaRecommendationResponse{}, fmt.Errorf("error creating request: %w", err)
 	}
-	resp, err := http.DefaultClient.Do(httpReq)
+	resp, err := client.Do(httpReq)
 
 	defer func() {
 		if resp != nil && resp.Body != nil {
@@ -194,8 +233,3 @@ func buildReplicaRecommendationResponse(reply *autoscaling.WorkloadRecommendatio
 }
 
 var _ RecommenderClient = &RecommenderClientImpl{}
-
-type RecommenderClientMock struct {
-	ReturnedResponse ReplicaRecommendationResponse
-	Error            error
-}

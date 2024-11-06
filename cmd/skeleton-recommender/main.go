@@ -25,6 +25,8 @@ func int32Ptr(i int32) *int32 {
 // Static autoscaler that always recommends to scale up by 1 replica, can be tried with
 // curl -X POST -d '{"state": {"currentReplicas": 1}, "targets": [{"type": "cpu", "targetValue": 0.5}]}' http://localhost:8089/autoscaling
 func autoscaling(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Handling %s %s %s bytes\n", r.Method, r.URL.Path, r.Header.Get("Content-Length"))
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
@@ -37,6 +39,8 @@ func autoscaling(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to unmarshal request", http.StatusInternalServerError)
 		return
 	}
+
+	log.Printf("< %+v\n", request)
 
 	var currentReplicas = int32(0)
 
@@ -70,8 +74,13 @@ func autoscaling(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("< %+v\n", request)
 	log.Printf("> %+v\n\n", response)
+}
+
+// Redirects /autoscaling/redirect to /autoscaling
+func autoscalingRedirect(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Redirecting %s to /autoscaling", r.URL.Path)
+	http.Redirect(w, r, "/autoscaling", http.StatusPermanentRedirect)
 }
 
 func main() {
@@ -81,6 +90,7 @@ func main() {
 	pflag.CommandLine = flags
 
 	http.HandleFunc("/autoscaling", autoscaling)
+	http.HandleFunc("/autoscaling/redirect", autoscalingRedirect)
 
 	err := http.ListenAndServe(flags.Lookup("addr").Value.String(), nil)
 	if err != nil {

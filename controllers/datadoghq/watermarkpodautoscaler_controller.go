@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -956,7 +957,7 @@ func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, wo
 		nil,
 		external_metrics.NewForConfigOrDie(podConfig),
 	)
-	rc := NewRecommenderClient()
+	rc := NewRecommenderClient(http.DefaultClient)
 	var stop chan struct{}
 	pl := initializePodInformer(podConfig, stop)
 

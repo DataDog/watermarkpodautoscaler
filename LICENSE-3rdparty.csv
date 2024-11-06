@@ -31,11 +31,15 @@ core,github.com/google/uuid,BSD-3-Clause
 core,github.com/imdario/mergo,BSD-3-Clause
 core,github.com/josharian/intern,MIT
 core,github.com/json-iterator/go,MIT
+core,github.com/klauspost/compress,Apache-2.0
+core,github.com/klauspost/compress/internal/snapref,BSD-3-Clause
+core,github.com/klauspost/compress/zstd/internal/xxhash,MIT
 core,github.com/mailru/easyjson,MIT
 core,github.com/modern-go/concurrent,Apache-2.0
 core,github.com/modern-go/reflect2,Apache-2.0
 core,github.com/munnerz/goautoneg,BSD-3-Clause
 core,github.com/pkg/errors,BSD-2-Clause
+core,github.com/prometheus/client_golang/internal/github.com/golang/gddo/httputil,BSD-3-Clause
 core,github.com/prometheus/client_golang/prometheus,Apache-2.0
 core,github.com/prometheus/client_model/go,Apache-2.0
 core,github.com/prometheus/common,Apache-2.0

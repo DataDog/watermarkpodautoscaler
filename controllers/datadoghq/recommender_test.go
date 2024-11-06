@@ -19,3 +19,8 @@ func (m *RecommenderClientMock) GetReplicaRecommendation(request *ReplicaRecomme
 }
 
 var _ RecommenderClient = &RecommenderClientMock{}
+
+type RecommenderClientMock struct {
+	ReturnedResponse ReplicaRecommendationResponse
+	Error            error
+}
