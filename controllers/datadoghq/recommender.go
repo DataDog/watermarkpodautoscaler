@@ -71,7 +71,8 @@ func NewRecommenderClient(client *http.Client) RecommenderClient {
 	}
 }
 
-// instrumentedClient returns a new http.Client that instruments requests to the given recommender.
+// instrumentedClient returns a copy of the client with an instrumented Transport for this recommender.
+//
 // The returned client is a shallow copy of the original client, with the Transport field replaced
 // with an instrumented RoundTripper (which just wraps the original Transport).
 func (r *RecommenderClientImpl) instrumentedClient(recommender string) *http.Client {
