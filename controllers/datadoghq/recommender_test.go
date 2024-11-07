@@ -6,6 +6,7 @@
 package datadoghq
 
 import (
+	"context"
 	"net/http"
 	"testing"
 	"time"
@@ -44,7 +45,8 @@ func TestInstrumentation(t *testing.T) {
 	client := http.DefaultClient
 	client.Transport = instrumentRoundTripper("http://test", http.DefaultTransport)
 	// This simply makes sure the instrumentation does crash.
-	resp, err := client.Get("fake")
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "fake://fake", nil)
+	resp, err := client.Do(req)
 	if resp != nil {
 		_ = resp.Body.Close()
 	}
