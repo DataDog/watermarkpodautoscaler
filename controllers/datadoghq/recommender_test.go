@@ -46,7 +46,7 @@ func TestInstrumentation(t *testing.T) {
 	// This simply makes sure the instrumentation does crash.
 	resp, err := client.Get("fake")
 	if resp != nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}
 	require.Error(t, err)
 }
