@@ -29,7 +29,10 @@ const (
 	transitionPromLabel        = "transition"
 	lifecycleStatus            = "lifecycle_status"
 	monitorName                = "monitor_name"
-	monitorNamespace           = "monotor_namespace"
+	monitorNamespace           = "monitor_namespace"
+	clientPromLabel            = "client"
+	methodPromLabel            = "method"
+	codePromLabel              = "code"
 	// Label values
 	downscaleCappingPromLabelVal = "downscale_capping"
 	upscaleCappingPromLabelVal   = "upscale_capping"
@@ -263,19 +266,19 @@ var (
 			Help:    "Tracks the latencies for HTTP requests.",
 			Buckets: []float64{0.1, 0.3, 0.6, 1, 3, 6, 9, 20},
 		},
-		[]string{"client", "method", "code"},
+		[]string{clientPromLabel, methodPromLabel, codePromLabel},
 	)
 	requestsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "http_client_requests_total",
 			Help: "Tracks the number of HTTP requests.",
-		}, []string{"client", "method", "code"},
+		}, []string{clientPromLabel, methodPromLabel, codePromLabel},
 	)
 	responseInflight = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "http_client_requests_inflight",
 			Help: "Tracks the number of client requests currently in progress.",
-		}, []string{"client"},
+		}, []string{clientPromLabel},
 	)
 )
 
