@@ -44,5 +44,9 @@ func TestInstrumentation(t *testing.T) {
 	client := http.DefaultClient
 	client.Transport = instrumentRoundTripper("http://test", http.DefaultTransport)
 	// This simply makes sure the instrumentation does crash.
-	_, _ = client.Get("fake")
+	resp, err := client.Get("fake")
+	if resp != nil {
+		resp.Body.Close()
+	}
+	require.Error(t, err)
 }
