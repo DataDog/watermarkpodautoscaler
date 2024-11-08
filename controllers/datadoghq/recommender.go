@@ -82,7 +82,7 @@ func (r *RecommenderClientImpl) instrumentedClient(recommender string) *http.Cli
 }
 
 func instrumentRoundTripper(recommender string, transport http.RoundTripper) http.RoundTripper {
-	labels := prometheus.Labels{"recommender": recommender}
+	labels := prometheus.Labels{clientPromLabel: recommender}
 
 	return promhttp.InstrumentRoundTripperCounter(
 		requestsTotal.MustCurryWith(labels),
@@ -103,26 +103,26 @@ func instrumentRoundTripper(recommender string, transport http.RoundTripper) htt
 func (r *RecommenderClientImpl) GetReplicaRecommendation(request *ReplicaRecommendationRequest) (*ReplicaRecommendationResponse, error) {
 	reco := request.Recommender
 	if reco == nil {
-		return &ReplicaRecommendationResponse{}, fmt.Errorf("recommender spec is required")
+		return nil, fmt.Errorf("recommender spec is required")
 	}
 
 	u, err := url.Parse(reco.URL)
 	if err != nil {
-		return &ReplicaRecommendationResponse{}, fmt.Errorf("error parsing url: %w", err)
+		return nil, fmt.Errorf("error parsing url: %w", err)
 	}
 
 	if u.Scheme != "http" && u.Scheme != "https" {
-		return &ReplicaRecommendationResponse{}, fmt.Errorf("only http and https schemes are supported")
+		return nil, fmt.Errorf("only http and https schemes are supported")
 	}
 
 	req, err := buildWorkloadRecommendationRequest(request)
 	if err != nil {
-		return &ReplicaRecommendationResponse{}, err
+		return nil, err
 	}
 
 	payload, err := protojson.Marshal(req)
 	if err != nil {
-		return &ReplicaRecommendationResponse{}, fmt.Errorf("error marshaling request: %w", err)
+		return nil, fmt.Errorf("error marshaling request: %w", err)
 	}
 
 	// TODO: We might want to make the timeout configurable later.
@@ -136,7 +136,7 @@ func (r *RecommenderClientImpl) GetReplicaRecommendation(request *ReplicaRecomme
 	httpReq.Header.Set("User-Agent", "wpa-controller")
 
 	if err != nil {
-		return &ReplicaRecommendationResponse{}, fmt.Errorf("error creating request: %w", err)
+		return nil, fmt.Errorf("error creating request: %w", err)
 	}
 	resp, err := client.Do(httpReq)
 
@@ -147,22 +147,22 @@ func (r *RecommenderClientImpl) GetReplicaRecommendation(request *ReplicaRecomme
 	}()
 
 	if err != nil {
-		return &ReplicaRecommendationResponse{}, fmt.Errorf("error sending request: %w", err)
+		return nil, fmt.Errorf("error sending request: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return &ReplicaRecommendationResponse{}, fmt.Errorf("unexpected response code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("unexpected response code: %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return &ReplicaRecommendationResponse{}, fmt.Errorf("error reading response: %w", err)
+		return nil, fmt.Errorf("error reading response: %w", err)
 	}
 
 	reply := &autoscaling.WorkloadRecommendationReply{}
 	err = protojson.Unmarshal(body, reply)
 	if err != nil {
-		return &ReplicaRecommendationResponse{}, fmt.Errorf("error unmarshaling response: %w", err)
+		return nil, fmt.Errorf("error unmarshaling response: %w", err)
 	}
 
 	return buildReplicaRecommendationResponse(reply)
