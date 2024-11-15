@@ -1,0 +1,49 @@
+---
+schema-version: v2.2
+dd-service: watermarkpodautoscaler
+team: container-integrations
+contacts:
+  - type: slack
+    contact: https://dd.slack.com/archives/CKPBQUD9P  # wpa channel
+  - type: email
+    contact: team-containerintegrations@datadoghq.com
+links:
+  - name: watermarkpodautoscaler
+    type: repo
+    provider: github
+    url: https://github.com/DataDog/datadog-operator
+  - name: internal-chart
+    type: repo
+    provider: github
+    url: https://github.com/DataDog/watermarkpodautoscaler
+  - name: internal-image
+    type: repo
+    provider: github
+    url: https://github.com/DataDog/images/tree/master/watermarkpodautoscaler
+  - name: deployment
+    type: repo
+    provider: github
+    url: https://github.com/DataDog/k8s-datadog-agent-ops
+  # - name: On Call documentation
+  #   type: doc
+  #   provider: confluence
+  #   url: 
+tags:
+  - app:watermarkpodautoscaler
+  - service:watermarkpodautoscaler
+  - team:container-integrations
+extensions:
+  datadoghq.com/sdp:
+    conductor:
+      slack: "jenn-test-wpa"
+      options:
+        rollout_strategy: "installation"
+      targets:
+        - name: "nightly-build"
+          ci_pipeline: "//fake_placeholder:fake_placeholder"
+          # parent_environments: 
+          #   - "staging"
+          branch: "jenn/CONTINT-4453_setup-wpa-nightly-build"
+          # schedule: "30 23 * * SUN-THU"
+          options:
+            disable_failure_notifications: true
