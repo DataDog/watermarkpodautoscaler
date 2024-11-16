@@ -35,15 +35,14 @@ tags:
 extensions:
   datadoghq.com/sdp:
     conductor:
-      slack: "jenn-test-wpa"
+      slack: "wpa-ops"
       options:
         rollout_strategy: "installation"
       targets:
         - name: "nightly-build"
+          branch: "main"
+          build_only: true
           ci_pipeline: "//fake_placeholder:fake_placeholder"
-          # parent_environments: 
-          #   - "staging"
-          branch: "jenn/CONTINT-4453_setup-wpa-nightly-build"
-          # schedule: "30 23 * * SUN-THU"
+          schedule: "30 23 * * SUN-THU"
           options:
             disable_failure_notifications: true
