@@ -41,6 +41,7 @@ extensions:
       targets:
         - name: "nightly-build"
           ci_pipeline: "//fake_placeholder:fake_placeholder"
+          build_only: true
           # parent_environments: 
           #   - "staging"
           branch: "jenn/CONTINT-4453_setup-wpa-nightly-build"
