@@ -12,10 +12,15 @@ jobs:
     steps:
       - name: Check out code into the Go module directory
         uses: actions/checkout@v1
+      - uses: actions/create-github-app-token@5d869da34e18e7287c1daad50e0b8ea0f506ce69 # v1.11.0
+        id: app-token
+        with:
+          app-id: ${{ vars.DD_GITHUB_TOKEN_GENERATOR_APP_ID }}
+          private-key: ${{ secrets.DD_GITHUB_TOKEN_GENERATOR_PRIVATE_KEY }}
       - name: Verify Pull Request Labels
         uses: jesusvasquez333/verify-pr-label-action@v1.3.1
         with:
-          github-token: '${{ secrets.GITHUB_TOKEN }}'
+          github-token: ${{ steps.app-token.outputs.token }}
           valid-labels: 'bug, enhancement, refactoring, documentation, tooling, dependencies'
           pull-request-number: '${{ github.event.pull_request.number }}'
   check-milestone:
