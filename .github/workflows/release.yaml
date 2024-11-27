@@ -187,11 +187,6 @@ jobs:
           cp ./tmp-build/linux/CHANGELOG.md ./dist/CHANGELOG.md
       - name: Generate Plugin manifest
         run: ./hack/release/generate-plugin-manifest.sh ${{steps.tag.outputs.tag}}
-      - uses: actions/create-github-app-token@5d869da34e18e7287c1daad50e0b8ea0f506ce69 # v1.11.0
-        id: app-token
-        with:
-          app-id: ${{ secrets.DD_GITHUB_TOKEN_GENERATOR_APP_ID }}
-          private-key: ${{ secrets.DD_GITHUB_TOKEN_GENERATOR_PRIVATE_KEY }}
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
@@ -204,7 +199,7 @@ jobs:
             dist/checksums.txt
         env:
           COMMIT_TAG: ${{steps.tag.outputs.tag}}
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Update new plugin version in krew-index
         uses: rajatjindal/krew-release-bot@v0.0.43
         continue-on-error: true
