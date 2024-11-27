@@ -4,10 +4,14 @@ variables:
   PROJECTNAME: "watermarkpodautoscaler"
   TARGET_TAG: v$CI_PIPELINE_ID-$CI_COMMIT_SHORT_SHA
   BUILD_DOCKER_REGISTRY: "registry.ddbuild.io/ci"
-  JOB_DOCKER_IMAGE: "registry.ddbuild.io/ci-containers-project:v46367840-16ecadd-v3.0.0"
+  JOB_DOCKER_IMAGE: "registry.ddbuild.io/ci-containers-project:v50051243-ace27e7-v1.22"
   DOCKER_REGISTRY_LOGIN_SSM_KEY: docker_hub_login
   DOCKER_REGISTRY_PWD_SSM_KEY: docker_hub_pwd
   DOCKER_REGISTRY_URL: docker.io
+cache: &global_cache
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - /go/pkg/mod
 
 stages:
   - build
