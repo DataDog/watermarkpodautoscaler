@@ -15,7 +15,7 @@ jobs:
       - uses: actions/create-github-app-token@5d869da34e18e7287c1daad50e0b8ea0f506ce69 # v1.11.0
         id: app-token
         with:
-          app-id: ${{ vars.DD_GITHUB_TOKEN_GENERATOR_APP_ID }}
+          app-id: ${{ secrets.DD_GITHUB_TOKEN_GENERATOR_APP_ID }}
           private-key: ${{ secrets.DD_GITHUB_TOKEN_GENERATOR_PRIVATE_KEY }}
       - name: Verify Pull Request Labels
         uses: jesusvasquez333/verify-pr-label-action@v1.3.1
