@@ -59,6 +59,7 @@ func main() {
 	var logTimestampFormat string
 	var syncPeriodSeconds int
 	var clientTimeoutDuration time.Duration
+	var clientQPSLimit float64
 	var ddProfilingEnabled bool
 	var workers int
 	var skipNotScalingEvents bool
@@ -71,6 +72,7 @@ func main() {
 	flag.StringVar(&logTimestampFormat, "log-timestamp-format", "millis", "log timestamp format ('millis', 'nanos', 'epoch', 'rfc3339' or 'rfc3339nano')")
 	flag.IntVar(&syncPeriodSeconds, "syncPeriodSeconds", 60*60, "The informers resync period in seconds")                                            // default 1 hour
 	flag.DurationVar(&clientTimeoutDuration, "client-timeout", 0, "The maximum length of time to wait before giving up on a kube-apiserver request") // is set to 0, keep default
+	flag.Float64Var(&clientQPSLimit, "client-qps", 0, "QPS Limit for the Kubernetes client (default 20 qps)")
 	flag.BoolVar(&ddProfilingEnabled, "ddProfilingEnabled", false, "Enable the datadog profiler")
 	flag.IntVar(&workers, "workers", 1, "Maximum number of concurrent Reconciles which can be run")
 	flag.BoolVar(&skipNotScalingEvents, "skipNotScalingEvents", false, "Log NotScaling decisions instead of creating Kubernetes events")
@@ -108,6 +110,10 @@ func main() {
 	if clientTimeoutDuration != 0 {
 		// override client timeout duration if set
 		restConfig.Timeout = clientTimeoutDuration
+	}
+	if clientQPSLimit > 0 {
+		restConfig.QPS = float32(clientQPSLimit)     // Potentially loosing precision and by out of range, though given the range of QPS in practice, it should be fine
+		restConfig.Burst = int(clientQPSLimit * 1.5) // Burst is 50% more than QPS (same as default ratio)
 	}
 	mgr, err := ctrl.NewManager(restConfig, config.ManagerOptionsWithNamespaces(setupLog, ctrl.Options{
 		Scheme: scheme,
