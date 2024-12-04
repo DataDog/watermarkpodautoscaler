@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta/testrestmapper"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -40,7 +41,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	monitorv1alpha1 "github.com/DataDog/datadog-operator/api/datadoghq/v1alpha1"
 	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1/test"
 )
@@ -64,7 +64,6 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 	log := logf.Log.WithName("TestReconcileWatermarkPodAutoscaler_Reconcile")
 	s := scheme.Scheme
 	s.AddKnownTypes(v1alpha1.SchemeGroupVersion, &v1alpha1.WatermarkPodAutoscaler{})
-	s.AddKnownTypes(v1alpha1.SchemeGroupVersion, &monitorv1alpha1.DatadogMonitor{})
 
 	type fields struct {
 		client        client.Client
@@ -341,20 +340,15 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					_ = c.Create(context.TODO(), wpa)
 
-					dmon := &monitorv1alpha1.DatadogMonitor{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      testingWPAName,
-							Namespace: testingNamespace,
-						},
-						Spec: monitorv1alpha1.DatadogMonitorSpec{},
-						Status: monitorv1alpha1.DatadogMonitorStatus{
-							MonitorState: monitorv1alpha1.DatadogMonitorStateOK,
-						},
-					}
-					err := c.Create(context.TODO(), dmon)
-					if err != nil {
-						panic(err)
-					}
+					datadogMonitor := &unstructured.Unstructured{}
+					datadogMonitor.SetGroupVersionKind(datadogMonitorGVK)
+					datadogMonitor.SetNamespace(testingNamespace)
+					datadogMonitor.SetName(testingWPAName)
+					err := unstructured.SetNestedField(datadogMonitor.Object, "OK", "status", "monitorState")
+					require.NoError(t, err)
+
+					err = c.Create(context.TODO(), datadogMonitor)
+					require.NoError(t, err)
 				},
 			},
 			want:    reconcile.Result{},
