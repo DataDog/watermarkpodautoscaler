@@ -26,6 +26,7 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -54,7 +55,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	monitorv1alpha1 "github.com/DataDog/datadog-operator/api/datadoghq/v1alpha1"
 	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 )
 
@@ -71,7 +71,15 @@ const (
 	scaleNotFoundRequeueDelay            = 10 * time.Second
 
 	desiredCountAcceptable = "the desired count is within the acceptable range"
+
+	datadogMonitorStateOK = "OK"
 )
+
+var datadogMonitorGVK = schema.GroupVersionKind{
+	Group:   "datadoghq.com",
+	Version: "v1alpha1",
+	Kind:    "DatadogMonitor",
+}
 
 type Options struct {
 	SkipNotScalingEvents bool
@@ -194,8 +202,16 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 			Name:      instance.Name,
 			Namespace: instance.Namespace,
 		}
-		mon := &monitorv1alpha1.DatadogMonitor{}
-		err := r.Client.Get(ctx, dmon, mon)
+
+		// We use Unstructured here to avoid depending on the datadog-operator
+		// to be able to use the DatadogMonitor CRD.
+		// We'd like to avoid this dependency because otherwise, sometimes to be
+		// able to upgrade the kubernetes libraries in the WPA, we'd need to
+		// upgrade the datadog-operator first. We'd like to avoid this
+		// constraint.
+		datadogMonitor := &unstructured.Unstructured{}
+		datadogMonitor.SetGroupVersionKind(datadogMonitorGVK)
+		err := r.Client.Get(ctx, dmon, datadogMonitor)
 		if err != nil {
 			lifecycleControlStatus.With(promLabels).Set(1)
 			log.Info("Datadog Monitor is not found, blocking reconcile loop for this WPA, will retry in 2 minute", "datadogMonitor", fmt.Sprintf("%s/%s", instance.Namespace, instance.Name))
@@ -210,12 +226,25 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 			// If the monitor does not exist, it will take at least 2 minutes to be created and to serve a relevant status.
 			return reconcile.Result{RequeueAfter: 2 * monitorStatusErrorDuration}, nil
 		}
-		if mon.Status.MonitorState != monitorv1alpha1.DatadogMonitorStateOK {
+
+		monitorState, found, err := unstructured.NestedString(datadogMonitor.Object, "status", "monitorState")
+		if !found || err != nil {
 			lifecycleControlStatus.With(promLabels).Set(1)
-			log.Info("Datadog Monitor is not OK, blocking reconcile loop for this WPA, will retry in a minute", "datadogMonitor", fmt.Sprintf("%s/%s", instance.Namespace, instance.Name), "state", mon.Status.MonitorState)
+			log.Info("Datadog Monitor state is not found, blocking reconcile loop for this WPA, will retry in a minute", "datadogMonitor", fmt.Sprintf("%s/%s", instance.Namespace, instance.Name))
+			setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionTrue, datadoghqv1alpha1.ReasonDatadogMonitorNotOK, "monitor %s state not found, blocking the WPA from proceeding", dmon.String())
+			if err = r.updateStatusIfNeeded(ctx, wpaStatusOriginal, instance); err != nil {
+				r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedUpdateStatus, err.Error())
+				return reconcile.Result{}, err
+			}
+			return reconcile.Result{RequeueAfter: monitorStatusErrorDuration}, nil
+		}
+
+		if monitorState != datadogMonitorStateOK {
+			lifecycleControlStatus.With(promLabels).Set(1)
+			log.Info("Datadog Monitor is not OK, blocking reconcile loop for this WPA, will retry in a minute", "datadogMonitor", fmt.Sprintf("%s/%s", instance.Namespace, instance.Name), "state", monitorState)
 			// Monitors are evaluated every minute, no need to reconcile the WPA before that duration if we are not in a OK state.
 			// TODO: Introduce more granular status handling if the monitor is in No Data or Alert.
-			setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionTrue, datadoghqv1alpha1.ReasonDatadogMonitorNotOK, "monitor %s is in %s state, blocking the WPA from proceeding", dmon.String(), mon.Status.MonitorState)
+			setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionTrue, datadoghqv1alpha1.ReasonDatadogMonitorNotOK, "monitor %s is in %s state, blocking the WPA from proceeding", dmon.String(), monitorState)
 			if err = r.updateStatusIfNeeded(ctx, wpaStatusOriginal, instance); err != nil {
 				r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedUpdateStatus, err.Error())
 				return reconcile.Result{}, err
