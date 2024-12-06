@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -1004,10 +1005,11 @@ func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, wo
 	if err != nil {
 		return err
 	}
-	k8sClusterName, err := getClusterName(clientSet)
-	if err != nil {
-		mgr.GetLogger().Error(err, "Failed to get cluster name (optional)")
-	} else {
+
+	// When using the recommender it might be necessary to explicitly add the cluster name (when using multiple-clusters
+	// in this case we read it from `K8S_CLUSTER_NAME` env var.
+	k8sClusterName := getClusterName()
+	if k8sClusterName != "" {
 		mgr.GetLogger().Info("Cluster name", "name", k8sClusterName)
 	}
 	replicaCalc := NewReplicaCalculator(mc, rc, pl, k8sClusterName)
@@ -1021,18 +1023,8 @@ func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, wo
 	return nil
 }
 
-func getClusterName(clientSet *kubernetes.Clientset) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	configMap, err := clientSet.CoreV1().ConfigMaps("kube-system").Get(ctx, "cluster-info", metav1.GetOptions{})
-	if err != nil {
-		return "", err
-	}
-	clusterName, ok := configMap.Data["cluster-name"]
-	if !ok {
-		return "", fmt.Errorf("cluster name not found in ConfigMap")
-	}
-	return clusterName, nil
+func getClusterName() string {
+	return os.Getenv("K8S_CLUSTER_NAME")
 }
 
 func initializePodInformer(clientConfig *rest.Config, stop chan struct{}) listerv1.PodLister {
