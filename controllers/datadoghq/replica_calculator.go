@@ -67,14 +67,16 @@ type ReplicaCalculator struct {
 	metricsClient     metricsclient.MetricsClient
 	recommenderClient RecommenderClient
 	podLister         corelisters.PodLister
+	k8sClusterName    string
 }
 
 // NewReplicaCalculator returns a ReplicaCalculator object reference
-func NewReplicaCalculator(metricsClient metricsclient.MetricsClient, recommenderClient RecommenderClient, podLister corelisters.PodLister) *ReplicaCalculator {
+func NewReplicaCalculator(metricsClient metricsclient.MetricsClient, recommenderClient RecommenderClient, podLister corelisters.PodLister, k8sClusterName string) *ReplicaCalculator {
 	return &ReplicaCalculator{
 		metricsClient:     metricsClient,
 		recommenderClient: recommenderClient,
 		podLister:         podLister,
+		k8sClusterName:    k8sClusterName,
 	}
 }
 
@@ -280,6 +282,7 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(logger logr.Logger, target *a
 	var request = ReplicaRecommendationRequest{
 		Namespace:            wpa.Namespace,
 		TargetRef:            &wpa.Spec.ScaleTargetRef,
+		TargetCluster:        c.k8sClusterName,
 		Recommender:          wpa.Spec.Recommender,
 		CurrentReadyReplicas: currentReadyReplicas,
 		CurrentReplicas:      target.Status.Replicas,

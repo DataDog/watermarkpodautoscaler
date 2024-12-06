@@ -1004,7 +1004,13 @@ func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, wo
 	if err != nil {
 		return err
 	}
-	replicaCalc := NewReplicaCalculator(mc, rc, pl)
+	k8sClusterName, err := getClusterName(clientSet)
+	if err != nil {
+		mgr.GetLogger().Error(err, "Failed to get cluster name (optional)")
+	} else {
+		mgr.GetLogger().Info("Cluster name", "name", k8sClusterName)
+	}
+	replicaCalc := NewReplicaCalculator(mc, rc, pl, k8sClusterName)
 
 	r.replicaCalc = replicaCalc
 	r.scaleClient = scaleClient
@@ -1013,6 +1019,20 @@ func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, wo
 	r.syncPeriod = defaultSyncPeriod
 
 	return nil
+}
+
+func getClusterName(clientSet *kubernetes.Clientset) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	configMap, err := clientSet.CoreV1().ConfigMaps("kube-system").Get(ctx, "cluster-info", metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	clusterName, ok := configMap.Data["cluster-name"]
+	if !ok {
+		return "", fmt.Errorf("cluster name not found in ConfigMap")
+	}
+	return clusterName, nil
 }
 
 func initializePodInformer(clientConfig *rest.Config, stop chan struct{}) listerv1.PodLister {
