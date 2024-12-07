@@ -1,12 +1,9 @@
 Component,Origin,License
 core,github.com/DataDog/agent-payload/v5/autoscaling/kubernetes,BSD-3-Clause
-core,github.com/DataDog/datadog-api-client-go/v2,Apache-2.0
 core,github.com/DataDog/datadog-go/v5/statsd,MIT
-core,github.com/DataDog/datadog-operator/api/datadoghq,Apache-2.0
 core,github.com/DataDog/gostackparse,Apache-2.0
 core,github.com/DataDog/watermarkpodautoscaler,Apache-2.0
 core,github.com/DataDog/watermarkpodautoscaler/third_party/kubernetes/pkg/controller/podautoscaler/metrics,Apache-2.0
-core,github.com/DataDog/zstd,BSD-3-Clause
 core,github.com/beorn7/perks/quantile,MIT
 core,github.com/cespare/xxhash/v2,MIT
 core,github.com/chrusty/protoc-gen-jsonschema,Apache-2.0

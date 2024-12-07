@@ -26,8 +26,6 @@ import (
 	ctrlzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	monitorv1alpha1 "github.com/DataDog/datadog-operator/api/datadoghq/v1alpha1"
-
 	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 	datadoghqcontrollers "github.com/DataDog/watermarkpodautoscaler/controllers/datadoghq"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/config"
@@ -48,7 +46,6 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(datadoghqv1alpha1.AddToScheme(scheme))
-	utilruntime.Must(monitorv1alpha1.AddToScheme(scheme))
 }
 
 func main() {
