@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -1004,7 +1005,14 @@ func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, wo
 	if err != nil {
 		return err
 	}
-	replicaCalc := NewReplicaCalculator(mc, rc, pl)
+
+	// When using the recommender it might be necessary to explicitly add the cluster name (when using multiple-clusters
+	// in this case we read it from `K8S_CLUSTER_NAME` env var.
+	k8sClusterName := getClusterName()
+	if k8sClusterName != "" {
+		mgr.GetLogger().Info("Cluster name", "name", k8sClusterName)
+	}
+	replicaCalc := NewReplicaCalculator(mc, rc, pl, k8sClusterName)
 
 	r.replicaCalc = replicaCalc
 	r.scaleClient = scaleClient
@@ -1013,6 +1021,10 @@ func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, wo
 	r.syncPeriod = defaultSyncPeriod
 
 	return nil
+}
+
+func getClusterName() string {
+	return os.Getenv("K8S_CLUSTER_NAME")
 }
 
 func initializePodInformer(clientConfig *rest.Config, stop chan struct{}) listerv1.PodLister {
