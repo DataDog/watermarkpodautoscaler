@@ -45,6 +45,7 @@ type RecommenderClientImpl struct {
 type ReplicaRecommendationRequest struct {
 	Namespace            string
 	TargetRef            *v1alpha1.CrossVersionObjectReference
+	TargetCluster        string
 	Recommender          *v1alpha1.RecommenderSpec
 	DesiredReplicas      int32
 	CurrentReplicas      int32
@@ -199,6 +200,7 @@ func buildWorkloadRecommendationRequest(request *ReplicaRecommendationRequest) (
 			Name:       request.TargetRef.Name,
 			ApiVersion: request.TargetRef.APIVersion,
 			Namespace:  request.Namespace,
+			Cluster:    request.TargetCluster,
 		},
 		Constraints: &autoscaling.WorkloadRecommendationConstraints{
 			MinReplicas: request.MinReplicas,

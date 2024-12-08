@@ -253,7 +253,7 @@ func (tc *replicaCalcTestCase) runTest(t *testing.T) {
 	mClient := metrics.NewRESTMetricsClient(rClient.MetricsV1beta1(), nil, emClient)
 	recoClient := NewMockRecommenderClient()
 
-	replicaCalculator := NewReplicaCalculator(mClient, recoClient, informer.Lister())
+	replicaCalculator := NewReplicaCalculator(mClient, recoClient, informer.Lister(), "test-cluster")
 
 	stop := make(chan struct{})
 	defer close(stop)
@@ -3017,7 +3017,7 @@ func TestGetReadyPodsCount(t *testing.T) {
 			informerFactory := informers.NewSharedInformerFactory(fakeClient, 0)
 			informer := informerFactory.Core().V1().Pods()
 
-			replicaCalculator := NewReplicaCalculator(nil, nil, informer.Lister())
+			replicaCalculator := NewReplicaCalculator(nil, nil, informer.Lister(), "test-cluster")
 
 			stop := make(chan struct{})
 			defer close(stop)
