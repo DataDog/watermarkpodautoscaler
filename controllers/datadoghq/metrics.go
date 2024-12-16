@@ -9,6 +9,8 @@ import (
 	"os"
 	"strings"
 
+	autoscalingv2 "k8s.io/api/autoscaling/v2beta1"
+
 	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -33,6 +35,7 @@ const (
 	clientPromLabel            = "client"
 	methodPromLabel            = "method"
 	codePromLabel              = "code"
+	conditionPromLabel         = "condition"
 	// Label values
 	downscaleCappingPromLabelVal = "downscale_capping"
 	upscaleCappingPromLabelVal   = "upscale_capping"
@@ -41,6 +44,13 @@ const (
 
 // reasonValues contains the 3 possible values of the 'reason' label
 var reasonValues = []string{downscaleCappingPromLabelVal, upscaleCappingPromLabelVal, withinBoundsPromLabelVal}
+
+// tracked conditions
+var trackedConditions = map[autoscalingv2.HorizontalPodAutoscalerConditionType]string{
+	autoscalingv2.AbleToScale:        "able_to_scale",
+	autoscalingv2.ScalingLimited:     "scaling_limited",
+	datadoghqv1alpha1.ScalingBlocked: "scaling_blocked",
+}
 
 // Labels to add to an info metric and join on (with wpaNamePromLabel) in the Datadog prometheus check
 var extraPromLabels = strings.Fields(os.Getenv("DD_LABELS_AS_TAGS"))
@@ -280,6 +290,20 @@ var (
 			Help: "Tracks the number of client requests currently in progress.",
 		}, []string{clientPromLabel},
 	)
+	conditions = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "conditions",
+			Help:      "Gauge reflecting the current state of certain tracked conditions",
+		},
+		[]string{
+			wpaNamePromLabel,
+			wpaNamespacePromLabel,
+			resourceNamespacePromLabel,
+			resourceNamePromLabel,
+			resourceKindPromLabel,
+			conditionPromLabel,
+		})
 )
 
 func init() {
@@ -302,6 +326,7 @@ func init() {
 	sigmetrics.Registry.MustRegister(requestDuration)
 	sigmetrics.Registry.MustRegister(requestsTotal)
 	sigmetrics.Registry.MustRegister(responseInflight)
+	sigmetrics.Registry.MustRegister(conditions)
 }
 
 func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onlyMetricsSpecific bool) {
@@ -337,6 +362,12 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 		}
 		labelsInfo.Delete(promLabelsInfo)
 		dryRun.Delete(promLabelsForWpa)
+
+		for _, labelVal := range trackedConditions {
+			promLabelsForWpa[conditionPromLabel] = labelVal
+			conditions.Delete(promLabelsForWpa)
+		}
+		delete(promLabelsForWpa, conditionPromLabel)
 	}
 
 	for _, metricSpec := range wpa.Spec.Metrics {

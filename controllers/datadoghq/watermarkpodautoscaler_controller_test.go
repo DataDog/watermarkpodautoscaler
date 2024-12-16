@@ -73,17 +73,36 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 		eventRecorder record.EventRecorder
 	}
 	type args struct {
-		request  reconcile.Request
-		loadFunc func(c client.Client)
+		request            reconcile.Request
+		wpaFunc            func(t *testing.T) *v1alpha1.WatermarkPodAutoscaler
+		datadogMonitorFunc func(t *testing.T) *unstructured.Unstructured
 	}
 
+	defaultPromMetrics := map[string]float64{
+		"dryRun":                   0,
+		"value":                    0,
+		"highwm":                   0,
+		"highwmV2":                 0,
+		"lowwm":                    0,
+		"lowwmV2":                  0,
+		"replicaProposal":          0,
+		"replicaEffective":         0,
+		"replicaMin":               0,
+		"replicaMax":               0,
+		"restrictedScalingDownCap": 0,
+		"restrictedScalingUpCap":   0,
+		"restrictedScalingOk":      0,
+		"conditionsAbleToScale":    0,
+		"conditionsScalingLimited": 0,
+	}
 	tests := []struct {
-		name     string
-		fields   fields
-		args     args
-		want     reconcile.Result
-		wantErr  bool
-		wantFunc func(c client.Client) error
+		name            string
+		fields          fields
+		args            args
+		want            reconcile.Result
+		wantErr         bool
+		wantFunc        func(c client.Client) error
+		wantPromMetrics map[string]float64
 	}{
 		{
 			name: "WatermarkPodAutoscaler not found",
@@ -111,12 +130,13 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 			},
 			args: args{
 				request: newRequest(testingNamespace, testingWPAName),
-				loadFunc: func(c client.Client) {
-					_ = c.Create(context.TODO(), test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{Labels: map[string]string{"foo-key": "bar-value"}}))
+				wpaFunc: func(t *testing.T) *v1alpha1.WatermarkPodAutoscaler {
+					return test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{Labels: map[string]string{"foo-key": "bar-value"}})
 				},
 			},
-			want:    reconcile.Result{Requeue: true},
-			wantErr: false,
+			want:            reconcile.Result{Requeue: true},
+			wantErr:         false,
+			wantPromMetrics: defaultPromMetrics,
 		},
 		{
 			name: "WatermarkPodAutoscalerfound and defaulted but invalid metric spec",
@@ -129,7 +149,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 			},
 			args: args{
 				request: newRequest(testingNamespace, testingWPAName),
-				loadFunc: func(c client.Client) {
+				wpaFunc: func(t *testing.T) *v1alpha1.WatermarkPodAutoscaler {
 					wpa := test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
 						Labels: map[string]string{"foo-key": "bar-value"},
 						Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
@@ -147,8 +167,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 							},
 						},
 					})
-					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
-					_ = c.Create(context.TODO(), wpa)
+					return v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 				},
 			},
 			want:    reconcile.Result{},
@@ -170,6 +189,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				}
 				return nil
 			},
+			wantPromMetrics: defaultPromMetrics,
 		},
 		{
 			name: "WatermarkPodAutoscaler found and defaulted but invalid spec",
@@ -182,7 +202,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 			},
 			args: args{
 				request: newRequest(testingNamespace, testingWPAName),
-				loadFunc: func(c client.Client) {
+				wpaFunc: func(t *testing.T) *v1alpha1.WatermarkPodAutoscaler {
 					wpa := test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
 						Labels: map[string]string{"foo-key": "bar-value"},
 						Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
@@ -194,8 +214,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 							MaxReplicas: 3,
 						},
 					})
-					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
-					_ = c.Create(context.TODO(), wpa)
+					return v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 				},
 			},
 			want:    reconcile.Result{},
@@ -218,6 +237,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				}
 				return nil
 			},
+			wantPromMetrics: defaultPromMetrics,
 		},
 		{
 			name: "WatermarkPodAutoscaler found and defaulted but invalid watermarks",
@@ -230,7 +250,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 			},
 			args: args{
 				request: newRequest(testingNamespace, testingWPAName),
-				loadFunc: func(c client.Client) {
+				wpaFunc: func(t *testing.T) *v1alpha1.WatermarkPodAutoscaler {
 					wpa := test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
 						Labels: map[string]string{"foo-key": "bar-value"},
 						Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
@@ -253,8 +273,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 							},
 						},
 					})
-					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
-					_ = c.Create(context.TODO(), wpa)
+					return v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 				},
 			},
 			want:    reconcile.Result{},
@@ -274,6 +293,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				}
 				return nil
 			},
+			wantPromMetrics: defaultPromMetrics,
 		},
 		{
 			name: "Lifecycle Control enabled, DatadogMonitor does not exist",
@@ -286,7 +306,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 			},
 			args: args{
 				request: newRequest(testingNamespace, testingWPAName),
-				loadFunc: func(c client.Client) {
+				wpaFunc: func(t *testing.T) *v1alpha1.WatermarkPodAutoscaler {
 					wpa := test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
 						Annotations: map[string]string{lifecycleControlEnabledAnnotationKey: "true"},
 						Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
@@ -295,8 +315,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 							MaxReplicas:    5,
 						},
 					})
-					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
-					_ = c.Create(context.TODO(), wpa)
+					return v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 				},
 			},
 			want:    reconcile.Result{RequeueAfter: 2 * monitorStatusErrorDuration},
@@ -316,6 +335,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				}
 				return nil
 			},
+			wantPromMetrics: defaultPromMetrics,
 		},
 		{
 			name: "Lifecycle Control enabled, DatadogMonitor exist and is OK",
@@ -328,7 +348,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 			},
 			args: args{
 				request: newRequest(testingNamespace, testingWPAName),
-				loadFunc: func(c client.Client) {
+				wpaFunc: func(t *testing.T) *v1alpha1.WatermarkPodAutoscaler {
 					wpa := test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
 						Annotations: map[string]string{lifecycleControlEnabledAnnotationKey: "true"},
 						Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
@@ -337,9 +357,9 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 							MaxReplicas:    5,
 						},
 					})
-					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
-					_ = c.Create(context.TODO(), wpa)
-
+					return v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
+				},
+				datadogMonitorFunc: func(t *testing.T) *unstructured.Unstructured {
 					datadogMonitor := &unstructured.Unstructured{}
 					datadogMonitor.SetGroupVersionKind(datadogMonitorGVK)
 					datadogMonitor.SetNamespace(testingNamespace)
@@ -347,8 +367,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 					err := unstructured.SetNestedField(datadogMonitor.Object, "OK", "status", "monitorState")
 					require.NoError(t, err)
 
-					err = c.Create(context.TODO(), datadogMonitor)
-					require.NoError(t, err)
+					return datadogMonitor
 				},
 			},
 			want:    reconcile.Result{},
@@ -367,6 +386,23 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				assert.Equal(t, wpa.Status.Conditions[6].Message, cond.Message)
 				return nil
 			},
+			wantPromMetrics: map[string]float64{
+				"dryRun":                   0,
+				"value":                    0,
+				"highwm":                   0,
+				"highwmV2":                 0,
+				"lowwm":                    0,
+				"lowwmV2":                  0,
+				"replicaProposal":          0,
+				"replicaEffective":         0,
+				"replicaMin":               3,
+				"replicaMax":               5,
+				"restrictedScalingDownCap": 0,
+				"restrictedScalingUpCap":   0,
+				"restrictedScalingOk":      0,
+				"conditionsAbleToScale":    1,
+				"conditionsScalingLimited": 1,
+			},
 		},
 	}
 	for _, tt := range tests {
@@ -380,8 +416,21 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				restMapper:    tt.fields.restmapper,
 			}
 			log.Info(fmt.Sprintf("Reconciliating %v", tt.args.request))
-			if tt.args.loadFunc != nil {
-				tt.args.loadFunc(r.Client)
+
+			var wpa *v1alpha1.WatermarkPodAutoscaler
+			if tt.args.wpaFunc != nil {
+				wpa = tt.args.wpaFunc(t)
+				// reset possible existing state
+				resetPromMetrics(wpa)
+				promMetrics := getPromMetrics(t, wpa)
+				assertZeroMetrics(t, promMetrics)
+
+				err := r.Client.Create(context.TODO(), wpa)
+				require.NoError(t, err)
+			}
+			if tt.args.datadogMonitorFunc != nil {
+				err := r.Client.Create(context.TODO(), tt.args.datadogMonitorFunc(t))
+				require.NoError(t, err)
 			}
 			got, err := r.Reconcile(context.TODO(), tt.args.request)
 			if (err != nil) != tt.wantErr {
@@ -395,6 +444,10 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				if err := tt.wantFunc(r.Client); err != nil {
 					t.Errorf("ReconcileWatermarkPodAutoscaler.Reconcile() wantFunc validation error: %v", err)
 				}
+			}
+
+			if wpa != nil {
+				assertWantPromMetrics(t, tt.wantPromMetrics, wpa)
 			}
 		})
 	}
@@ -533,6 +586,8 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				"restrictedScalingOk":      0,
 				// "transitionCountdownUp":    0,
 				// "transitionCountdownDown":  0,
+				"conditionsAbleToScale":    0,
+				"conditionsScalingLimited": 0,
 			},
 		},
 		{
@@ -587,6 +642,8 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				"restrictedScalingOk":      0,
 				// "transitionCountdownUp":    0,
 				// "transitionCountdownDown":  0,
+				"conditionsAbleToScale":    0,
+				"conditionsScalingLimited": 0,
 			},
 		},
 		{
@@ -641,6 +698,8 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				"restrictedScalingOk":      0,
 				// "transitionCountdownUp":    0,
 				// "transitionCountdownDown":  0,
+				"conditionsAbleToScale":    0,
+				"conditionsScalingLimited": 0,
 			},
 		},
 		{
@@ -750,6 +809,8 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				"restrictedScalingOk":      0,
 				// "transitionCountdownUp":    0.530732,
 				// "transitionCountdownDown":  0,
+				"conditionsAbleToScale":    1,
+				"conditionsScalingLimited": 1,
 			},
 		},
 		{
@@ -855,6 +916,8 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				"restrictedScalingOk":      0,
 				// "transitionCountdownUp":    0,
 				// "transitionCountdownDown":  0,
+				"conditionsAbleToScale":    1,
+				"conditionsScalingLimited": 1,
 			},
 		},
 		{
@@ -968,6 +1031,8 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				"restrictedScalingDownCap": 0.0,
 				"restrictedScalingUpCap":   0.0,
 				"restrictedScalingOk":      0.0,
+				"conditionsAbleToScale":    1.0,
+				"conditionsScalingLimited": 0.0,
 			},
 		},
 		{
@@ -1075,6 +1140,8 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				"restrictedScalingOk":      0.0,
 				"downscale":                1.0,
 				"upscale":                  0.0,
+				"conditionsAbleToScale":    1.0,
+				"conditionsScalingLimited": 0.0,
 			},
 		},
 		{
@@ -1182,6 +1249,8 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				"restrictedScalingOk":      0.0,
 				"downscale":                0.0,
 				"upscale":                  0.0,
+				"conditionsAbleToScale":    0.0,
+				"conditionsScalingLimited": 0.0,
 			},
 		},
 		{
@@ -1304,6 +1373,8 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				"restrictedScalingDownCap": 0,
 				// "restrictedScalingUpCap":   0,
 				// "restrictedScalingOk":      0,
+				"conditionsAbleToScale":    1,
+				"conditionsScalingLimited": 0,
 			},
 		},
 	}
@@ -2481,6 +2552,12 @@ func getRestrictedScalingLabels(wpa *v1alpha1.WatermarkPodAutoscaler, labelVal s
 	return labels
 }
 
+func getConditionLabels(wpa *v1alpha1.WatermarkPodAutoscaler, labelVal string) prometheus.Labels {
+	labels := getPromBaseLabels(wpa)
+	labels[conditionPromLabel] = labelVal
+	return labels
+}
+
 func getGaugeVal(t *testing.T, metric prometheus.Metric) float64 {
 	dtoMetric := dto.Metric{}
 	err := metric.Write(&dtoMetric)
@@ -2518,6 +2595,8 @@ func getMetricKeys() []string {
 		// no easy way to compare these
 		// "transitionCountdownUp",
 		// "transitionCountdownDown",
+		"conditionsAbleToScale",
+		"conditionsScalingLimited",
 	}
 }
 
@@ -2548,6 +2627,9 @@ func getPromMetrics(t *testing.T, wpa *v1alpha1.WatermarkPodAutoscaler) map[stri
 		"restrictedScalingDownCap": getGaugeVal(t, restrictedScaling.With(getRestrictedScalingLabels(wpa, "downscale_capping"))),
 		"restrictedScalingUpCap":   getGaugeVal(t, restrictedScaling.With(getRestrictedScalingLabels(wpa, "upscale_capping"))),
 		"restrictedScalingOk":      getGaugeVal(t, restrictedScaling.With(getRestrictedScalingLabels(wpa, "within_bounds"))),
+
+		"conditionsAbleToScale":    getGaugeVal(t, conditions.With(getConditionLabels(wpa, "able_to_scale"))),
+		"conditionsScalingLimited": getGaugeVal(t, conditions.With(getConditionLabels(wpa, "scaling_limited"))),
 	}
 }
 
@@ -2575,13 +2657,17 @@ func resetPromMetrics(wpa *v1alpha1.WatermarkPodAutoscaler) {
 	restrictedScaling.With(getRestrictedScalingLabels(wpa, "downscale_capping")).Set(0.0)
 	restrictedScaling.With(getRestrictedScalingLabels(wpa, "upscale_capping")).Set(0.0)
 	restrictedScaling.With(getRestrictedScalingLabels(wpa, "within_bounds")).Set(0.0)
+	conditions.With(getConditionLabels(wpa, "able_to_scale")).Set(0.0)
+	conditions.With(getConditionLabels(wpa, "scaling_limited")).Set(0.0)
 }
 
 func assertZeroMetrics(t *testing.T, actual map[string]float64) {
 	for _, key := range getMetricKeys() {
 		t.Log("comparing 0 for key", key, fmt.Sprintf("want %.1f actual %.1f", 0.0, actual[key]))
 
-		assert.InDelta(t, 0, actual[key], 0.00001)
+		actualValue, metricFound := actual[key]
+		assert.True(t, metricFound)
+		assert.InDelta(t, 0, actualValue, 0.00001)
 	}
 }
 
@@ -2591,7 +2677,9 @@ func assertWantPromMetrics(t *testing.T, want map[string]float64, wpa *v1alpha1.
 	// only look at the keys we care about by looping against the `want` map
 	for key := range want {
 		t.Log("comparing for key", key, fmt.Sprintf("want %.1f actual %.1f", want[key], actual[key]))
-		assert.InDelta(t, want[key], actual[key], 0.00001, "didn't match the values", key)
+		actualValue, metricFound := actual[key]
+		assert.True(t, metricFound)
+		assert.InDelta(t, want[key], actualValue, 0.00001, "didn't match the values", key)
 	}
 }
 
