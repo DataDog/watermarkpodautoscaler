@@ -47,7 +47,8 @@ type RecommenderClient interface {
 }
 
 type RecommenderClientImpl struct {
-	client *http.Client
+	client           *http.Client
+	certificateCache *tlsCertificateCache
 }
 
 type ReplicaRecommendationRequest struct {
@@ -77,7 +78,8 @@ func NewRecommenderClient(client *http.Client) RecommenderClient {
 		client.Transport = http.DefaultTransport
 	}
 	return &RecommenderClientImpl{
-		client: client,
+		client:           client,
+		certificateCache: newTLSCertificateCache(),
 	}
 }
 
@@ -88,7 +90,7 @@ func NewRecommenderClient(client *http.Client) RecommenderClient {
 func (r *RecommenderClientImpl) instrumentedClient(recommender string, tlsConfig *v1alpha1.TLSConfig) (*http.Client, error) {
 	client := *r.client
 	if transport, ok := client.Transport.(*http.Transport); ok && tlsConfig != nil {
-		tlsTransport, err := NewCertificateReloadingTransport(tlsConfig, transport)
+		tlsTransport, err := NewCertificateReloadingTransport(tlsConfig, r.certificateCache, transport)
 		if err != nil {
 			return nil, fmt.Errorf("impossible to setup TLS config: %w", err)
 		}
