@@ -11,26 +11,116 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
+	"time"
 
 	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
+)
+
+const (
+	certificateCacheTimeout    = 10 * time.Minute
+	certificateCacheLRUTimeout = 10 * time.Minute
 )
 
 type tlsTransport struct {
 	wrappedTransport *http.Transport
 }
 
+// tlsCertificateCache is a LRU cache to store in memory certificates
+// used for TLS connections
+type tlsCertificateCache struct {
+	mu    sync.RWMutex
+	cache map[string]*tlsCacheEntry
+}
+
+// tlsCacheEntry is an entry of the certificate cache
+type tlsCacheEntry struct {
+	certificate *tls.Certificate
+	lastUpdate  time.Time
+	lastAccess  time.Time
+}
+
+func newTLSCertificateCache() *tlsCertificateCache {
+	cache := &tlsCertificateCache{
+		cache: make(map[string]*tlsCacheEntry),
+	}
+	go cache.run()
+	return cache
+}
+
+func (c *tlsCertificateCache) GetClientCertificateReloadingFunc(certFile, keyFile string) func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+	return func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+		now := time.Now()
+		c.mu.RLock()
+		entry, ok := c.cache[certFile]
+		c.mu.RUnlock()
+
+		// there's a small race condition here, but it does no harm except
+		// possibly reloading the certificate from disk more than once at a given time
+		if !ok || entry.isExpired(now) || entry.isCertificateExpired(now) {
+			c.mu.Lock()
+			loadedCertificate, err := tls.LoadX509KeyPair(certFile, keyFile)
+			if err != nil {
+				return nil, err
+			}
+			entry = &tlsCacheEntry{
+				certificate: &loadedCertificate,
+				lastUpdate:  now,
+				lastAccess:  now,
+			}
+			c.cache[certFile] = entry
+			c.mu.Unlock()
+		} else {
+			c.mu.Lock()
+			entry.lastAccess = now
+			c.mu.Unlock()
+		}
+
+		return entry.certificate, nil
+	}
+}
+
+// run will evict cached certificate that haven't been accessed after certificateCacheLRUTimeout
+// to free memory.
+func (c *tlsCertificateCache) run() {
+	for range time.Tick(certificateCacheLRUTimeout) {
+		c.mu.Lock()
+		now := time.Now()
+		for key, entry := range c.cache {
+			if now.After(entry.lastAccess.Add(certificateCacheLRUTimeout)) {
+				delete(c.cache, key)
+			}
+		}
+		c.mu.Unlock()
+	}
+}
+
+func (c *tlsCacheEntry) isExpired(now time.Time) bool {
+	return now.After(c.lastUpdate.Add(certificateCacheTimeout))
+}
+
+func (c *tlsCacheEntry) isCertificateExpired(now time.Time) bool {
+	// Before Go 1.23 Certificate.Leaf is not populated after tls.LoadX509KeyPair
+	return c.certificate.Leaf != nil && now.After(c.certificate.Leaf.NotAfter)
+}
+
 func (t *tlsTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return t.wrappedTransport.RoundTrip(req)
 }
 
-func NewCertificateReloadingTransport(config *v1alpha1.TLSConfig, underlying *http.Transport) (http.RoundTripper, error) {
+func NewCertificateReloadingTransport(config *v1alpha1.TLSConfig, cache *tlsCertificateCache, underlying *http.Transport) (http.RoundTripper, error) {
 	tlsConfig, err := buildTLSConfig(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create TLS client: %w", err)
 	}
 
+	transport := &tlsTransport{
+		wrappedTransport: underlying,
+	}
+
+	tlsConfig.GetClientCertificate = cache.GetClientCertificateReloadingFunc(config.CertFile, config.KeyFile)
 	underlying.TLSClientConfig = tlsConfig
-	return &tlsTransport{wrappedTransport: underlying}, nil
+	return transport, nil
 }
 
 func buildTLSConfig(config *v1alpha1.TLSConfig) (*tls.Config, error) {
@@ -62,18 +152,11 @@ func buildTLSConfig(config *v1alpha1.TLSConfig) (*tls.Config, error) {
 		}
 	}
 
-	// reload client certificate on each client connection
-	getClientCertificate := func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
-		cert, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile)
-		return &cert, err
-	}
-
 	return &tls.Config{
-		MinVersion:           minVersion,
-		MaxVersion:           maxVersion,
-		ServerName:           config.ServerName,
-		GetClientCertificate: getClientCertificate,
-		RootCAs:              rootCA,
+		MinVersion: minVersion,
+		MaxVersion: maxVersion,
+		ServerName: config.ServerName,
+		RootCAs:    rootCA,
 	}, nil
 }
 
