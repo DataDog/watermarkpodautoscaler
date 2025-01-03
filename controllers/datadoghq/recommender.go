@@ -20,6 +20,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	autoscaling "github.com/DataDog/agent-payload/v5/autoscaling/kubernetes"
+
 	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 )
 
@@ -39,7 +40,8 @@ type RecommenderClient interface {
 }
 
 type RecommenderClientImpl struct {
-	client *http.Client
+	client           *http.Client
+	certificateCache *tlsCertificateCache
 }
 
 type ReplicaRecommendationRequest struct {
@@ -68,7 +70,8 @@ func NewRecommenderClient(client *http.Client) RecommenderClient {
 		client.Transport = http.DefaultTransport
 	}
 	return &RecommenderClientImpl{
-		client: client,
+		client:           client,
+		certificateCache: newTLSCertificateCache(),
 	}
 }
 
@@ -76,10 +79,17 @@ func NewRecommenderClient(client *http.Client) RecommenderClient {
 //
 // The returned client is a shallow copy of the original client, with the Transport field replaced
 // with an instrumented RoundTripper (which just wraps the original Transport).
-func (r *RecommenderClientImpl) instrumentedClient(recommender string) *http.Client {
+func (r *RecommenderClientImpl) instrumentedClient(recommender string, tlsConfig *v1alpha1.TLSConfig) (*http.Client, error) {
 	client := *r.client
+	if transport, ok := client.Transport.(*http.Transport); ok && tlsConfig != nil {
+		tlsTransport, err := NewCertificateReloadingTransport(tlsConfig, r.certificateCache, transport)
+		if err != nil {
+			return nil, fmt.Errorf("impossible to setup TLS config: %w", err)
+		}
+		client.Transport = tlsTransport
+	}
 	client.Transport = instrumentRoundTripper(recommender, client.Transport)
-	return &client
+	return &client, nil
 }
 
 func instrumentRoundTripper(recommender string, transport http.RoundTripper) http.RoundTripper {
@@ -130,7 +140,10 @@ func (r *RecommenderClientImpl) GetReplicaRecommendation(request *ReplicaRecomme
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client := r.instrumentedClient(request.Recommender.URL)
+	client, err := r.instrumentedClient(request.Recommender.URL, request.Recommender.TLSConfig)
+	if err != nil {
+		return nil, fmt.Errorf("error creating http client: %w", err)
+	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(payload))
 	httpReq.Header.Set("Content-Type", "application/json")
