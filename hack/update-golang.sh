@@ -25,12 +25,12 @@ if [[ ! -x "$YQ" ]]; then
     exit 1
 fi
 
-# Get Go version from go.mod and parse it
-GOVERSION=$(go mod edit --json | $JQ -r .Go)
+# Get Go version from go.work and parse it
+GOVERSION=$(go work edit --json | $JQ -r .Go)
 IFS='.' read -r major minor revision <<< "$GOVERSION"
 
 echo "----------------------------------------"
-echo "Golang version from go.mod: $GOVERSION"
+echo "Golang version from go.work: $GOVERSION"
 echo "- major: $major"
 echo "- minor: $minor"
 echo "- revision: $revision"
@@ -39,6 +39,15 @@ echo "----------------------------------------"
 # Define new minor version
 new_minor_version=$major.$minor
 
+# Update go.work
+go_work_file="$ROOT/go.work"
+if [[ -f $go_work_file ]]; then
+    echo "Processing $go_work_file..."
+    sed -i -E "s/^go [^ ].*/go $GOVERSION/gm" "$go_work_file"
+else
+    echo "Warning: $go_work_file not found, skipping."
+fi
+
 # Update devcontainer.json
 dev_container_file="$ROOT/.devcontainer/devcontainer.json"
 if [[ -f $dev_container_file ]]; then
@@ -46,15 +55,6 @@ if [[ -f $dev_container_file ]]; then
     sed -i -E "s|(mcr\.microsoft\.com/devcontainers/go:)[^\"]+|\11-$new_minor_version|" "$dev_container_file"
 else
     echo "Warning: $dev_container_file not found, skipping."
-fi
-
-# Update Dockerfile
-dockerfile_file="$ROOT/Dockerfile"
-if [[ -f $dockerfile_file ]]; then
-    echo "Processing $dockerfile_file..."
-    sed -i -E "s|(FROM golang:)[^ ]+|\1$new_minor_version|" "$dockerfile_file"
-else
-    echo "Warning: $dockerfile_file not found, skipping."
 fi
 
 # Update .gitlab-ci.yml
@@ -82,6 +82,6 @@ else
     echo "Warning: $actions_directory not found, skipping."
 fi
 
-# Run go mod tidy
-echo "Running go mod tidy..."
-go mod tidy
+# Run go work sync
+echo "Running go work sync..."
+go work sync
