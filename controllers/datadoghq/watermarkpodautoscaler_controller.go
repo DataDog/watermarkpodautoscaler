@@ -84,6 +84,7 @@ var datadogMonitorGVK = schema.GroupVersionKind{
 
 type Options struct {
 	SkipNotScalingEvents bool
+	TLSConfig            *datadoghqv1alpha1.TLSConfig
 }
 
 // WatermarkPodAutoscalerReconciler reconciles a WatermarkPodAutoscaler object
@@ -991,7 +992,7 @@ func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, wo
 		nil,
 		external_metrics.NewForConfigOrDie(podConfig),
 	)
-	rc := NewRecommenderClient(http.DefaultClient)
+	rc := NewRecommenderClient(http.DefaultClient, WithTLSConfig(r.Options.TLSConfig))
 	var stop chan struct{}
 	pl := initializePodInformer(podConfig, stop)
 
