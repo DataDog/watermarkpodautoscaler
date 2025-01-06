@@ -42,6 +42,20 @@ type RecommenderClient interface {
 type RecommenderClientImpl struct {
 	client           *http.Client
 	certificateCache *tlsCertificateCache
+	options          *RecommenderOptions
+}
+
+type RecommenderOption func(*RecommenderOptions)
+
+type RecommenderOptions struct {
+	tlsConfig *v1alpha1.TLSConfig
+}
+
+// WithTLSConfig sets a custom default TLS Config for all Recommender API requests
+func WithTLSConfig(tlsConfig *v1alpha1.TLSConfig) RecommenderOption {
+	return func(option *RecommenderOptions) {
+		option.tlsConfig = tlsConfig
+	}
 }
 
 type ReplicaRecommendationRequest struct {
@@ -65,13 +79,20 @@ type ReplicaRecommendationResponse struct {
 }
 
 // NewRecommenderClient returns a new RecommenderClient with the given http.Client.
-func NewRecommenderClient(client *http.Client) RecommenderClient {
+func NewRecommenderClient(client *http.Client, options ...RecommenderOption) RecommenderClient {
 	if client.Transport == nil {
 		client.Transport = http.DefaultTransport
 	}
+
+	recommenderSettings := &RecommenderOptions{}
+	for _, opt := range options {
+		opt(recommenderSettings)
+	}
+
 	return &RecommenderClientImpl{
 		client:           client,
 		certificateCache: newTLSCertificateCache(),
+		options:          recommenderSettings,
 	}
 }
 
@@ -140,7 +161,7 @@ func (r *RecommenderClientImpl) GetReplicaRecommendation(request *ReplicaRecomme
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client, err := r.instrumentedClient(request.Recommender.URL, request.Recommender.TLSConfig)
+	client, err := r.instrumentedClient(request.Recommender.URL, mergeTLSConfig(r.options.tlsConfig, request.Recommender.TLSConfig))
 	if err != nil {
 		return nil, fmt.Errorf("error creating http client: %w", err)
 	}

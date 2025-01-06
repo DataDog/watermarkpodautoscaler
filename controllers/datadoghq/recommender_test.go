@@ -223,6 +223,100 @@ func TestTLSRecommendation(t *testing.T) {
 	require.Equal(t, expectedResponse, response)
 }
 
+//nolint:errcheck
+func TestTLSRecommendationWithDefaults(t *testing.T) {
+	now := time.Now().UTC()
+	// Start a local HTTP server
+	server := httptest.NewTLSServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		// make sure client used for the request has client certificate
+		if len(req.TLS.PeerCertificates) == 0 {
+			rw.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		reply := &autoscaling.WorkloadRecommendationReply{
+			Timestamp:          timestamppb.New(now),
+			TargetReplicas:     6,
+			LowerBoundReplicas: proto.Int32(4),
+			UpperBoundReplicas: proto.Int32(6),
+			ObservedTargets:    nil,
+			Reason:             "an upscale was needed",
+		}
+		response, err := protojson.Marshal(reply)
+		if err != nil {
+			rw.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		rw.WriteHeader(http.StatusOK)
+		rw.Write(response)
+	}))
+	defer server.Close()
+
+	// generate a self-signed CA and generate a client certificate
+	// signed by this CA certificate
+	ca, caPEM, caKey, err := generateCA()
+	require.NoError(t, err)
+	clientCert, clientKey, err := generateClientCertificate(ca, caKey)
+	require.NoError(t, err)
+
+	// make the server actually verify our client certificate
+	clientRootCAs := x509.NewCertPool()
+	clientRootCAs.AppendCertsFromPEM(caPEM)
+	server.TLS.ClientCAs = clientRootCAs
+	server.TLS.ClientAuth = tls.RequireAndVerifyClientCert
+
+	// dump certificates to temporary disk
+	tmp, err := os.MkdirTemp("", "TestTLSClientOption")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmp)
+
+	// dump client certificate to a temporary folder for the recommender client
+	// to use them, and the server CA
+	os.WriteFile(filepath.Join(tmp, "cert.pem"), clientCert, 0700)
+	os.WriteFile(filepath.Join(tmp, "key.pem"), clientKey, 0700)
+	os.WriteFile(filepath.Join(tmp, "ca.pem"), pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: server.TLS.Certificates[0].Certificate[0],
+	}), 0700)
+
+	// inject a stub recommendation request
+	rc := NewRecommenderClient(http.DefaultClient, WithTLSConfig(&v1alpha1.TLSConfig{
+		CAFile:   filepath.Join(tmp, "ca.pem"),
+		CertFile: filepath.Join(tmp, "cert.pem"),
+		KeyFile:  filepath.Join(tmp, "key.pem"),
+	}))
+	request := &ReplicaRecommendationRequest{
+		Namespace: "test",
+		TargetRef: &v1alpha1.CrossVersionObjectReference{
+			Kind: "Deployment",
+			Name: "test-service",
+		},
+		TargetCluster: "",
+		Recommender: &v1alpha1.RecommenderSpec{
+			URL:           server.URL,
+			Settings:      map[string]string{},
+			TargetType:    "memory",
+			HighWatermark: resource.NewMilliQuantity(500, resource.DecimalSI),
+			LowWatermark:  resource.NewMilliQuantity(705, resource.DecimalSI),
+		},
+		DesiredReplicas:      0,
+		CurrentReplicas:      10,
+		CurrentReadyReplicas: 10,
+		MinReplicas:          10,
+		MaxReplicas:          30,
+	}
+	response, err := rc.GetReplicaRecommendation(request)
+	require.NoError(t, err)
+
+	expectedResponse := &ReplicaRecommendationResponse{
+		Replicas:           6,
+		ReplicasLowerBound: 4,
+		ReplicasUpperBound: 6,
+		Timestamp:          now,
+		Details:            "an upscale was needed",
+	}
+	require.Equal(t, expectedResponse, response)
+}
+
 func generateCA() (*x509.Certificate, []byte, *rsa.PrivateKey, error) {
 	ca := &x509.Certificate{
 		SerialNumber: big.NewInt(2019),

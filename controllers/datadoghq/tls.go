@@ -173,3 +173,36 @@ var TLSVersions = map[string]uint16{
 	"TLS11": tls.VersionTLS11,
 	"TLS10": tls.VersionTLS10,
 }
+
+// mergeTLSConfig will merge the default TLS config coming from the executable flags and those from the RecommenderSpec
+func mergeTLSConfig(defaults *v1alpha1.TLSConfig, recommender *v1alpha1.TLSConfig) *v1alpha1.TLSConfig {
+	if defaults == nil {
+		return recommender
+	}
+
+	if recommender == nil {
+		return defaults
+	}
+
+	merged := &v1alpha1.TLSConfig{
+		CAFile:             recommender.CAFile,
+		CertFile:           recommender.CertFile,
+		KeyFile:            recommender.KeyFile,
+		ServerName:         recommender.ServerName,
+		InsecureSkipVerify: recommender.InsecureSkipVerify,
+		MinVersion:         recommender.MinVersion,
+		MaxVersion:         recommender.MaxVersion,
+	}
+
+	if recommender.CAFile == "" {
+		merged.CAFile = defaults.CAFile
+	}
+	if recommender.CertFile == "" {
+		merged.CertFile = defaults.CertFile
+	}
+	if recommender.KeyFile == "" {
+		merged.KeyFile = defaults.KeyFile
+	}
+
+	return merged
+}
