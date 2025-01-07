@@ -20,6 +20,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	autoscaling "github.com/DataDog/agent-payload/v5/autoscaling/kubernetes"
+
 	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 )
 
@@ -177,10 +178,10 @@ func buildWorkloadRecommendationRequest(request *ReplicaRecommendationRequest) (
 	}
 	upperBound, lowerBound := float64(0), float64(0)
 	if reco.HighWatermark != nil {
-		upperBound = float64(reco.HighWatermark.MilliValue() / 1000.)
+		upperBound = float64(reco.HighWatermark.MilliValue()) / 1000.0
 	}
 	if reco.LowWatermark != nil {
-		lowerBound = float64(reco.LowWatermark.MilliValue() / 1000.)
+		lowerBound = float64(reco.LowWatermark.MilliValue()) / 1000.0
 	}
 	target := &autoscaling.WorkloadRecommendationTarget{
 		Type:        request.Recommender.TargetType,
