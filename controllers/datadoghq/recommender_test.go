@@ -11,7 +11,12 @@ import (
 	"testing"
 	"time"
 
+	autoscaling "github.com/DataDog/agent-payload/v5/autoscaling/kubernetes"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/api/resource"
+
+	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 )
 
 func NewMockRecommenderClient() *RecommenderClientMock {
@@ -51,4 +56,72 @@ func TestInstrumentation(t *testing.T) {
 		_ = resp.Body.Close()
 	}
 	require.Error(t, err)
+}
+
+func TestRecommenderTargetBuild(t *testing.T) {
+	request := &ReplicaRecommendationRequest{
+		Namespace: "test",
+		TargetRef: &v1alpha1.CrossVersionObjectReference{
+			Kind:       "Deployment",
+			Name:       "test",
+			APIVersion: "v1",
+		},
+		TargetCluster:        "test",
+		Recommender:          nil,
+		DesiredReplicas:      6,
+		CurrentReplicas:      6,
+		CurrentReadyReplicas: 6,
+		MinReplicas:          3,
+		MaxReplicas:          10,
+	}
+
+	tests := []struct {
+		name        string
+		recommender *v1alpha1.RecommenderSpec
+		expect      *autoscaling.WorkloadRecommendationTarget
+	}{
+		{
+			name: "< 1 high/low watermark",
+			recommender: &v1alpha1.RecommenderSpec{
+				URL:           "https://test",
+				Settings:      map[string]string{},
+				TargetType:    "memory",
+				HighWatermark: resource.NewMilliQuantity(800, resource.DecimalSI),
+				LowWatermark:  resource.NewMilliQuantity(200, resource.DecimalSI),
+			},
+			expect: &autoscaling.WorkloadRecommendationTarget{
+				Type:        "memory",
+				TargetValue: 0,
+				LowerBound:  0.2,
+				UpperBound:  0.8,
+			},
+		},
+		{
+			name: "Large high/low watermark",
+			recommender: &v1alpha1.RecommenderSpec{
+				URL:           "https://test",
+				Settings:      map[string]string{},
+				TargetType:    "memory",
+				HighWatermark: resource.NewQuantity(2500, resource.DecimalSI),
+				LowWatermark:  resource.NewQuantity(100, resource.DecimalSI),
+			},
+			expect: &autoscaling.WorkloadRecommendationTarget{
+				Type:        "memory",
+				TargetValue: 0,
+				LowerBound:  100,
+				UpperBound:  2500,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request.Recommender = tt.recommender
+			got, err := buildWorkloadRecommendationRequest(request)
+			require.NoError(t, err)
+			require.Len(t, got.GetTargets(), 1)
+			targets := got.GetTargets()
+			assert.Equal(t, tt.expect, targets[0])
+		})
+	}
 }
