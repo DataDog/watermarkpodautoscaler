@@ -25,12 +25,12 @@ if [[ ! -x "$YQ" ]]; then
     exit 1
 fi
 
-# Get Go version from go.mod and parse it
-GOVERSION=$(go mod edit --json | $JQ -r .Go)
+# Get Go version from go.work and parse it
+GOVERSION=$(go work edit --json | $JQ -r .Go)
 IFS='.' read -r major minor revision <<< "$GOVERSION"
 
 echo "----------------------------------------"
-echo "Golang version from go.mod: $GOVERSION"
+echo "Golang version from go.work: $GOVERSION"
 echo "- major: $major"
 echo "- minor: $minor"
 echo "- revision: $revision"
@@ -38,6 +38,15 @@ echo "----------------------------------------"
 
 # Define new minor version
 new_minor_version=$major.$minor
+
+# Update go.work
+go_work_file="$ROOT/go.work"
+if [[ -f $go_work_file ]]; then
+    echo "Processing $go_work_file..."
+    sed -i -E "s/^go [^ ].*/go $GOVERSION/gm" "$go_work_file"
+else
+    echo "Warning: $go_work_file not found, skipping."
+fi
 
 # Update devcontainer.json
 dev_container_file="$ROOT/.devcontainer/devcontainer.json"
@@ -82,6 +91,6 @@ else
     echo "Warning: $actions_directory not found, skipping."
 fi
 
-# Run go mod tidy
-echo "Running go mod tidy..."
-go mod tidy
+# Run go work sync
+echo "Running go work sync..."
+go work sync
