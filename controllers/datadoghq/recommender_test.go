@@ -11,17 +11,18 @@ import (
 	"testing"
 	"time"
 
-	autoscaling "github.com/DataDog/agent-payload/v5/autoscaling/kubernetes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/api/resource"
+
+	autoscaling "github.com/DataDog/agent-payload/v5/autoscaling/kubernetes"
 
 	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 )
 
 func NewMockRecommenderClient() *RecommenderClientMock {
 	return &RecommenderClientMock{
-		ReplicaRecommendationResponse{2, 1, 3, time.Now(), "because"},
+		ReplicaRecommendationResponse{2, 1, 3, time.Now(), "because", 0.5},
 		nil,
 	}
 }
