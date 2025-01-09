@@ -56,11 +56,12 @@ type ReplicaRecommendationRequest struct {
 }
 
 type ReplicaRecommendationResponse struct {
-	Replicas           int
-	ReplicasLowerBound int
-	ReplicasUpperBound int
-	Timestamp          time.Time
-	Details            string
+	Replicas            int
+	ReplicasLowerBound  int
+	ReplicasUpperBound  int
+	Timestamp           time.Time
+	Details             string
+	ObservedTargetValue float64
 }
 
 // NewRecommenderClient returns a new RecommenderClient with the given http.Client.
@@ -231,6 +232,11 @@ func buildReplicaRecommendationResponse(reply *autoscaling.WorkloadRecommendatio
 		ReplicasUpperBound: int(reply.GetUpperBoundReplicas()),
 		Timestamp:          reply.GetTimestamp().AsTime(),
 		Details:            reply.GetReason(),
+	}
+	// We expect a single target (since we support a single targets in the request)
+	// If we have it we can extract the observed target value
+	if reply.GetObservedTargets() != nil && len(reply.GetObservedTargets()) == 1 {
+		ret.ObservedTargetValue = reply.GetObservedTargets()[0].GetTargetValue()
 	}
 	return ret, nil
 }
