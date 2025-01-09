@@ -11,10 +11,11 @@ import (
 	"testing"
 	"time"
 
-	autoscaling "github.com/DataDog/agent-payload/v5/autoscaling/kubernetes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/api/resource"
+
+	autoscaling "github.com/DataDog/agent-payload/v5/autoscaling/kubernetes"
 
 	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 )
@@ -124,4 +125,21 @@ func TestRecommenderTargetBuild(t *testing.T) {
 			assert.Equal(t, tt.expect, targets[0])
 		})
 	}
+}
+
+func TestMetricNameForRecommender(t *testing.T) {
+	wpa := &v1alpha1.WatermarkPodAutoscaler{
+		Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+			Recommender: &v1alpha1.RecommenderSpec{
+				URL: "https://test",
+				Settings: map[string]string{
+					"lookbackWindowSeconds": "600",
+					"consumerGroup":         "my_app",
+				},
+				TargetType: "memory",
+			},
+		},
+	}
+	metricName := metricNameForRecommender(&wpa.Spec)
+	assert.Equal(t, "recommender{targetType:memory,consumerGroup:my_app,lookbackWindowSeconds:600}", metricName)
 }
