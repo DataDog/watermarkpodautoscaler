@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -29,8 +30,14 @@ func metricNameForRecommender(spec *v1alpha1.WatermarkPodAutoscalerSpec) string 
 		return ""
 	}
 	args := fmt.Sprintf("targetType:%s", spec.Recommender.TargetType)
-	for k, v := range spec.Recommender.Settings {
-		args += fmt.Sprintf(",%s:%s", k, v)
+	settings := make([]string, 0, len(spec.Recommender.Settings))
+	for k := range spec.Recommender.Settings {
+		settings = append(settings, k)
+	}
+	sort.Strings(settings)
+
+	for _, k := range settings {
+		args += fmt.Sprintf(",%s:%s", k, spec.Recommender.Settings[k])
 	}
 	return fmt.Sprintf("recommender{%s}", args)
 }
