@@ -323,10 +323,10 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(logger logr.Logger, target *a
 
 	// utilization is used to propagate the observed utilization to the HPA (and related metrics). Since we don't have a real utilization (the recommender
 	// doesn't provide it), we need to compute it from the recommendation. FIXME
-	utilization := int64(reco.ObservedTargetValue * 1000) // We need to multiply by 1000 to convert it to milliValue
+	utilizationQuantity := int64(reco.ObservedTargetValue * 1000) // We need to multiply by 1000 to convert it to milliValue
 	replicaCount, metricPos := adjustReplicaCount(logger, target.Status.Replicas, currentReadyReplicas, wpa, metricName, int32(reco.Replicas), int32(reco.ReplicasLowerBound), int32(reco.ReplicasUpperBound))
 	logger.Info("Replicas Recommender replica calculation", "metricName", metricName, "replicaCount", replicaCount, "utilizationQuantity", utilizationQuantity, "timestamp", reco.Timestamp, "currentReadyReplicas", currentReadyReplicas)
-	return ReplicaCalculation{replicaCount, utilization, reco.Timestamp, currentReadyReplicas, metricPos}, nil
+	return ReplicaCalculation{replicaCount, utilizationQuantity, reco.Timestamp, currentReadyReplicas, metricPos}, nil
 }
 
 func getReplicaCountUpscale(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, highMark *resource.Quantity) (replicaCount int32) {
