@@ -345,16 +345,13 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 		} else {
 			promLabelsForWpa[metricNamePromLabel] = metricSpec.External.MetricName
 		}
-
-		lowwm.Delete(promLabelsForWpa)
-		lowwmV2.Delete(promLabelsForWpa)
-		replicaProposal.Delete(promLabelsForWpa)
-		highwm.Delete(promLabelsForWpa)
-		highwmV2.Delete(promLabelsForWpa)
-		value.Delete(promLabelsForWpa)
-		upscale.Delete(promLabelsForWpa)
-		downscale.Delete(promLabelsForWpa)
+		cleanupForLabels(promLabelsForWpa)
 	}
+	if wpa.Spec.Recommender != nil {
+		promLabelsForWpa[metricNamePromLabel] = metricNameForRecommender(&wpa.Spec)
+		cleanupForLabels(promLabelsForWpa)
+	}
+
 	// TODO this only be cleaned up as part of the finalizer.
 	// Until the feature is moved to the Spec, updating the annotation to disable the feature will not clean up the metric.
 	lifecycleControlStatus.Delete(prometheus.Labels{
@@ -364,6 +361,17 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 		monitorName:           wpa.Name,
 		monitorNamespace:      wpa.Namespace,
 	})
+}
+
+func cleanupForLabels(labels prometheus.Labels) {
+	lowwm.Delete(labels)
+	lowwmV2.Delete(labels)
+	replicaProposal.Delete(labels)
+	highwm.Delete(labels)
+	highwmV2.Delete(labels)
+	value.Delete(labels)
+	upscale.Delete(labels)
+	downscale.Delete(labels)
 }
 
 func getPrometheusLabels(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) prometheus.Labels {
