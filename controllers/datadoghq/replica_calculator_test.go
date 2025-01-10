@@ -52,6 +52,7 @@ type replicaCalcTestCase struct {
 	timestamp        time.Time
 	readyReplicas    int32
 	pos              metricPosition
+	details          string
 
 	namespace           string
 	metric              *metricInfo
@@ -291,6 +292,7 @@ func (tc *replicaCalcTestCase) runTest(t *testing.T) {
 	assert.Equal(t, tc.readyReplicas, replicaCalculation.readyReplicas, "ready replicas should be as expected")
 	assert.Equal(t, tc.pos.isAbove, replicaCalculation.pos.isAbove, "metric should be above the Watermark")
 	assert.Equal(t, tc.pos.isBelow, replicaCalculation.pos.isBelow, "metric should be below the Watermark")
+	assert.Equal(t, tc.details, replicaCalculation.details, "details should be as expected")
 }
 
 func TestReplicaCalcDisjointResourcesMetrics(t *testing.T) {
@@ -1788,8 +1790,9 @@ func TestReplicaCalcWithRecommender(t *testing.T) {
 				isAbove: false,
 				isBelow: false,
 			},
-			scale: makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
-			wpa:   wpa,
+			details: "Fake",
+			scale:   makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+			wpa:     wpa,
 			recommenderResponse: &ReplicaRecommendationResponse{
 				Replicas:           3,
 				ReplicasLowerBound: 2,
@@ -1807,8 +1810,9 @@ func TestReplicaCalcWithRecommender(t *testing.T) {
 				isAbove: true,
 				isBelow: false,
 			},
-			scale: makeScale(testDeploymentName, 1, map[string]string{"name": "test-pod"}),
-			wpa:   wpa,
+			details: "Fake",
+			scale:   makeScale(testDeploymentName, 1, map[string]string{"name": "test-pod"}),
+			wpa:     wpa,
 			recommenderResponse: &ReplicaRecommendationResponse{
 				Replicas:           5,
 				ReplicasLowerBound: 2,
@@ -1826,8 +1830,9 @@ func TestReplicaCalcWithRecommender(t *testing.T) {
 				isAbove: false,
 				isBelow: true,
 			},
-			scale: makeScale(testDeploymentName, 10, map[string]string{"name": "test-pod"}),
-			wpa:   wpa,
+			details: "Fake",
+			scale:   makeScale(testDeploymentName, 10, map[string]string{"name": "test-pod"}),
+			wpa:     wpa,
 			recommenderResponse: &ReplicaRecommendationResponse{
 				Replicas:           2,
 				ReplicasLowerBound: 2,

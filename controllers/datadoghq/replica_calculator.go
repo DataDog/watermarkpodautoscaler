@@ -46,6 +46,9 @@ type ReplicaCalculation struct {
 	timestamp     time.Time
 	readyReplicas int32
 	pos           metricPosition
+	details       string
+}
+
 func EmptyReplicaCalculation() ReplicaCalculation {
 	return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}, ""}
 }
@@ -158,14 +161,14 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 			"metricName", metricName,
 		)
 		// We artificially set the metricPos between the watermarks to force the controller not to scale the target.
-		return ReplicaCalculation{currentReadyReplicas, 0, timestamp, currentReadyReplicas, metricPosition{false, false}}, nil
+		return ReplicaCalculation{currentReadyReplicas, 0, timestamp, currentReadyReplicas, metricPosition{false, false}, ""}, nil
 	}
 
 	// if the average algorithm is used, the metrics retrieved has to be divided by the number of available replicas.
 	adjustedUsage := float64(sum) / averaged
 	replicaCount, utilizationQuantity, metricPos := getReplicaCount(logger, target.Status.Replicas, currentReadyReplicas, wpa, metricName, adjustedUsage, metric.External.LowWatermark, metric.External.HighWatermark)
 	logger.Info("External Metric replica calculation", "metricName", metricName, "replicaCount", replicaCount, "utilizationQuantity", utilizationQuantity, "timestamp", timestamp, "currentReadyReplicas", currentReadyReplicas)
-	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp, currentReadyReplicas, metricPos}, nil
+	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp, currentReadyReplicas, metricPos, ""}, nil
 }
 
 // GetResourceReplicas calculates the desired replica count based on a target resource utilization percentage
@@ -241,7 +244,7 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 
 	replicaCount, utilizationQuantity, metricPos := getReplicaCount(logger, target.Status.Replicas, int32(readyPodCount), wpa, string(resourceName), adjustedUsage, metric.Resource.LowWatermark, metric.Resource.HighWatermark)
 	logger.Info("Resource Metric replica calculation", "metricName", metric.Resource.Name, "replicaCount", replicaCount, "utilizationQuantity", utilizationQuantity, "timestamp", timestamp, "currentReadyReplicas", int32(readyPodCount))
-	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp, int32(readyPodCount), metricPos}, nil
+	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp, int32(readyPodCount), metricPos, ""}, nil
 }
 
 // GetRecommenderReplicas contacts an external replica recommender to get the desired replica count
@@ -320,12 +323,12 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(logger logr.Logger, target *a
 			"metricName", metricName,
 		)
 		// We artificially set the metricPos between the watermarks to force the controller not to scale the target.
-		return ReplicaCalculation{currentReadyReplicas, 0, reco.Timestamp, currentReadyReplicas, metricPosition{false, false}}, nil
+		return ReplicaCalculation{currentReadyReplicas, 0, reco.Timestamp, currentReadyReplicas, metricPosition{false, false}, ""}, nil
 	}
 
 	replicaCount, utilizationQuantity, metricPos := adjustReplicaCount(logger, target.Status.Replicas, currentReadyReplicas, wpa, metricName, int32(reco.Replicas), int32(reco.ReplicasLowerBound), int32(reco.ReplicasUpperBound))
 	logger.Info("Replicas Recommender replica calculation", "metricName", metricName, "replicaCount", replicaCount, "utilizationQuantity", utilizationQuantity, "timestamp", reco.Timestamp, "currentReadyReplicas", currentReadyReplicas)
-	return ReplicaCalculation{replicaCount, utilizationQuantity, reco.Timestamp, currentReadyReplicas, metricPos}, nil
+	return ReplicaCalculation{replicaCount, utilizationQuantity, reco.Timestamp, currentReadyReplicas, metricPos, reco.Details}, nil
 }
 
 func getReplicaCountUpscale(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, highMark *resource.Quantity) (replicaCount int32) {
