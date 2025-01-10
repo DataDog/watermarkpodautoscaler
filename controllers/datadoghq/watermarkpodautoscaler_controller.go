@@ -585,9 +585,9 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicas(logger logr.Logger, w
 	replicaMax.With(labels).Set(float64(wpa.Spec.MaxReplicas))
 
 	var isAbove, isBelow bool
-
+	var reason string
 	if wpa.Spec.Recommender != nil {
-		replicas, metric, statuses, timestamp, readyReplicas, isAbove, isBelow, err = r.computeReplicasWithRecommender(logger, wpa, scale)
+		replicas, metric, statuses, timestamp, readyReplicas, isAbove, isBelow, reason, err = r.computeReplicasWithRecommender(logger, wpa, scale)
 	} else {
 		replicas, metric, statuses, timestamp, readyReplicas, isAbove, isBelow, err = r.computeReplicasForMetrics(logger, wpa, scale)
 	}
@@ -607,7 +607,11 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicas(logger logr.Logger, w
 	stableRegime = !isAbove && !isBelow
 	setCondition(wpa, datadoghqv1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark, condAbove, aboveHighWatermarkReason, aboveHighWatermarkAllowedMessage)
 	setCondition(wpa, datadoghqv1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark, condBelow, belowLowWatermarkReason, belowLowWatermarkAllowedMessage)
-	setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionTrue, datadoghqv1alpha1.ConditionValidMetricFound, "the WPA was able to successfully calculate a replica count from %s", metric)
+	if reason != "" {
+		setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionTrue, datadoghqv1alpha1.ConditionValidMetricFound, "the WPA was able to successfully calculate a replica count from %s because: %s", metric, reason)
+	} else {
+		setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionTrue, datadoghqv1alpha1.ConditionValidMetricFound, "the WPA was able to successfully calculate a replica count from %s", metric)
+	}
 
 	return replicas, metric, statuses, timestamp, readyReplicas, stableRegime, err
 }
@@ -738,11 +742,11 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 	return replicas, metric, statuses, timestamp, readyReplicas, isAbove, isBelow, nil
 }
 
-func (r *WatermarkPodAutoscalerReconciler) computeReplicasWithRecommender(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, readyReplicas int32, isAbove, isBelow bool, err error) {
+func (r *WatermarkPodAutoscalerReconciler) computeReplicasWithRecommender(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, readyReplicas int32, isAbove, isBelow bool, reason string, err error) {
 	var recommenderSpec = wpa.Spec.Recommender
 
 	if recommenderSpec == nil {
-		return 0, "", nil, time.Time{}, 0, false, false, fmt.Errorf("recommender spec is nil")
+		return 0, "", nil, time.Time{}, 0, false, false, "", fmt.Errorf("recommender spec is nil")
 	}
 
 	statuses = make([]autoscalingv2.MetricStatus, 0)
@@ -761,7 +765,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasWithRecommender(logger
 		replicaProposal.Delete(promLabelsForWpaWithMetricName)
 		r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedGetResourceMetric, errMetricsServer.Error())
 		setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedGetResourceMetric, "the WPA was unable to compute the replica count: %v", errMetricsServer)
-		return 0, "", nil, time.Time{}, 0, false, false, fmt.Errorf("failed to get the recommendation from %s: %w", recommenderSpec.URL, errMetricsServer)
+		return 0, "", nil, time.Time{}, 0, false, false, "", fmt.Errorf("failed to get the recommendation from %s: %w", recommenderSpec.URL, errMetricsServer)
 	}
 
 	lowwm.With(promLabelsForWpaWithMetricName).Set(float64(recommenderSpec.LowWatermark.MilliValue()))
@@ -779,7 +783,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasWithRecommender(logger
 	}
 
 	statuses = append(statuses, status)
-	return replicaCalculation.replicaCount, recommenderName, statuses, replicaCalculation.timestamp, replicaCalculation.readyReplicas, replicaCalculation.pos.isAbove, replicaCalculation.pos.isBelow, err
+	return replicaCalculation.replicaCount, recommenderName, statuses, replicaCalculation.timestamp, replicaCalculation.readyReplicas, replicaCalculation.pos.isAbove, replicaCalculation.pos.isBelow, replicaCalculation.details, err
 }
 
 // setCondition sets the specific condition type on the given WPA to the specified value with the given reason
