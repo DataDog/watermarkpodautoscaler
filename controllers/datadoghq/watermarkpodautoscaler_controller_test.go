@@ -1447,7 +1447,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicas(t *testing.T) {
 			},
 			wantFunc: func(metric *v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 				// With 8 replicas, the avg algo and an external value returned of 100 we have 10 replicas and the utilization of 10
-				return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, fmt.Errorf("unable to fetch metrics from external metrics API")
+				return EmptyReplicaCalculation(), fmt.Errorf("unable to fetch metrics from external metrics API")
 			},
 			err: fmt.Errorf("failed to compute replicas based on external metric deadbeef: unable to fetch metrics from external metrics API"),
 		},
@@ -1554,7 +1554,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicas(t *testing.T) {
 				scale: &autoscalingv1.Scale{Spec: autoscalingv1.ScaleSpec{Replicas: 8}, Status: autoscalingv1.ScaleStatus{Replicas: 8}},
 			},
 			wantFunc: func(metric *v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
-				return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, fmt.Errorf("recommender failed")
+				return EmptyReplicaCalculation(), fmt.Errorf("recommender failed")
 			},
 			err: fmt.Errorf("failed to get the recommendation from http://recommender:8080: recommender failed"),
 		},
@@ -1590,21 +1590,21 @@ func (f *fakeReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, ta
 	if f.replicasFunc != nil {
 		return f.replicasFunc(&metric, wpa)
 	}
-	return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, nil
+	return EmptyReplicaCalculation(), nil
 }
 
 func (f *fakeReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *autoscalingv1.Scale, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 	if f.replicasFunc != nil {
 		return f.replicasFunc(&metric, wpa)
 	}
-	return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, nil
+	return EmptyReplicaCalculation(), nil
 }
 
 func (f *fakeReplicaCalculator) GetRecommenderReplicas(logger logr.Logger, target *autoscalingv1.Scale, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
 	if f.replicasFunc != nil {
 		return f.replicasFunc(nil, wpa)
 	}
-	return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, nil
+	return EmptyReplicaCalculation(), nil
 }
 
 var _ ReplicaCalculatorItf = &fakeReplicaCalculator{}

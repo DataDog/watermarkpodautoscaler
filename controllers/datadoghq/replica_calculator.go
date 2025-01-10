@@ -46,6 +46,8 @@ type ReplicaCalculation struct {
 	timestamp     time.Time
 	readyReplicas int32
 	pos           metricPosition
+func EmptyReplicaCalculation() ReplicaCalculation {
+	return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}, ""}
 }
 
 // metricPosition is used to store whether the end value associated with a metric is above/below the Watermarks
@@ -141,7 +143,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 		labelsWithReason[reasonPromLabel] = withinBoundsPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
 		value.Delete(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: metricName})
-		return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, fmt.Errorf("unable to get external metric %s/%s/%+v: %s", wpa.Namespace, metricName, selector, err) //nolint:errorlint
+		return EmptyReplicaCalculation(), fmt.Errorf("unable to get external metric %s/%s/%+v: %s", wpa.Namespace, metricName, selector, err) //nolint:errorlint
 	}
 	logger.V(2).Info("Metrics from the External Metrics Provider", "metrics", metrics)
 
@@ -173,7 +175,7 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 	selector := metric.Resource.MetricSelector
 	labelSelector, err := metav1.LabelSelectorAsSelector(selector)
 	if err != nil {
-		return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, err
+		return EmptyReplicaCalculation(), err
 	}
 
 	namespace := wpa.Namespace
@@ -194,22 +196,22 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 		labelsWithReason[reasonPromLabel] = withinBoundsPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
 		value.Delete(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: string(resourceName)})
-		return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, fmt.Errorf("unable to get resource metric %s/%s/%+v: %s", wpa.Namespace, resourceName, selector, err) //nolint:errorlint
+		return EmptyReplicaCalculation(), fmt.Errorf("unable to get resource metric %s/%s/%+v: %s", wpa.Namespace, resourceName, selector, err) //nolint:errorlint
 	}
 	logger.Info("Metrics from the Resource Client", "metrics", metrics)
 
 	lbl, err := labels.Parse(target.Status.Selector)
 	if err != nil {
-		return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, fmt.Errorf("could not parse the labels of the target: %w", err)
+		return EmptyReplicaCalculation(), fmt.Errorf("could not parse the labels of the target: %w", err)
 	}
 
 	podList, err := c.podLister.Pods(namespace).List(lbl)
 	if err != nil {
-		return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, fmt.Errorf("unable to get pods while calculating replica count: %w", err)
+		return EmptyReplicaCalculation(), fmt.Errorf("unable to get pods while calculating replica count: %w", err)
 	}
 
 	if len(podList) == 0 {
-		return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, fmt.Errorf("no pods returned by selector while calculating replica count")
+		return EmptyReplicaCalculation(), fmt.Errorf("no pods returned by selector while calculating replica count")
 	}
 	readiness := time.Duration(wpa.Spec.ReadinessDelaySeconds) * time.Second
 	readyPods, ignoredPods := groupPods(logger, podList, target.Name, metrics, resourceName, readiness)
@@ -223,7 +225,7 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 
 	removeMetricsForPods(metrics, ignoredPods)
 	if len(metrics) == 0 {
-		return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, fmt.Errorf("did not receive metrics for any ready pods")
+		return EmptyReplicaCalculation(), fmt.Errorf("did not receive metrics for any ready pods")
 	}
 
 	averaged := 1.0
@@ -307,7 +309,7 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(logger logr.Logger, target *a
 		labelsWithReason[reasonPromLabel] = withinBoundsPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
 		value.Delete(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: metricName})
-		return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, fmt.Errorf("unable to get external recommendation %+v: %s", metricName, err) //nolint:errorlint
+		return EmptyReplicaCalculation(), fmt.Errorf("unable to get external recommendation %+v: %s", metricName, err) //nolint:errorlint
 	}
 	logger.V(2).Info("Replica recommendation from the external replicas recommender", "replicas", reco.Replicas, "timestamp", reco.Timestamp, "details", reco.Details, "replicasLowerBound", reco.ReplicasLowerBound, "replicasUpperBound", reco.ReplicasUpperBound)
 
