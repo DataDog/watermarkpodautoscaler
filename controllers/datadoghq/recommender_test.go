@@ -22,7 +22,7 @@ import (
 
 func NewMockRecommenderClient() *RecommenderClientMock {
 	return &RecommenderClientMock{
-		ReplicaRecommendationResponse{2, 1, 3, time.Now(), "because"},
+		ReplicaRecommendationResponse{2, 1, 3, time.Now(), "because", 0.5},
 		nil,
 	}
 }

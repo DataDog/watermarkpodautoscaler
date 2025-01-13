@@ -774,7 +774,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasWithRecommender(logger
 		Type: autoscalingv2.ResourceMetricSourceType,
 		Resource: &autoscalingv2.ResourceMetricStatus{
 			Name:                corev1.ResourceName(recommenderName),
-			CurrentAverageValue: *resource.NewMilliQuantity(int64(replicaCalculation.replicaCount), resource.DecimalSI),
+			CurrentAverageValue: *resource.NewMilliQuantity(replicaCalculation.utilization, resource.DecimalSI),
 		},
 	}
 
