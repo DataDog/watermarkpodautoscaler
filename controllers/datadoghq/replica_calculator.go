@@ -46,6 +46,11 @@ type ReplicaCalculation struct {
 	timestamp     time.Time
 	readyReplicas int32
 	pos           metricPosition
+	details       string
+}
+
+func EmptyReplicaCalculation() ReplicaCalculation {
+	return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}, ""}
 }
 
 // metricPosition is used to store whether the end value associated with a metric is above/below the Watermarks
@@ -141,7 +146,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 		labelsWithReason[reasonPromLabel] = withinBoundsPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
 		value.Delete(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: metricName})
-		return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, fmt.Errorf("unable to get external metric %s/%s/%+v: %s", wpa.Namespace, metricName, selector, err) //nolint:errorlint
+		return EmptyReplicaCalculation(), fmt.Errorf("unable to get external metric %s/%s/%+v: %s", wpa.Namespace, metricName, selector, err) //nolint:errorlint
 	}
 	logger.V(2).Info("Metrics from the External Metrics Provider", "metrics", metrics)
 
@@ -156,14 +161,14 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 			"metricName", metricName,
 		)
 		// We artificially set the metricPos between the watermarks to force the controller not to scale the target.
-		return ReplicaCalculation{currentReadyReplicas, 0, timestamp, currentReadyReplicas, metricPosition{false, false}}, nil
+		return ReplicaCalculation{currentReadyReplicas, 0, timestamp, currentReadyReplicas, metricPosition{false, false}, ""}, nil
 	}
 
 	// if the average algorithm is used, the metrics retrieved has to be divided by the number of available replicas.
 	adjustedUsage := float64(sum) / averaged
 	replicaCount, utilizationQuantity, metricPos := getReplicaCount(logger, target.Status.Replicas, currentReadyReplicas, wpa, metricName, adjustedUsage, metric.External.LowWatermark, metric.External.HighWatermark)
 	logger.Info("External Metric replica calculation", "metricName", metricName, "replicaCount", replicaCount, "utilizationQuantity", utilizationQuantity, "timestamp", timestamp, "currentReadyReplicas", currentReadyReplicas)
-	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp, currentReadyReplicas, metricPos}, nil
+	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp, currentReadyReplicas, metricPos, ""}, nil
 }
 
 // GetResourceReplicas calculates the desired replica count based on a target resource utilization percentage
@@ -173,7 +178,7 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 	selector := metric.Resource.MetricSelector
 	labelSelector, err := metav1.LabelSelectorAsSelector(selector)
 	if err != nil {
-		return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, err
+		return EmptyReplicaCalculation(), err
 	}
 
 	namespace := wpa.Namespace
@@ -194,22 +199,22 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 		labelsWithReason[reasonPromLabel] = withinBoundsPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
 		value.Delete(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: string(resourceName)})
-		return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, fmt.Errorf("unable to get resource metric %s/%s/%+v: %s", wpa.Namespace, resourceName, selector, err) //nolint:errorlint
+		return EmptyReplicaCalculation(), fmt.Errorf("unable to get resource metric %s/%s/%+v: %s", wpa.Namespace, resourceName, selector, err) //nolint:errorlint
 	}
 	logger.Info("Metrics from the Resource Client", "metrics", metrics)
 
 	lbl, err := labels.Parse(target.Status.Selector)
 	if err != nil {
-		return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, fmt.Errorf("could not parse the labels of the target: %w", err)
+		return EmptyReplicaCalculation(), fmt.Errorf("could not parse the labels of the target: %w", err)
 	}
 
 	podList, err := c.podLister.Pods(namespace).List(lbl)
 	if err != nil {
-		return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, fmt.Errorf("unable to get pods while calculating replica count: %w", err)
+		return EmptyReplicaCalculation(), fmt.Errorf("unable to get pods while calculating replica count: %w", err)
 	}
 
 	if len(podList) == 0 {
-		return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, fmt.Errorf("no pods returned by selector while calculating replica count")
+		return EmptyReplicaCalculation(), fmt.Errorf("no pods returned by selector while calculating replica count")
 	}
 	readiness := time.Duration(wpa.Spec.ReadinessDelaySeconds) * time.Second
 	readyPods, ignoredPods := groupPods(logger, podList, target.Name, metrics, resourceName, readiness)
@@ -223,7 +228,7 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 
 	removeMetricsForPods(metrics, ignoredPods)
 	if len(metrics) == 0 {
-		return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, fmt.Errorf("did not receive metrics for any ready pods")
+		return EmptyReplicaCalculation(), fmt.Errorf("did not receive metrics for any ready pods")
 	}
 
 	averaged := 1.0
@@ -239,7 +244,7 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 
 	replicaCount, utilizationQuantity, metricPos := getReplicaCount(logger, target.Status.Replicas, int32(readyPodCount), wpa, string(resourceName), adjustedUsage, metric.Resource.LowWatermark, metric.Resource.HighWatermark)
 	logger.Info("Resource Metric replica calculation", "metricName", metric.Resource.Name, "replicaCount", replicaCount, "utilizationQuantity", utilizationQuantity, "timestamp", timestamp, "currentReadyReplicas", int32(readyPodCount))
-	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp, int32(readyPodCount), metricPos}, nil
+	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp, int32(readyPodCount), metricPos, ""}, nil
 }
 
 // GetRecommenderReplicas contacts an external replica recommender to get the desired replica count
@@ -307,7 +312,7 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(logger logr.Logger, target *a
 		labelsWithReason[reasonPromLabel] = withinBoundsPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
 		value.Delete(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: metricName})
-		return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}}, fmt.Errorf("unable to get external recommendation %+v: %s", metricName, err) //nolint:errorlint
+		return EmptyReplicaCalculation(), fmt.Errorf("unable to get external recommendation %+v: %s", metricName, err) //nolint:errorlint
 	}
 	logger.V(2).Info("Replica recommendation from the external replicas recommender", "replicas", reco.Replicas, "timestamp", reco.Timestamp, "details", reco.Details, "replicasLowerBound", reco.ReplicasLowerBound, "replicasUpperBound", reco.ReplicasUpperBound)
 
@@ -318,13 +323,13 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(logger logr.Logger, target *a
 			"metricName", metricName,
 		)
 		// We artificially set the metricPos between the watermarks to force the controller not to scale the target.
-		return ReplicaCalculation{currentReadyReplicas, 0, reco.Timestamp, currentReadyReplicas, metricPosition{false, false}}, nil
+		return ReplicaCalculation{currentReadyReplicas, 0, reco.Timestamp, currentReadyReplicas, metricPosition{false, false}, ""}, nil
 	}
 
 	utilizationQuantity := int64(reco.ObservedTargetValue * 1000) // We need to multiply by 1000 to convert it to milliValue
 	replicaCount, metricPos := adjustReplicaCount(logger, target.Status.Replicas, currentReadyReplicas, wpa, metricName, int32(reco.Replicas), int32(reco.ReplicasLowerBound), int32(reco.ReplicasUpperBound))
 	logger.Info("Replicas Recommender replica calculation", "metricName", metricName, "replicaCount", replicaCount, "utilizationQuantity", utilizationQuantity, "timestamp", reco.Timestamp, "currentReadyReplicas", currentReadyReplicas)
-	return ReplicaCalculation{replicaCount, utilizationQuantity, reco.Timestamp, currentReadyReplicas, metricPos}, nil
+	return ReplicaCalculation{replicaCount, utilizationQuantity, reco.Timestamp, currentReadyReplicas, metricPos, reco.Details}, nil
 }
 
 func getReplicaCountUpscale(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, highMark *resource.Quantity) (replicaCount int32) {
