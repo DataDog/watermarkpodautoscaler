@@ -29,10 +29,10 @@ spec:
     - jsonPath: .status.currentMetrics[*].external.currentValue..
       name: value
       type: string
-    - jsonPath: .spec.metrics[*].external.highWatermark..
+    - jsonPath: .spec..highWatermark
       name: high watermark
       type: string
-    - jsonPath: .spec.metrics[*].external.lowWatermark..
+    - jsonPath: .spec..lowWatermark
       name: low watermark
       type: string
     - jsonPath: .metadata.creationTimestamp
