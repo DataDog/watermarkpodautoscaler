@@ -772,9 +772,11 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasWithRecommender(logger
 
 	status := autoscalingv2.MetricStatus{
 		Type: autoscalingv2.ResourceMetricSourceType,
-		Resource: &autoscalingv2.ResourceMetricStatus{
-			Name:                corev1.ResourceName(recommenderName),
-			CurrentAverageValue: *resource.NewMilliQuantity(replicaCalculation.utilization, resource.DecimalSI),
+		// This is not exactly an external metric, but this will be used to display the recommendation in the CLI.
+		External: &autoscalingv2.ExternalMetricStatus{
+			MetricSelector: &metav1.LabelSelector{},
+			MetricName:     recommenderName,
+			CurrentValue:   *resource.NewMilliQuantity(replicaCalculation.utilization, resource.DecimalSI),
 		},
 	}
 
