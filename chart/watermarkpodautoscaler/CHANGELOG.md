@@ -1,5 +1,9 @@
 # WatermarkPodAutoscaler Helm chart changelog
 
+## v0.5.1
+
+* CustomResourceDefinition update to fix display of high/low watermarks in some specific cases
+
 ## v0.5
 
 > [!IMPORTANT]
