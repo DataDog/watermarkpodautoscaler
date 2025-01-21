@@ -58,13 +58,14 @@ func (c *tlsCertificateCache) GetClientCertificateReloadingFunc(certFile, keyFil
 		// there's a small race condition here, but it does no harm except
 		// possibly reloading the certificate from disk more than once at a given time
 		if !ok || entry.isExpired(now) || entry.isCertificateExpired(now) {
-			c.mu.Lock()
-			loadedCertificate, err := tls.LoadX509KeyPair(certFile, keyFile)
+			certificate, err := retryLoadingX09Keypair(5, 50*time.Millisecond, certFile, keyFile)
 			if err != nil {
 				return nil, err
 			}
+
+			c.mu.Lock()
 			entry = &tlsCacheEntry{
-				certificate: &loadedCertificate,
+				certificate: certificate,
 				lastUpdate:  now,
 				lastAccess:  now,
 			}
@@ -78,6 +79,29 @@ func (c *tlsCertificateCache) GetClientCertificateReloadingFunc(certFile, keyFil
 
 		return entry.certificate, nil
 	}
+}
+
+// retryLoadingX09Keypair will attempt to read the certificate/key pair from disk until there's no "private key does not match public key"
+// errors. This can happen because filesystems are not atomic and it's possible for a process renewing the certificate and key
+// to write while we're trying to read them.
+func retryLoadingX09Keypair(attempts int, sleep time.Duration, certFile, keyFile string) (*tls.Certificate, error) {
+	var err error
+	for range attempts {
+		var certificate tls.Certificate
+		certificate, err = tls.LoadX509KeyPair(certFile, keyFile)
+		if err == nil {
+			return &certificate, nil
+		}
+
+		// any other errors than certificate not matching key aborts
+		if err.Error() != "tls: private key does not match public key" {
+			return nil, err
+		}
+
+		// let's give us a bit of time to reload properly the files
+		time.Sleep(sleep)
+	}
+	return nil, fmt.Errorf("impossible to load a matching certificate and key after %d attempts, last error: %w", attempts, err)
 }
 
 // run will evict cached certificate that haven't been accessed after certificateCacheLRUTimeout
