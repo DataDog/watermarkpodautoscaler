@@ -1841,6 +1841,26 @@ func TestReplicaCalcWithRecommender(t *testing.T) {
 				Details:            "Fake",
 			},
 		},
+		// toward downscale but within bounds should not have isAbove/isBelow all true
+		{
+			expectedReplicas: 31,
+			readyReplicas:    40,
+			timestamp:        ts,
+			pos: metricPosition{
+				isAbove: false,
+				isBelow: false,
+			},
+			details: "Fake",
+			scale:   makeScale(testDeploymentName, 40, map[string]string{"name": "test-pod"}),
+			wpa:     wpa,
+			recommenderResponse: &ReplicaRecommendationResponse{
+				Replicas:           31,
+				ReplicasLowerBound: 27,
+				ReplicasUpperBound: 53,
+				Timestamp:          ts,
+				Details:            "Fake",
+			},
+		},
 	}
 	for i, tc := range tcs {
 		t.Run(fmt.Sprintf("test-%d", i), tc.runTest)
