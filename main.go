@@ -6,6 +6,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -60,6 +61,11 @@ func main() {
 	var ddProfilingEnabled bool
 	var workers int
 	var skipNotScalingEvents bool
+	var tlsCAFile string
+	var tlsCertFile string
+	var tlsKeyFile string
+	var tlsInsecureSkipVerify bool
+	var tlsServerName string
 	flag.BoolVar(&printVersionArg, "version", false, "print version and exit")
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", true,
@@ -73,6 +79,11 @@ func main() {
 	flag.BoolVar(&ddProfilingEnabled, "ddProfilingEnabled", false, "Enable the datadog profiler")
 	flag.IntVar(&workers, "workers", 1, "Maximum number of concurrent Reconciles which can be run")
 	flag.BoolVar(&skipNotScalingEvents, "skipNotScalingEvents", false, "Log NotScaling decisions instead of creating Kubernetes events")
+	flag.StringVar(&tlsCAFile, "tls-ca-file", "", "Default file containing server CA certificate for TLS connection")
+	flag.StringVar(&tlsCertFile, "tls-cert-file", "", "Default file containing client certificate to activate client certificate validation")
+	flag.StringVar(&tlsKeyFile, "tls-key-file", "", "Default file containing client key matching client certificate")
+	flag.BoolVar(&tlsInsecureSkipVerify, "tls-insecure-skip-verify", false, "Default to skip TLS server certificate verification")
+	flag.StringVar(&tlsServerName, "tls-server-name", "", "Default server name to use for TLS SNI")
 
 	logLevel := zap.LevelFlag("loglevel", zapcore.InfoLevel, "Set log level")
 
@@ -132,11 +143,25 @@ func main() {
 	managerLogger := ctrl.Log.WithName("controllers").WithName("WatermarkPodAutoscaler")
 	klog.SetLogger(managerLogger) // Redirect klog to the controller logger (zap)
 
+	reconcilerOptions := datadoghqcontrollers.Options{SkipNotScalingEvents: skipNotScalingEvents}
+	if tlsCAFile != "" || tlsCertFile != "" {
+		if tlsCertFile != "" && tlsKeyFile == "" {
+			setupLog.Error(errors.New("no TLS key file"), "TLS key file and certificate file must be specified together")
+			os.Exit(1)
+		}
+		reconcilerOptions.TLSConfig = &datadoghqv1alpha1.TLSConfig{
+			CAFile:             tlsCAFile,
+			CertFile:           tlsCertFile,
+			KeyFile:            tlsKeyFile,
+			ServerName:         tlsServerName,
+			InsecureSkipVerify: tlsInsecureSkipVerify,
+		}
+	}
 	if err = (&datadoghqcontrollers.WatermarkPodAutoscalerReconciler{
 		Client:  mgr.GetClient(),
 		Log:     managerLogger,
 		Scheme:  mgr.GetScheme(),
-		Options: datadoghqcontrollers.Options{SkipNotScalingEvents: skipNotScalingEvents},
+		Options: reconcilerOptions,
 	}).SetupWithManager(mgr, workers); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WatermarkPodAutoscaler")
 		os.Exit(1)

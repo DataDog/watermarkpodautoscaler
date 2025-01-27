@@ -303,6 +303,31 @@ spec:
                     targetType:
                       description: TargetType is the type of target the recommender service should use.
                       type: string
+                    tlsConfig:
+                      description: TLS Configuration for the http client allowing to set up a client certificate or server CA certificate
+                      properties:
+                        caFile:
+                          description: CAFile is a path to a CA certificate
+                          type: string
+                        certFile:
+                          description: CertFile is a path to a client Cert
+                          type: string
+                        insecureSkipVerify:
+                          description: InsecureSkipVerify when true disable verifying server certificate
+                          type: boolean
+                        keyFile:
+                          description: Keyfile is a path to the client certificate key (mandatory if CertFile is set)
+                          type: string
+                        maxVersion:
+                          description: MinVersion, maximum TLS version, defaults to Go default which is TLS1.3
+                          type: string
+                        minVersion:
+                          description: MinVersion, minimum TLS version, defaults to Go default which is TLS1.2
+                          type: string
+                        serverName:
+                          description: ServerName is a settings to activate TLS SNI
+                          type: string
+                      type: object
                     url:
                       description: URL of the recommender service to use
                       type: string

@@ -22,6 +22,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.MetricSpec":                   schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_MetricSpec(ref),
 		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.RecommenderSpec":              schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_RecommenderSpec(ref),
 		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.ResourceMetricSource":         schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_ResourceMetricSource(ref),
+		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.TLSConfig":                    schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_TLSConfig(ref),
 		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.WatermarkPodAutoscaler":       schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscaler(ref),
 		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.WatermarkPodAutoscalerSpec":   schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscalerSpec(ref),
 		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.WatermarkPodAutoscalerStatus": schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscalerStatus(ref),
@@ -156,6 +157,12 @@ func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_RecommenderSpec(ref c
 							Format:      "",
 						},
 					},
+					"tlsConfig": {
+						SchemaProps: spec.SchemaProps{
+							Description: "TLS Configuration for the http client allowing to set up a client certificate or server CA certificate",
+							Ref:         ref("github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.TLSConfig"),
+						},
+					},
 					"settings": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Settings to pass to the recommender service",
@@ -195,7 +202,7 @@ func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_RecommenderSpec(ref c
 			},
 		},
 		Dependencies: []string{
-			"k8s.io/apimachinery/pkg/api/resource.Quantity"},
+			"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.TLSConfig", "k8s.io/apimachinery/pkg/api/resource.Quantity"},
 	}
 }
 
@@ -236,6 +243,68 @@ func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_ResourceMetricSource(
 		},
 		Dependencies: []string{
 			"k8s.io/apimachinery/pkg/api/resource.Quantity", "k8s.io/apimachinery/pkg/apis/meta/v1.LabelSelector"},
+	}
+}
+
+func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_TLSConfig(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "TLSConfig specifies the Recommender http client TLS configuration",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"caFile": {
+						SchemaProps: spec.SchemaProps{
+							Description: "CAFile is a path to a CA certificate",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"certFile": {
+						SchemaProps: spec.SchemaProps{
+							Description: "CertFile is a path to a client Cert",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"keyFile": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Keyfile is a path to the client certificate key (mandatory if CertFile is set)",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"serverName": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ServerName is a settings to activate TLS SNI",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"insecureSkipVerify": {
+						SchemaProps: spec.SchemaProps{
+							Description: "InsecureSkipVerify when true disable verifying server certificate",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+					"minVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "MinVersion, minimum TLS version, defaults to Go default which is TLS1.2",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"maxVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "MinVersion, maximum TLS version, defaults to Go default which is TLS1.3",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+			},
+		},
 	}
 }
 
