@@ -316,6 +316,36 @@ spec:
                   url:
                     description: URL of the recommender service to use
                     type: string
+                  tlsConfig:
+                    description: TLS settings to use when connecting to the recommender service
+                    properties:
+                      caFile:
+                        type: string
+                        description: Path to the CA certificate file to validate the server certificate
+                      certFile:
+                        type: string
+                        description: Path to the client certificate to use for client cert authentication to the server
+                      keyFile:
+                        type: string
+                        description: Path to the client private key to use for client cert authentication to the server
+                      serverName:
+                        type: string
+                        description: ServerName extension to indicate the name of the server
+                      insecureSkipVerify:
+                        type: string
+                        description: Disable validation of the server certificate
+                      minVersion:
+                        type: string
+                        pattern: ^TLS1[0-3]$
+                        description: Minimum TLS version to use for the connection. If not set will default to TLS12.
+                      maxVersion:
+                        type: string
+                        pattern: ^TLS1[0-3]$
+                        description: Maximum TLS version to use for the connection. If not set will default to TLS12.
+                    type: object
+                    anyOf:
+                      - required: [caFile,certFile,keyFile]
+                      - required: [caFile]
                 required:
                 - url
                 type: object
