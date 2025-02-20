@@ -217,57 +217,17 @@ func TestPlaintextRecommendation(t *testing.T) {
 //nolint:errcheck
 func TestTLSRecommendation(t *testing.T) {
 	now := time.Now().UTC()
-	// Start a local HTTP server
-	server := httptest.NewTLSServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		// make sure client used for the request has client certificate
-		if len(req.TLS.PeerCertificates) == 0 {
-			rw.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		reply := &autoscaling.WorkloadRecommendationReply{
-			Timestamp:          timestamppb.New(now),
-			TargetReplicas:     6,
-			LowerBoundReplicas: proto.Int32(4),
-			UpperBoundReplicas: proto.Int32(6),
-			ObservedTargets:    nil,
-			Reason:             "an upscale was needed",
-		}
-		response, err := protojson.Marshal(reply)
-		if err != nil {
-			rw.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		rw.WriteHeader(http.StatusOK)
-		rw.Write(response)
-	}))
+	server := startRecommenderStub(now)
 	defer server.Close()
 
-	// generate a self-signed CA and generate a client certificate
-	// signed by this CA certificate
-	ca, caPEM, caKey, err := generateCA()
-	require.NoError(t, err)
-	clientCert, clientKey, err := generateClientCertificate(ca, caKey)
-	require.NoError(t, err)
-
-	// make the server actually verify our client certificate
-	clientRootCAs := x509.NewCertPool()
-	clientRootCAs.AppendCertsFromPEM(caPEM)
-	server.TLS.ClientCAs = clientRootCAs
-	server.TLS.ClientAuth = tls.RequireAndVerifyClientCert
-
-	// dump certificates to temporary disk
+	// certificates will be written in a temp dir
 	tmp, err := os.MkdirTemp("", "TestTLSClientOption")
 	require.NoError(t, err)
 	defer os.RemoveAll(tmp)
 
-	// dump client certificate to a temporary folder for the recommender client
-	// to use them, and the server CA
-	os.WriteFile(filepath.Join(tmp, "cert.pem"), clientCert, 0700)
-	os.WriteFile(filepath.Join(tmp, "key.pem"), clientKey, 0700)
-	os.WriteFile(filepath.Join(tmp, "ca.pem"), pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: server.TLS.Certificates[0].Certificate[0],
-	}), 0700)
+	// generate Ca, server & client certificate
+	_, _, err = generateCertificates(server, tmp)
+	require.NoError(t, err)
 
 	// inject a stub recommendation request
 	rc := NewRecommenderClient(http.DefaultClient)
@@ -312,57 +272,17 @@ func TestTLSRecommendation(t *testing.T) {
 //nolint:errcheck
 func TestTLSRecommendationWithDefaults(t *testing.T) {
 	now := time.Now().UTC()
-	// Start a local HTTP server
-	server := httptest.NewTLSServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		// make sure client used for the request has client certificate
-		if len(req.TLS.PeerCertificates) == 0 {
-			rw.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		reply := &autoscaling.WorkloadRecommendationReply{
-			Timestamp:          timestamppb.New(now),
-			TargetReplicas:     6,
-			LowerBoundReplicas: proto.Int32(4),
-			UpperBoundReplicas: proto.Int32(6),
-			ObservedTargets:    nil,
-			Reason:             "an upscale was needed",
-		}
-		response, err := protojson.Marshal(reply)
-		if err != nil {
-			rw.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		rw.WriteHeader(http.StatusOK)
-		rw.Write(response)
-	}))
+	server := startRecommenderStub(now)
 	defer server.Close()
 
-	// generate a self-signed CA and generate a client certificate
-	// signed by this CA certificate
-	ca, caPEM, caKey, err := generateCA()
-	require.NoError(t, err)
-	clientCert, clientKey, err := generateClientCertificate(ca, caKey)
-	require.NoError(t, err)
-
-	// make the server actually verify our client certificate
-	clientRootCAs := x509.NewCertPool()
-	clientRootCAs.AppendCertsFromPEM(caPEM)
-	server.TLS.ClientCAs = clientRootCAs
-	server.TLS.ClientAuth = tls.RequireAndVerifyClientCert
-
-	// dump certificates to temporary disk
+	// certificates will be written in a temp dir
 	tmp, err := os.MkdirTemp("", "TestTLSClientOption")
 	require.NoError(t, err)
 	defer os.RemoveAll(tmp)
 
-	// dump client certificate to a temporary folder for the recommender client
-	// to use them, and the server CA
-	os.WriteFile(filepath.Join(tmp, "cert.pem"), clientCert, 0700)
-	os.WriteFile(filepath.Join(tmp, "key.pem"), clientKey, 0700)
-	os.WriteFile(filepath.Join(tmp, "ca.pem"), pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: server.TLS.Certificates[0].Certificate[0],
-	}), 0700)
+	// generate Ca, server & client certificate
+	_, _, err = generateCertificates(server, tmp)
+	require.NoError(t, err)
 
 	// inject a stub recommendation request
 	rc := NewRecommenderClient(http.DefaultClient, WithTLSConfig(&v1alpha1.TLSConfig{
@@ -401,6 +321,71 @@ func TestTLSRecommendationWithDefaults(t *testing.T) {
 		Details:            "an upscale was needed",
 	}
 	require.Equal(t, expectedResponse, response)
+}
+
+//nolint:errcheck
+func startRecommenderStub(now time.Time) *httptest.Server {
+	return httptest.NewTLSServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		// make sure client used for the request has client certificate
+		if len(req.TLS.PeerCertificates) == 0 {
+			rw.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		reply := &autoscaling.WorkloadRecommendationReply{
+			Timestamp:          timestamppb.New(now),
+			TargetReplicas:     6,
+			LowerBoundReplicas: proto.Int32(4),
+			UpperBoundReplicas: proto.Int32(6),
+			ObservedTargets:    nil,
+			Reason:             "an upscale was needed",
+		}
+		response, err := protojson.Marshal(reply)
+		if err != nil {
+			rw.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		rw.WriteHeader(http.StatusOK)
+		rw.Write(response)
+	}))
+}
+
+func generateCertificates(server *httptest.Server, tmp string) (*x509.Certificate, *rsa.PrivateKey, error) {
+	// generate a self-signed CA and generate a client certificate
+	// signed by this CA certificate
+	ca, caPEM, caKey, err := generateCA()
+	if err != nil {
+		return nil, nil, err
+	}
+	clientCert, clientKey, err := generateClientCertificate(ca, caKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// make the server actually verify our client certificate
+	clientRootCAs := x509.NewCertPool()
+	clientRootCAs.AppendCertsFromPEM(caPEM)
+	server.TLS.ClientCAs = clientRootCAs
+	server.TLS.ClientAuth = tls.RequireAndVerifyClientCert
+
+	// dump client certificate to a temporary folder for the recommender client
+	// to use them, and the server CA
+	err = os.WriteFile(filepath.Join(tmp, "cert.pem"), clientCert, 0700)
+	if err != nil {
+		return nil, nil, err
+	}
+	err = os.WriteFile(filepath.Join(tmp, "key.pem"), clientKey, 0700)
+	if err != nil {
+		return nil, nil, err
+	}
+	err = os.WriteFile(filepath.Join(tmp, "ca.pem"), pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: server.TLS.Certificates[0].Certificate[0],
+	}), 0700)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return ca, caKey, nil
 }
 
 func generateCA() (*x509.Certificate, []byte, *rsa.PrivateKey, error) {
