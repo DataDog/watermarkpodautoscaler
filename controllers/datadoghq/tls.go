@@ -18,15 +18,16 @@ import (
 )
 
 const (
-	certificateCacheTimeout    = 10 * time.Minute
-	certificateCacheLRUTimeout = 10 * time.Minute
+	certificateCacheTimeout           = 10 * time.Minute
+	certificateCacheExpirationTimeout = 10 * time.Minute
+	certificateErrorCacheTimeout      = 1 * time.Minute
 )
 
 type tlsTransport struct {
 	wrappedTransport *http.Transport
 }
 
-// tlsCertificateCache is a LRU cache to store in memory certificates
+// tlsCertificateCache is an expiring cache to store certificates in memory
 // used for TLS connections
 type tlsCertificateCache struct {
 	mu    sync.RWMutex
@@ -36,6 +37,7 @@ type tlsCertificateCache struct {
 // tlsCacheEntry is an entry of the certificate cache
 type tlsCacheEntry struct {
 	certificate *tls.Certificate
+	err         error
 	lastUpdate  time.Time
 	lastAccess  time.Time
 }
@@ -57,15 +59,13 @@ func (c *tlsCertificateCache) GetClientCertificateReloadingFunc(certFile, keyFil
 
 		// there's a small race condition here, but it does no harm except
 		// possibly reloading the certificate from disk more than once at a given time
-		if !ok || entry.isExpired(now) || entry.isCertificateExpired(now) {
+		if !ok || (entry.err == nil && (entry.isExpired(now, certificateCacheTimeout) || entry.isCertificateExpired(now))) {
 			certificate, err := retryLoadingX09Keypair(5, 50*time.Millisecond, certFile, keyFile)
-			if err != nil {
-				return nil, err
-			}
 
 			c.mu.Lock()
 			entry = &tlsCacheEntry{
 				certificate: certificate,
+				err:         err,
 				lastUpdate:  now,
 				lastAccess:  now,
 			}
@@ -77,7 +77,7 @@ func (c *tlsCertificateCache) GetClientCertificateReloadingFunc(certFile, keyFil
 			c.mu.Unlock()
 		}
 
-		return entry.certificate, nil
+		return entry.certificate, entry.err
 	}
 }
 
@@ -104,14 +104,14 @@ func retryLoadingX09Keypair(attempts int, sleep time.Duration, certFile, keyFile
 	return nil, fmt.Errorf("impossible to load a matching certificate and key after %d attempts, last error: %w", attempts, err)
 }
 
-// run will evict cached certificate that haven't been accessed after certificateCacheLRUTimeout
+// run will evict cached certificate that haven't been accessed after certificateCacheExpirationTimeout
 // to free memory.
 func (c *tlsCertificateCache) run() {
-	for range time.Tick(certificateCacheLRUTimeout) {
+	for range time.Tick(certificateCacheExpirationTimeout) {
 		c.mu.Lock()
 		now := time.Now()
 		for key, entry := range c.cache {
-			if now.After(entry.lastAccess.Add(certificateCacheLRUTimeout)) {
+			if now.After(entry.lastAccess.Add(certificateCacheExpirationTimeout)) {
 				delete(c.cache, key)
 			}
 		}
@@ -119,8 +119,8 @@ func (c *tlsCertificateCache) run() {
 	}
 }
 
-func (c *tlsCacheEntry) isExpired(now time.Time) bool {
-	return now.After(c.lastUpdate.Add(certificateCacheTimeout))
+func (c *tlsCacheEntry) isExpired(now time.Time, duration time.Duration) bool {
+	return now.After(c.lastUpdate.Add(duration))
 }
 
 func (c *tlsCacheEntry) isCertificateExpired(now time.Time) bool {

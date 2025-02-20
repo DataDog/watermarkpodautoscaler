@@ -324,6 +324,65 @@ func TestTLSRecommendationWithDefaults(t *testing.T) {
 }
 
 //nolint:errcheck
+func TestTLSRecommendationWithClientCertificateMismatch(t *testing.T) {
+	server := startRecommenderStub(time.Now().UTC())
+	defer server.Close()
+
+	// dump certificates to temporary disk
+	tmp, err := os.MkdirTemp("", "TestTLSClientOption")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmp)
+
+	ca, caKey, err := generateCertificates(server, tmp)
+	require.NoError(t, err)
+
+	anotherClientCert, _, err := generateClientCertificate(ca, caKey)
+	require.NoError(t, err)
+
+	// overwrite the certificate part with a non matching one
+	os.WriteFile(filepath.Join(tmp, "cert.pem"), anotherClientCert, 0700)
+
+	// inject a stub recommendation request
+	rc := NewRecommenderClient(http.DefaultClient)
+	request := &ReplicaRecommendationRequest{
+		Namespace: "test",
+		TargetRef: &v1alpha1.CrossVersionObjectReference{
+			Kind: "Deployment",
+			Name: "test-service",
+		},
+		TargetCluster: "",
+		Recommender: &v1alpha1.RecommenderSpec{
+			URL: server.URL,
+			TLSConfig: &v1alpha1.TLSConfig{
+				CAFile:   filepath.Join(tmp, "ca.pem"),
+				CertFile: filepath.Join(tmp, "cert.pem"),
+				KeyFile:  filepath.Join(tmp, "key.pem"),
+			},
+			Settings:      map[string]string{},
+			TargetType:    "memory",
+			HighWatermark: resource.NewMilliQuantity(500, resource.DecimalSI),
+			LowWatermark:  resource.NewMilliQuantity(705, resource.DecimalSI),
+		},
+		DesiredReplicas:      0,
+		CurrentReplicas:      10,
+		CurrentReadyReplicas: 10,
+		MinReplicas:          10,
+		MaxReplicas:          30,
+	}
+
+	_, err = rc.GetReplicaRecommendation(request)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "tls: private key does not match public key")
+
+	// check that error is cached by removing the certificate which should trigger
+	// a different error if the code actively reloads the certificate
+	os.Remove(filepath.Join(tmp, "cert.pem"))
+	_, err = rc.GetReplicaRecommendation(request)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "tls: private key does not match public key")
+}
+
+//nolint:errcheck
 func startRecommenderStub(now time.Time) *httptest.Server {
 	return httptest.NewTLSServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		// make sure client used for the request has client certificate
