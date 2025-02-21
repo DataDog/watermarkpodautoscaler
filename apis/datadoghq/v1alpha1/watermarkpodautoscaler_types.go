@@ -153,12 +153,14 @@ type TLSConfig struct {
 	// InsecureSkipVerify when true disable verifying server certificate
 	InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
 
-	// MinVersion, minimum TLS version, defaults to Go default which is TLS1.2
+	// MinVersion, mininum TLS version to accept for the connection. If not set will default to Go default (TLS1.2)
 	// +optional
+	// +kubebuilder:validation:Pattern:=`^TLS1[0-3]$`
 	MinVersion string `json:"minVersion,omitempty"`
 
-	// MinVersion, maximum TLS version, defaults to Go default which is TLS1.3
+	// MaxVersion, maximum TLS version to accept for the connection. If not set will default to Go default (TLS1.2)
 	// +optional
+	// +kubebuilder:validation:Pattern:=`^TLS1[0-3]$`
 	MaxVersion string `json:"maxVersion,omitempty"`
 }
 

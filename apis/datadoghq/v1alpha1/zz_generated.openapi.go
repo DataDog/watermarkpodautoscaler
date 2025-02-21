@@ -290,14 +290,14 @@ func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_TLSConfig(ref common.
 					},
 					"minVersion": {
 						SchemaProps: spec.SchemaProps{
-							Description: "MinVersion, minimum TLS version, defaults to Go default which is TLS1.2",
+							Description: "MinVersion, mininum TLS version to accept for the connection. If not set will default to Go default (TLS1.2)",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 					"maxVersion": {
 						SchemaProps: spec.SchemaProps{
-							Description: "MinVersion, maximum TLS version, defaults to Go default which is TLS1.3",
+							Description: "MaxVersion, maximum TLS version to accept for the connection. If not set will default to Go default (TLS1.2)",
 							Type:        []string{"string"},
 							Format:      "",
 						},

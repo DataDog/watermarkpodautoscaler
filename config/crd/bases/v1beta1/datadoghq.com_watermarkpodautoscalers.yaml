@@ -319,10 +319,12 @@ spec:
                           description: Keyfile is a path to the client certificate key (mandatory if CertFile is set)
                           type: string
                         maxVersion:
-                          description: MinVersion, maximum TLS version, defaults to Go default which is TLS1.3
+                          description: MaxVersion, maximum TLS version to accept for the connection. If not set will default to Go default (TLS1.2)
+                          pattern: ^TLS1[0-3]$
                           type: string
                         minVersion:
-                          description: MinVersion, minimum TLS version, defaults to Go default which is TLS1.2
+                          description: MinVersion, mininum TLS version to accept for the connection. If not set will default to Go default (TLS1.2)
+                          pattern: ^TLS1[0-3]$
                           type: string
                         serverName:
                           description: ServerName is a settings to activate TLS SNI
