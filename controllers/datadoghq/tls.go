@@ -27,11 +27,38 @@ type tlsTransport struct {
 	wrappedTransport *http.Transport
 }
 
+func (t *tlsTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return t.wrappedTransport.RoundTrip(req)
+}
+
+func NewCertificateReloadingTransport(config *v1alpha1.TLSConfig, cache *tlsCertificateCache, underlying *http.Transport) (http.RoundTripper, error) {
+	tlsConfig, err := buildTLSConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create TLS client: %w", err)
+	}
+
+	transport := &tlsTransport{
+		wrappedTransport: underlying,
+	}
+
+	tlsConfig.GetClientCertificate = cache.GetClientCertificateReloadingFunc(config.CertFile, config.KeyFile)
+	underlying.TLSClientConfig = tlsConfig
+	return transport, nil
+}
+
 // tlsCertificateCache is an expiring cache to store certificates in memory
 // used for TLS connections
 type tlsCertificateCache struct {
 	mu    sync.RWMutex
 	cache map[string]*tlsCacheEntry
+}
+
+func newTLSCertificateCache() *tlsCertificateCache {
+	cache := &tlsCertificateCache{
+		cache: make(map[string]*tlsCacheEntry),
+	}
+	go cache.run()
+	return cache
 }
 
 // tlsCacheEntry is an entry of the certificate cache
@@ -42,12 +69,13 @@ type tlsCacheEntry struct {
 	lastAccess  time.Time
 }
 
-func newTLSCertificateCache() *tlsCertificateCache {
-	cache := &tlsCertificateCache{
-		cache: make(map[string]*tlsCacheEntry),
-	}
-	go cache.run()
-	return cache
+func (c *tlsCacheEntry) isExpired(now time.Time, duration time.Duration) bool {
+	return now.After(c.lastUpdate.Add(duration))
+}
+
+func (c *tlsCacheEntry) isCertificateExpired(now time.Time) bool {
+	// Before Go 1.23 Certificate.Leaf is not populated after tls.LoadX509KeyPair
+	return c.certificate.Leaf != nil && now.After(c.certificate.Leaf.NotAfter)
 }
 
 func (c *tlsCertificateCache) GetClientCertificateReloadingFunc(certFile, keyFile string) func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
@@ -81,6 +109,21 @@ func (c *tlsCertificateCache) GetClientCertificateReloadingFunc(certFile, keyFil
 	}
 }
 
+// run will evict cached certificate that haven't been accessed after certificateCacheExpirationTimeout
+// to free memory.
+func (c *tlsCertificateCache) run() {
+	for range time.Tick(certificateCacheExpirationTimeout) {
+		c.mu.Lock()
+		now := time.Now()
+		for key, entry := range c.cache {
+			if now.After(entry.lastAccess.Add(certificateCacheExpirationTimeout)) {
+				delete(c.cache, key)
+			}
+		}
+		c.mu.Unlock()
+	}
+}
+
 // retryLoadingX09Keypair will attempt to read the certificate/key pair from disk until there's no "private key does not match public key"
 // errors. This can happen because filesystems are not atomic and it's possible for a process renewing the certificate and key
 // to write while we're trying to read them.
@@ -102,49 +145,6 @@ func retryLoadingX09Keypair(attempts int, sleep time.Duration, certFile, keyFile
 		time.Sleep(sleep)
 	}
 	return nil, fmt.Errorf("impossible to load a matching certificate and key after %d attempts, last error: %w", attempts, err)
-}
-
-// run will evict cached certificate that haven't been accessed after certificateCacheExpirationTimeout
-// to free memory.
-func (c *tlsCertificateCache) run() {
-	for range time.Tick(certificateCacheExpirationTimeout) {
-		c.mu.Lock()
-		now := time.Now()
-		for key, entry := range c.cache {
-			if now.After(entry.lastAccess.Add(certificateCacheExpirationTimeout)) {
-				delete(c.cache, key)
-			}
-		}
-		c.mu.Unlock()
-	}
-}
-
-func (c *tlsCacheEntry) isExpired(now time.Time, duration time.Duration) bool {
-	return now.After(c.lastUpdate.Add(duration))
-}
-
-func (c *tlsCacheEntry) isCertificateExpired(now time.Time) bool {
-	// Before Go 1.23 Certificate.Leaf is not populated after tls.LoadX509KeyPair
-	return c.certificate.Leaf != nil && now.After(c.certificate.Leaf.NotAfter)
-}
-
-func (t *tlsTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	return t.wrappedTransport.RoundTrip(req)
-}
-
-func NewCertificateReloadingTransport(config *v1alpha1.TLSConfig, cache *tlsCertificateCache, underlying *http.Transport) (http.RoundTripper, error) {
-	tlsConfig, err := buildTLSConfig(config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create TLS client: %w", err)
-	}
-
-	transport := &tlsTransport{
-		wrappedTransport: underlying,
-	}
-
-	tlsConfig.GetClientCertificate = cache.GetClientCertificateReloadingFunc(config.CertFile, config.KeyFile)
-	underlying.TLSClientConfig = tlsConfig
-	return transport, nil
 }
 
 func buildTLSConfig(config *v1alpha1.TLSConfig) (*tls.Config, error) {
