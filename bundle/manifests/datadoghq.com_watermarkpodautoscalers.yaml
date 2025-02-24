@@ -29,10 +29,10 @@ spec:
     - jsonPath: .status.currentMetrics[*].external.currentValue..
       name: value
       type: string
-    - jsonPath: .spec.metrics[*].external.highWatermark..
+    - jsonPath: .spec..highWatermark
       name: high watermark
       type: string
-    - jsonPath: .spec.metrics[*].external.lowWatermark..
+    - jsonPath: .spec..lowWatermark
       name: low watermark
       type: string
     - jsonPath: .metadata.creationTimestamp
@@ -313,6 +313,38 @@ spec:
                     description: TargetType is the type of target the recommender
                       service should use.
                     type: string
+                  tlsConfig:
+                    description: TLS Configuration for the http client allowing to
+                      set up a client certificate or server CA certificate
+                    properties:
+                      caFile:
+                        description: CAFile is a path to a CA certificate
+                        type: string
+                      certFile:
+                        description: CertFile is a path to a client Cert
+                        type: string
+                      insecureSkipVerify:
+                        description: InsecureSkipVerify when true disable verifying
+                          server certificate
+                        type: boolean
+                      keyFile:
+                        description: Keyfile is a path to the client certificate key
+                          (mandatory if CertFile is set)
+                        type: string
+                      maxVersion:
+                        description: MaxVersion, maximum TLS version to accept for
+                          the connection. If not set will default to Go default (TLS1.2)
+                        pattern: ^TLS1[0-3]$
+                        type: string
+                      minVersion:
+                        description: MinVersion, mininum TLS version to accept for
+                          the connection. If not set will default to Go default (TLS1.2)
+                        pattern: ^TLS1[0-3]$
+                        type: string
+                      serverName:
+                        description: ServerName is a settings to activate TLS SNI
+                        type: string
+                    type: object
                   url:
                     description: URL of the recommender service to use
                     type: string
