@@ -8,7 +8,6 @@ require (
 	github.com/DataDog/agent-payload/v5 v5.0.135-0.20241016074204-82c61e7189e0
 	github.com/DataDog/dd-trace-go/contrib/net/http/v2 v2.0.0-rc.3
 	github.com/DataDog/dd-trace-go/v2 v2.0.0-rc.3
-	github.com/DataDog/watermarkpodautoscaler/apis v0.0.0-20250224090657-372f4a8676b1
 	github.com/go-logr/logr v1.4.2
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.34.1
