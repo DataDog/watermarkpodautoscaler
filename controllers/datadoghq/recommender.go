@@ -20,6 +20,8 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	httptrace "github.com/DataDog/dd-trace-go/contrib/net/http/v2"
+
 	autoscaling "github.com/DataDog/agent-payload/v5/autoscaling/kubernetes"
 
 	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
@@ -124,16 +126,17 @@ func (r *RecommenderClientImpl) instrumentedClient(recommender string, tlsConfig
 func instrumentRoundTripper(recommender string, transport http.RoundTripper) http.RoundTripper {
 	labels := prometheus.Labels{clientPromLabel: recommender}
 
-	return promhttp.InstrumentRoundTripperCounter(
-		requestsTotal.MustCurryWith(labels),
-		promhttp.InstrumentRoundTripperInFlight(
-			responseInflight.With(labels),
-			promhttp.InstrumentRoundTripperDuration(
-				requestDuration.MustCurryWith(labels),
-				transport,
+	return httptrace.WrapRoundTripper(
+		promhttp.InstrumentRoundTripperCounter(
+			requestsTotal.MustCurryWith(labels),
+			promhttp.InstrumentRoundTripperInFlight(
+				responseInflight.With(labels),
+				promhttp.InstrumentRoundTripperDuration(
+					requestDuration.MustCurryWith(labels),
+					transport,
+				),
 			),
-		),
-	)
+		))
 }
 
 // GetReplicaRecommendation returns a recommendation for the number of replicas to scale to
@@ -175,12 +178,12 @@ func (r *RecommenderClientImpl) GetReplicaRecommendation(request *ReplicaRecomme
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(payload))
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("User-Agent", "wpa-controller")
-
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("User-Agent", "wpa-controller")
 	resp, err := client.Do(httpReq)
 
 	defer func() {

@@ -49,6 +49,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	"github.com/DataDog/dd-trace-go/v2/ddtrace/tracer"
+
 	"github.com/DataDog/watermarkpodautoscaler/third_party/kubernetes/pkg/controller/podautoscaler/metrics"
 
 	"github.com/go-logr/logr"
@@ -282,6 +284,22 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 			logger.Error(fmt.Errorf("recover error"), "RunTime error in reconcileWPA", "returnValue", err1)
 		}
 	}()
+
+	var err error
+	span := tracer.StartSpan("reconcileWPA")
+	defer func() {
+		if err != nil {
+			span.Finish(tracer.WithError(err))
+		} else {
+			span.Finish()
+		}
+	}()
+
+	span.SetTag("wpa", wpa.Name)
+	span.SetTag("namespace", wpa.Namespace)
+	span.SetTag("resource", wpa.Spec.ScaleTargetRef.Name)
+	span.SetTag("kind", wpa.Spec.ScaleTargetRef.Kind)
+
 	// the following line are here to retrieve the GVK of the target ref
 	targetGV, err := schema.ParseGroupVersion(wpa.Spec.ScaleTargetRef.APIVersion)
 	if err != nil {
@@ -304,6 +322,8 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	currentReplicas := currentScale.Status.Replicas
 	logger.Info("Target deploy", "replicas", currentReplicas)
 
+	span.SetTag("current_replicas", currentReplicas)
+
 	// add additional labels to info metric
 	promLabels := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace}
 	for _, eLabel := range extraPromLabels {
@@ -321,6 +341,8 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	}
 	dryRun.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(float64(dryRunMetricValue))
 
+	span.SetTag("dry_run", wpa.Spec.DryRun)
+
 	reference := fmt.Sprintf("%s/%s/%s", wpa.Spec.ScaleTargetRef.Kind, wpa.Namespace, wpa.Spec.ScaleTargetRef.Name)
 	setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, datadoghqv1alpha1.ConditionReasonSuccessfulGetScale, "the WPA controller was able to get the target's current scale")
 
@@ -329,6 +351,14 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	now := time.Now()
 
 	proposedReplicas, metricName, metricStatuses, metricTimestamp, readyReplicas, stableRegime, err := r.computeReplicas(logger, wpa, currentScale)
+
+	span.SetTag("proposed_replicas", proposedReplicas)
+	span.SetTag("metric_name", metricName)
+	span.SetTag("metric_timestamp", metricTimestamp)
+	span.SetTag("ready_replicas", readyReplicas)
+	span.SetTag("stable_regime", stableRegime)
+	span.SetTag("metric_statuses", metricStatuses)
+
 	if err != nil {
 		r.setCurrentReplicasInStatus(wpa, currentReplicas)
 		if err2 := r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa); err2 != nil {
