@@ -200,15 +200,17 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		return reconcile.Result{}, nil
 	}
 
-	enabledValue := instance.Annotations[lifecycleControlEnabledAnnotationKey]
-	enabled, err := strconv.ParseBool(enabledValue)
-	if err != nil && enabledValue != "" {
-		log.Error(err, "lifecycle control config annotation could not be parsed, it will be ignored")
-		setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedGetDatadogMonitor, "Lifecycle Control is not correctly enabled: %s", err.Error())
+	lifeCycleControlEnabled := false
+	if enabledValue, ok := instance.Annotations[lifecycleControlEnabledAnnotationKey]; ok {
+		lifeCycleControlEnabled, err = strconv.ParseBool(enabledValue)
+		if err != nil && enabledValue != "" {
+			log.Error(err, "lifecycle control config annotation could not be parsed, it will be ignored")
+			setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedGetDatadogMonitor, "Lifecycle Control is not correctly enabled: %s", err.Error())
+		}
 	}
 
 	// TODO Add telemetry on the associated DatadogMonitor
-	if enabled && err == nil {
+	if lifeCycleControlEnabled && err == nil {
 		log.Info("Lifecycle Control enabled, checking the state of the Datadog Monitor", "datadogMonitor", fmt.Sprintf("%s/%s", instance.Namespace, instance.Name))
 		// TODO allow users to override the name of the Datadog Monitor
 		promLabels := prometheus.Labels{
@@ -277,7 +279,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 
 	fillMissingWatermark(log, instance)
 
-	if err := r.reconcileWPA(ctx, log, wpaStatusOriginal, instance); err != nil {
+	if err = r.reconcileWPA(ctx, log, wpaStatusOriginal, instance); err != nil {
 		log.Info("Error during reconcileWPA", "error", err)
 		r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedProcessWPA, err.Error())
 		setCondition(instance, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedProcessWPA, "Error happened while processing the WPA")
