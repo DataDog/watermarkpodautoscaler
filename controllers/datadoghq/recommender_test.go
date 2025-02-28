@@ -22,14 +22,15 @@ import (
 	"testing"
 	"time"
 
-	autoscaling "github.com/DataDog/agent-payload/v5/autoscaling/kubernetes"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"k8s.io/apimachinery/pkg/api/resource"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	autoscaling "github.com/DataDog/agent-payload/v5/autoscaling/kubernetes"
 	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 )
 
