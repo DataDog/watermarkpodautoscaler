@@ -249,7 +249,9 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 			return reconcile.Result{RequeueAfter: 2 * monitorStatusErrorDuration}, nil
 		}
 
-		monitorState, found, err := unstructured.NestedString(datadogMonitor.Object, "status", "monitorState")
+		var monitorState string
+		var found bool
+		monitorState, found, err = unstructured.NestedString(datadogMonitor.Object, "status", "monitorState")
 		if !found || err != nil {
 			lifecycleControlStatus.With(promLabels).Set(1)
 			log.Info("Datadog Monitor state is not found, blocking reconcile loop for this WPA, will retry in a minute", "datadogMonitor", fmt.Sprintf("%s/%s", instance.Namespace, instance.Name))
@@ -285,9 +287,9 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		setCondition(instance, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedProcessWPA, "Error happened while processing the WPA")
 		// In case of `reconcileWPA` error, we need to requeue the Resource in order to retry to process it again
 		// we put a delay in order to not retry directly and limit the number of retries if it only a transient issue.
-		if err2 := r.updateStatusIfNeeded(ctx, wpaStatusOriginal, instance); err2 != nil {
+		if err = r.updateStatusIfNeeded(ctx, wpaStatusOriginal, instance); err != nil {
 			r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedUpdateStatus, err2.Error())
-			return reconcile.Result{}, err2
+			return reconcile.Result{}, err
 		}
 		return reconcile.Result{RequeueAfter: requeueAfterForWPAErrors(err)}, nil
 	}
