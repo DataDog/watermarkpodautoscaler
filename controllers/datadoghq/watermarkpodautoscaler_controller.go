@@ -288,7 +288,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		// In case of `reconcileWPA` error, we need to requeue the Resource in order to retry to process it again
 		// we put a delay in order to not retry directly and limit the number of retries if it only a transient issue.
 		if err = r.updateStatusIfNeeded(ctx, wpaStatusOriginal, instance); err != nil {
-			r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedUpdateStatus, err2.Error())
+			r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedUpdateStatus, err.Error())
 			return reconcile.Result{}, err
 		}
 		return reconcile.Result{RequeueAfter: requeueAfterForWPAErrors(err)}, nil
