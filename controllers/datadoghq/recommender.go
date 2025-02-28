@@ -169,7 +169,7 @@ func (r *RecommenderClientImpl) GetReplicaRecommendation(ctx context.Context, re
 	}
 
 	// TODO: We might want to make the timeout configurable later.
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	client, err := r.instrumentedClient(request.Recommender.URL, mergeTLSConfig(r.options.tlsConfig, request.Recommender.TLSConfig))
