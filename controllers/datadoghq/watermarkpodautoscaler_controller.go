@@ -141,8 +141,18 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		return reconcile.Result{}, err
 	}
 
+	span, ctx := tracer.StartSpanFromContext(ctx, "Reconcile")
+	defer func() {
+		if err != nil {
+			span.Finish(tracer.WithError(err))
+		} else {
+			span.Finish()
+		}
+	}()
+
 	// Attach to the logger the logs-attributes if exist
 	logsAttr, err := GetLogAttrsFromWpa(instance)
+	// FIXME add span to log
 	if err != nil {
 		log.V(4).Error(err, "invalid logs attributes")
 	} else if len(logsAttr) > 0 {
@@ -155,6 +165,11 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 	}
 
 	wpaStatusOriginal := instance.Status.DeepCopy()
+
+	span.SetTag("wpa", instance.Name)
+	span.SetTag("namespace", instance.Namespace)
+	span.SetTag("resource", instance.Spec.ScaleTargetRef.Name)
+	span.SetTag("kind", instance.Spec.ScaleTargetRef.Kind)
 
 	// default ScalingActive to False. The condition should be updated the True if reconcileWPA went well.
 	setCondition(instance, autoscalingv2.ScalingActive, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedProcessWPA, "Error happened while processing the WPA")
@@ -286,7 +301,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	}()
 
 	var err error
-	span := tracer.StartSpan("reconcileWPA")
+	span, ctx := tracer.StartSpanFromContext(ctx, "reconcileWPA")
 	defer func() {
 		if err != nil {
 			span.Finish(tracer.WithError(err))
@@ -294,11 +309,6 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 			span.Finish()
 		}
 	}()
-
-	span.SetTag("wpa", wpa.Name)
-	span.SetTag("namespace", wpa.Namespace)
-	span.SetTag("resource", wpa.Spec.ScaleTargetRef.Name)
-	span.SetTag("kind", wpa.Spec.ScaleTargetRef.Kind)
 
 	// the following line are here to retrieve the GVK of the target ref
 	targetGV, err := schema.ParseGroupVersion(wpa.Spec.ScaleTargetRef.APIVersion)
@@ -350,7 +360,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	rescaleReason := ""
 	now := time.Now()
 
-	proposedReplicas, metricName, metricStatuses, metricTimestamp, readyReplicas, stableRegime, err := r.computeReplicas(logger, wpa, currentScale)
+	proposedReplicas, metricName, metricStatuses, metricTimestamp, readyReplicas, stableRegime, err := r.computeReplicas(ctx, logger, wpa, currentScale)
 
 	span.SetTag("proposed_replicas", proposedReplicas)
 	span.SetTag("metric_name", metricName)
@@ -606,7 +616,7 @@ func setStatus(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, d
 	}
 }
 
-func (r *WatermarkPodAutoscalerReconciler) computeReplicas(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, readyReplicas int32, stableRegime bool, err error) {
+func (r *WatermarkPodAutoscalerReconciler) computeReplicas(ctx context.Context, logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, readyReplicas int32, stableRegime bool, err error) {
 	labels := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}
 	minReplicas := float64(0)
 	if wpa.Spec.MinReplicas != nil {
@@ -618,9 +628,9 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicas(logger logr.Logger, w
 	var isAbove, isBelow bool
 	var reason string
 	if wpa.Spec.Recommender != nil {
-		replicas, metric, statuses, timestamp, readyReplicas, isAbove, isBelow, reason, err = r.computeReplicasWithRecommender(logger, wpa, scale)
+		replicas, metric, statuses, timestamp, readyReplicas, isAbove, isBelow, reason, err = r.computeReplicasWithRecommender(ctx, logger, wpa, scale)
 	} else {
-		replicas, metric, statuses, timestamp, readyReplicas, isAbove, isBelow, err = r.computeReplicasForMetrics(logger, wpa, scale)
+		replicas, metric, statuses, timestamp, readyReplicas, isAbove, isBelow, err = r.computeReplicasForMetrics(ctx, logger, wpa, scale)
 	}
 
 	condAbove := corev1.ConditionFalse
@@ -647,7 +657,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicas(logger logr.Logger, w
 	return replicas, metric, statuses, timestamp, readyReplicas, stableRegime, err
 }
 
-func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, readyReplicas int32, isAbove, isBelow bool, err error) {
+func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(ctx context.Context, logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, readyReplicas int32, isAbove, isBelow bool, err error) {
 	statuses = make([]autoscalingv2.MetricStatus, len(wpa.Spec.Metrics))
 
 	for i, metricSpec := range wpa.Spec.Metrics {
@@ -674,7 +684,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 					metricNamePromLabel:        metricSpec.External.MetricName,
 				}
 
-				replicaCalculation, errMetricsServer := r.replicaCalc.GetExternalMetricReplicas(logger, scale, metricSpec, wpa)
+				replicaCalculation, errMetricsServer := r.replicaCalc.GetExternalMetricReplicas(ctx, logger, scale, metricSpec, wpa)
 				if errMetricsServer != nil {
 					replicaProposal.Delete(promLabelsForWpaWithMetricName)
 					r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedGetExternalMetrics, errMetricsServer.Error())
@@ -722,7 +732,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 					metricNamePromLabel:        string(metricSpec.Resource.Name),
 				}
 
-				replicaCalculation, errMetricsServer := r.replicaCalc.GetResourceReplicas(logger, scale, metricSpec, wpa)
+				replicaCalculation, errMetricsServer := r.replicaCalc.GetResourceReplicas(ctx, logger, scale, metricSpec, wpa)
 				if errMetricsServer != nil {
 					replicaProposal.Delete(promLabelsForWpaWithMetricName)
 					r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedGetResourceMetric, errMetricsServer.Error())
@@ -773,7 +783,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 	return replicas, metric, statuses, timestamp, readyReplicas, isAbove, isBelow, nil
 }
 
-func (r *WatermarkPodAutoscalerReconciler) computeReplicasWithRecommender(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, readyReplicas int32, isAbove, isBelow bool, reason string, err error) {
+func (r *WatermarkPodAutoscalerReconciler) computeReplicasWithRecommender(ctx context.Context, logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, readyReplicas int32, isAbove, isBelow bool, reason string, err error) {
 	var recommenderSpec = wpa.Spec.Recommender
 
 	if recommenderSpec == nil {
@@ -791,7 +801,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasWithRecommender(logger
 		metricNamePromLabel:        recommenderName,
 	}
 
-	replicaCalculation, errMetricsServer := r.replicaCalc.GetRecommenderReplicas(logger, scale, wpa)
+	replicaCalculation, errMetricsServer := r.replicaCalc.GetRecommenderReplicas(ctx, logger, scale, wpa)
 	if errMetricsServer != nil {
 		replicaProposal.Delete(promLabelsForWpaWithMetricName)
 		r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedGetResourceMetric, errMetricsServer.Error())

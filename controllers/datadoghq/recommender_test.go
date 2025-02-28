@@ -22,13 +22,14 @@ import (
 	"testing"
 	"time"
 
-	autoscaling "github.com/DataDog/agent-payload/v5/autoscaling/kubernetes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"k8s.io/apimachinery/pkg/api/resource"
+
+	autoscaling "github.com/DataDog/agent-payload/v5/autoscaling/kubernetes"
 
 	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 )
@@ -40,7 +41,7 @@ func NewMockRecommenderClient() *RecommenderClientMock {
 	}
 }
 
-func (m *RecommenderClientMock) GetReplicaRecommendation(request *ReplicaRecommendationRequest) (*ReplicaRecommendationResponse, error) {
+func (m *RecommenderClientMock) GetReplicaRecommendation(ctx context.Context, request *ReplicaRecommendationRequest) (*ReplicaRecommendationResponse, error) {
 	return &m.ReturnedResponse, m.Error
 }
 
@@ -55,7 +56,7 @@ type RecommenderClientMock struct {
 func TestRecommenderClient(t *testing.T) {
 	client := NewRecommenderClient(http.DefaultClient)
 	// This should not work with empty requests.
-	resp, err := client.GetReplicaRecommendation(&ReplicaRecommendationRequest{})
+	resp, err := client.GetReplicaRecommendation(context.Background(), &ReplicaRecommendationRequest{})
 	require.Error(t, err)
 	require.Nil(t, resp)
 }
@@ -201,7 +202,7 @@ func TestPlaintextRecommendation(t *testing.T) {
 		MinReplicas:          10,
 		MaxReplicas:          30,
 	}
-	response, err := rc.GetReplicaRecommendation(request)
+	response, err := rc.GetReplicaRecommendation(context.Background(), request)
 	require.NoError(t, err)
 
 	expectedResponse := &ReplicaRecommendationResponse{
@@ -256,7 +257,7 @@ func TestTLSRecommendation(t *testing.T) {
 		MinReplicas:          10,
 		MaxReplicas:          30,
 	}
-	response, err := rc.GetReplicaRecommendation(request)
+	response, err := rc.GetReplicaRecommendation(context.Background(), request)
 	require.NoError(t, err)
 
 	expectedResponse := &ReplicaRecommendationResponse{
@@ -310,7 +311,7 @@ func TestTLSRecommendationWithDefaults(t *testing.T) {
 		MinReplicas:          10,
 		MaxReplicas:          30,
 	}
-	response, err := rc.GetReplicaRecommendation(request)
+	response, err := rc.GetReplicaRecommendation(context.Background(), request)
 	require.NoError(t, err)
 
 	expectedResponse := &ReplicaRecommendationResponse{
@@ -370,14 +371,14 @@ func TestTLSRecommendationWithClientCertificateMismatch(t *testing.T) {
 		MaxReplicas:          30,
 	}
 
-	_, err = rc.GetReplicaRecommendation(request)
+	_, err = rc.GetReplicaRecommendation(context.Background(), request)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "tls: private key does not match public key")
 
 	// check that error is cached by removing the certificate which should trigger
 	// a different error if the code actively reloads the certificate
 	os.Remove(filepath.Join(tmp, "cert.pem"))
-	_, err = rc.GetReplicaRecommendation(request)
+	_, err = rc.GetReplicaRecommendation(context.Background(), request)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "tls: private key does not match public key")
 }

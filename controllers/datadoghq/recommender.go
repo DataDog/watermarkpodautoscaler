@@ -45,7 +45,7 @@ func metricNameForRecommender(spec *v1alpha1.WatermarkPodAutoscalerSpec) string 
 }
 
 type RecommenderClient interface {
-	GetReplicaRecommendation(request *ReplicaRecommendationRequest) (*ReplicaRecommendationResponse, error)
+	GetReplicaRecommendation(ctx context.Context, request *ReplicaRecommendationRequest) (*ReplicaRecommendationResponse, error)
 }
 
 type RecommenderClientImpl struct {
@@ -143,7 +143,7 @@ func instrumentRoundTripper(recommender string, transport http.RoundTripper) htt
 // based on the given ReplicaRecommendationRequest.
 //
 // Currently, it supports http based recommendation service, but we need to implement grpc services too.
-func (r *RecommenderClientImpl) GetReplicaRecommendation(request *ReplicaRecommendationRequest) (*ReplicaRecommendationResponse, error) {
+func (r *RecommenderClientImpl) GetReplicaRecommendation(ctx context.Context, request *ReplicaRecommendationRequest) (*ReplicaRecommendationResponse, error) {
 	reco := request.Recommender
 	if reco == nil {
 		return nil, fmt.Errorf("recommender spec is required")
