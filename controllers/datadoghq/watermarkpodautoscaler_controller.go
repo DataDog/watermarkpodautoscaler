@@ -50,6 +50,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/DataDog/dd-trace-go/v2/ddtrace/tracer"
+	"github.com/DataDog/watermarkpodautoscaler/pkg/util"
 
 	"github.com/DataDog/watermarkpodautoscaler/third_party/kubernetes/pkg/controller/podautoscaler/metrics"
 
@@ -152,12 +153,12 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 
 	// Attach to the logger the logs-attributes if exist
 	logsAttr, err := GetLogAttrsFromWpa(instance)
-	// FIXME add span to log
 	if err != nil {
 		log.V(4).Error(err, "invalid logs attributes")
 	} else if len(logsAttr) > 0 {
 		log = log.WithValues(logsAttr...)
 	}
+	log = util.InjectTraceIDsIntoLogger(ctx, log)
 
 	var needToReturn bool
 	if needToReturn, err = r.handleFinalizer(log, instance); err != nil || needToReturn {
