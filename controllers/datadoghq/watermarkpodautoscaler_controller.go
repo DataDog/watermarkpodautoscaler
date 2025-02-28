@@ -233,7 +233,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		// constraint.
 		datadogMonitor := &unstructured.Unstructured{}
 		datadogMonitor.SetGroupVersionKind(datadogMonitorGVK)
-		err := r.Client.Get(ctx, dmon, datadogMonitor)
+		err = r.Client.Get(ctx, dmon, datadogMonitor)
 		if err != nil {
 			lifecycleControlStatus.With(promLabels).Set(1)
 			log.Info("Datadog Monitor is not found, blocking reconcile loop for this WPA, will retry in 2 minute", "datadogMonitor", fmt.Sprintf("%s/%s", instance.Namespace, instance.Name))
