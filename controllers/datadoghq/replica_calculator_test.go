@@ -6,6 +6,7 @@
 package datadoghq
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -265,17 +266,18 @@ func (tc *replicaCalcTestCase) runTest(t *testing.T) {
 
 	var replicaCalculation ReplicaCalculation
 	var err error
+	ctx := context.TODO()
 	if tc.recommenderResponse != nil {
 		recoClient.ReturnedResponse = *tc.recommenderResponse
 		recoClient.Error = tc.expectedError
-		replicaCalculation, err = replicaCalculator.GetRecommenderReplicas(logf.Log, tc.scale, tc.wpa)
+		replicaCalculation, err = replicaCalculator.GetRecommenderReplicas(ctx, logf.Log, tc.scale, tc.wpa)
 	} else if tc.metric.spec.Resource != nil {
 		// Resource metric tests
 		// Update with the correct labels.
-		replicaCalculation, err = replicaCalculator.GetResourceReplicas(logf.Log, tc.scale, tc.metric.spec, tc.wpa)
+		replicaCalculation, err = replicaCalculator.GetResourceReplicas(ctx, logf.Log, tc.scale, tc.metric.spec, tc.wpa)
 	} else if tc.metric.spec.External != nil {
 		// External metric tests
-		replicaCalculation, err = replicaCalculator.GetExternalMetricReplicas(logf.Log, tc.scale, tc.metric.spec, tc.wpa)
+		replicaCalculation, err = replicaCalculator.GetExternalMetricReplicas(ctx, logf.Log, tc.scale, tc.metric.spec, tc.wpa)
 	}
 	if tc.expectedError != nil {
 		require.Error(t, err, "there should be an error calculating the replica count")

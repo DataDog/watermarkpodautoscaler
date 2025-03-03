@@ -49,6 +49,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	"github.com/DataDog/dd-trace-go/v2/ddtrace/tracer"
+	"github.com/DataDog/watermarkpodautoscaler/pkg/util"
+
 	"github.com/DataDog/watermarkpodautoscaler/third_party/kubernetes/pkg/controller/podautoscaler/metrics"
 
 	"github.com/go-logr/logr"
@@ -139,6 +142,15 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		return reconcile.Result{}, err
 	}
 
+	span, ctx := tracer.StartSpanFromContext(ctx, "Reconcile")
+	defer func() {
+		if err != nil {
+			span.Finish(tracer.WithError(err))
+		} else {
+			span.Finish()
+		}
+	}()
+
 	// Attach to the logger the logs-attributes if exist
 	logsAttr, err := GetLogAttrsFromWpa(instance)
 	if err != nil {
@@ -146,6 +158,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 	} else if len(logsAttr) > 0 {
 		log = log.WithValues(logsAttr...)
 	}
+	log = util.InjectTraceIDsIntoLogger(ctx, log)
 
 	var needToReturn bool
 	if needToReturn, err = r.handleFinalizer(log, instance); err != nil || needToReturn {
@@ -153,6 +166,11 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 	}
 
 	wpaStatusOriginal := instance.Status.DeepCopy()
+
+	span.SetTag("wpa", instance.Name)
+	span.SetTag("namespace", instance.Namespace)
+	span.SetTag("resource", instance.Spec.ScaleTargetRef.Name)
+	span.SetTag("kind", instance.Spec.ScaleTargetRef.Kind)
 
 	// default ScalingActive to False. The condition should be updated the True if reconcileWPA went well.
 	setCondition(instance, autoscalingv2.ScalingActive, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedProcessWPA, "Error happened while processing the WPA")
@@ -182,15 +200,17 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		return reconcile.Result{}, nil
 	}
 
-	enabledValue := instance.Annotations[lifecycleControlEnabledAnnotationKey]
-	enabled, err := strconv.ParseBool(enabledValue)
-	if err != nil && enabledValue != "" {
-		log.Error(err, "lifecycle control config annotation could not be parsed, it will be ignored")
-		setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedGetDatadogMonitor, "Lifecycle Control is not correctly enabled: %s", err.Error())
+	lifeCycleControlEnabled := false
+	if enabledValue, ok := instance.Annotations[lifecycleControlEnabledAnnotationKey]; ok {
+		lifeCycleControlEnabled, err = strconv.ParseBool(enabledValue)
+		if err != nil && enabledValue != "" {
+			log.Error(err, "lifecycle control config annotation could not be parsed, it will be ignored")
+			setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedGetDatadogMonitor, "Lifecycle Control is not correctly enabled: %s", err.Error())
+		}
 	}
 
 	// TODO Add telemetry on the associated DatadogMonitor
-	if enabled && err == nil {
+	if lifeCycleControlEnabled && err == nil {
 		log.Info("Lifecycle Control enabled, checking the state of the Datadog Monitor", "datadogMonitor", fmt.Sprintf("%s/%s", instance.Namespace, instance.Name))
 		// TODO allow users to override the name of the Datadog Monitor
 		promLabels := prometheus.Labels{
@@ -213,7 +233,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		// constraint.
 		datadogMonitor := &unstructured.Unstructured{}
 		datadogMonitor.SetGroupVersionKind(datadogMonitorGVK)
-		err := r.Client.Get(ctx, dmon, datadogMonitor)
+		err = r.Client.Get(ctx, dmon, datadogMonitor)
 		if err != nil {
 			lifecycleControlStatus.With(promLabels).Set(1)
 			log.Info("Datadog Monitor is not found, blocking reconcile loop for this WPA, will retry in 2 minute", "datadogMonitor", fmt.Sprintf("%s/%s", instance.Namespace, instance.Name))
@@ -229,7 +249,9 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 			return reconcile.Result{RequeueAfter: 2 * monitorStatusErrorDuration}, nil
 		}
 
-		monitorState, found, err := unstructured.NestedString(datadogMonitor.Object, "status", "monitorState")
+		var monitorState string
+		var found bool
+		monitorState, found, err = unstructured.NestedString(datadogMonitor.Object, "status", "monitorState")
 		if !found || err != nil {
 			lifecycleControlStatus.With(promLabels).Set(1)
 			log.Info("Datadog Monitor state is not found, blocking reconcile loop for this WPA, will retry in a minute", "datadogMonitor", fmt.Sprintf("%s/%s", instance.Namespace, instance.Name))
@@ -259,15 +281,15 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 
 	fillMissingWatermark(log, instance)
 
-	if err := r.reconcileWPA(ctx, log, wpaStatusOriginal, instance); err != nil {
+	if err = r.reconcileWPA(ctx, log, wpaStatusOriginal, instance); err != nil {
 		log.Info("Error during reconcileWPA", "error", err)
 		r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedProcessWPA, err.Error())
 		setCondition(instance, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedProcessWPA, "Error happened while processing the WPA")
 		// In case of `reconcileWPA` error, we need to requeue the Resource in order to retry to process it again
 		// we put a delay in order to not retry directly and limit the number of retries if it only a transient issue.
-		if err2 := r.updateStatusIfNeeded(ctx, wpaStatusOriginal, instance); err2 != nil {
-			r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedUpdateStatus, err2.Error())
-			return reconcile.Result{}, err2
+		if err = r.updateStatusIfNeeded(ctx, wpaStatusOriginal, instance); err != nil {
+			r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedUpdateStatus, err.Error())
+			return reconcile.Result{}, err
 		}
 		return reconcile.Result{RequeueAfter: requeueAfterForWPAErrors(err)}, nil
 	}
@@ -282,6 +304,17 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 			logger.Error(fmt.Errorf("recover error"), "RunTime error in reconcileWPA", "returnValue", err1)
 		}
 	}()
+
+	var err error
+	span, ctx := tracer.StartSpanFromContext(ctx, "reconcileWPA")
+	defer func() {
+		if err != nil {
+			span.Finish(tracer.WithError(err))
+		} else {
+			span.Finish()
+		}
+	}()
+
 	// the following line are here to retrieve the GVK of the target ref
 	targetGV, err := schema.ParseGroupVersion(wpa.Spec.ScaleTargetRef.APIVersion)
 	if err != nil {
@@ -304,6 +337,8 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	currentReplicas := currentScale.Status.Replicas
 	logger.Info("Target deploy", "replicas", currentReplicas)
 
+	span.SetTag("current_replicas", currentReplicas)
+
 	// add additional labels to info metric
 	promLabels := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace}
 	for _, eLabel := range extraPromLabels {
@@ -321,6 +356,8 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	}
 	dryRun.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(float64(dryRunMetricValue))
 
+	span.SetTag("dry_run", wpa.Spec.DryRun)
+
 	reference := fmt.Sprintf("%s/%s/%s", wpa.Spec.ScaleTargetRef.Kind, wpa.Namespace, wpa.Spec.ScaleTargetRef.Name)
 	setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, datadoghqv1alpha1.ConditionReasonSuccessfulGetScale, "the WPA controller was able to get the target's current scale")
 
@@ -328,7 +365,15 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	rescaleReason := ""
 	now := time.Now()
 
-	proposedReplicas, metricName, metricStatuses, metricTimestamp, readyReplicas, stableRegime, err := r.computeReplicas(logger, wpa, currentScale)
+	proposedReplicas, metricName, metricStatuses, metricTimestamp, readyReplicas, stableRegime, err := r.computeReplicas(ctx, logger, wpa, currentScale)
+
+	span.SetTag("proposed_replicas", proposedReplicas)
+	span.SetTag("metric_name", metricName)
+	span.SetTag("metric_timestamp", metricTimestamp)
+	span.SetTag("ready_replicas", readyReplicas)
+	span.SetTag("stable_regime", stableRegime)
+	span.SetTag("metric_statuses", metricStatuses)
+
 	if err != nil {
 		r.setCurrentReplicasInStatus(wpa, currentReplicas)
 		if err2 := r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa); err2 != nil {
@@ -576,7 +621,7 @@ func setStatus(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, d
 	}
 }
 
-func (r *WatermarkPodAutoscalerReconciler) computeReplicas(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, readyReplicas int32, stableRegime bool, err error) {
+func (r *WatermarkPodAutoscalerReconciler) computeReplicas(ctx context.Context, logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, readyReplicas int32, stableRegime bool, err error) {
 	labels := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}
 	minReplicas := float64(0)
 	if wpa.Spec.MinReplicas != nil {
@@ -588,9 +633,9 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicas(logger logr.Logger, w
 	var isAbove, isBelow bool
 	var reason string
 	if wpa.Spec.Recommender != nil {
-		replicas, metric, statuses, timestamp, readyReplicas, isAbove, isBelow, reason, err = r.computeReplicasWithRecommender(logger, wpa, scale)
+		replicas, metric, statuses, timestamp, readyReplicas, isAbove, isBelow, reason, err = r.computeReplicasWithRecommender(ctx, logger, wpa, scale)
 	} else {
-		replicas, metric, statuses, timestamp, readyReplicas, isAbove, isBelow, err = r.computeReplicasForMetrics(logger, wpa, scale)
+		replicas, metric, statuses, timestamp, readyReplicas, isAbove, isBelow, err = r.computeReplicasForMetrics(ctx, logger, wpa, scale)
 	}
 
 	condAbove := corev1.ConditionFalse
@@ -617,7 +662,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicas(logger logr.Logger, w
 	return replicas, metric, statuses, timestamp, readyReplicas, stableRegime, err
 }
 
-func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, readyReplicas int32, isAbove, isBelow bool, err error) {
+func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(ctx context.Context, logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, readyReplicas int32, isAbove, isBelow bool, err error) {
 	statuses = make([]autoscalingv2.MetricStatus, len(wpa.Spec.Metrics))
 
 	for i, metricSpec := range wpa.Spec.Metrics {
@@ -644,7 +689,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 					metricNamePromLabel:        metricSpec.External.MetricName,
 				}
 
-				replicaCalculation, errMetricsServer := r.replicaCalc.GetExternalMetricReplicas(logger, scale, metricSpec, wpa)
+				replicaCalculation, errMetricsServer := r.replicaCalc.GetExternalMetricReplicas(ctx, logger, scale, metricSpec, wpa)
 				if errMetricsServer != nil {
 					replicaProposal.Delete(promLabelsForWpaWithMetricName)
 					r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedGetExternalMetrics, errMetricsServer.Error())
@@ -692,7 +737,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 					metricNamePromLabel:        string(metricSpec.Resource.Name),
 				}
 
-				replicaCalculation, errMetricsServer := r.replicaCalc.GetResourceReplicas(logger, scale, metricSpec, wpa)
+				replicaCalculation, errMetricsServer := r.replicaCalc.GetResourceReplicas(ctx, logger, scale, metricSpec, wpa)
 				if errMetricsServer != nil {
 					replicaProposal.Delete(promLabelsForWpaWithMetricName)
 					r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedGetResourceMetric, errMetricsServer.Error())
@@ -743,7 +788,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(logger logr
 	return replicas, metric, statuses, timestamp, readyReplicas, isAbove, isBelow, nil
 }
 
-func (r *WatermarkPodAutoscalerReconciler) computeReplicasWithRecommender(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, readyReplicas int32, isAbove, isBelow bool, reason string, err error) {
+func (r *WatermarkPodAutoscalerReconciler) computeReplicasWithRecommender(ctx context.Context, logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, readyReplicas int32, isAbove, isBelow bool, reason string, err error) {
 	var recommenderSpec = wpa.Spec.Recommender
 
 	if recommenderSpec == nil {
@@ -761,7 +806,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasWithRecommender(logger
 		metricNamePromLabel:        recommenderName,
 	}
 
-	replicaCalculation, errMetricsServer := r.replicaCalc.GetRecommenderReplicas(logger, scale, wpa)
+	replicaCalculation, errMetricsServer := r.replicaCalc.GetRecommenderReplicas(ctx, logger, scale, wpa)
 	if errMetricsServer != nil {
 		replicaProposal.Delete(promLabelsForWpaWithMetricName)
 		r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedGetResourceMetric, errMetricsServer.Error())

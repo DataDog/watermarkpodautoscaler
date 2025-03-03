@@ -6,6 +6,7 @@
 package datadoghq
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -61,9 +62,9 @@ type metricPosition struct {
 
 // ReplicaCalculatorItf interface for ReplicaCalculator
 type ReplicaCalculatorItf interface {
-	GetExternalMetricReplicas(logger logr.Logger, target *autoscalingv1.Scale, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error)
-	GetResourceReplicas(logger logr.Logger, target *autoscalingv1.Scale, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error)
-	GetRecommenderReplicas(logger logr.Logger, target *autoscalingv1.Scale, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error)
+	GetExternalMetricReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error)
+	GetResourceReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error)
+	GetRecommenderReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error)
 }
 
 // ReplicaCalculator is responsible for calculation of the number of replicas
@@ -88,7 +89,7 @@ func NewReplicaCalculator(metricsClient metricsclient.MetricsClient, recommender
 // GetExternalMetricReplicas calculates the desired replica count based on a
 // target metric value (as a milli-value) for the external metric in the given
 // namespace, and the current replica count.
-func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target *autoscalingv1.Scale, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (ReplicaCalculation, error) {
+func (c *ReplicaCalculator) GetExternalMetricReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (ReplicaCalculation, error) {
 	lbl, err := labels.Parse(target.Status.Selector)
 	if err != nil {
 		logger.Error(err, "Could not parse the labels of the target")
@@ -173,7 +174,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 
 // GetResourceReplicas calculates the desired replica count based on a target resource utilization percentage
 // of the given resource for pods matching the given selector in the given namespace, and the current replica count
-func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *autoscalingv1.Scale, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (ReplicaCalculation, error) {
+func (c *ReplicaCalculator) GetResourceReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (ReplicaCalculation, error) {
 	resourceName := metric.Resource.Name
 	selector := metric.Resource.MetricSelector
 	labelSelector, err := metav1.LabelSelectorAsSelector(selector)
@@ -248,7 +249,7 @@ func (c *ReplicaCalculator) GetResourceReplicas(logger logr.Logger, target *auto
 }
 
 // GetRecommenderReplicas contacts an external replica recommender to get the desired replica count
-func (c *ReplicaCalculator) GetRecommenderReplicas(logger logr.Logger, target *autoscalingv1.Scale, wpa *v1alpha1.WatermarkPodAutoscaler) (ReplicaCalculation, error) {
+func (c *ReplicaCalculator) GetRecommenderReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, wpa *v1alpha1.WatermarkPodAutoscaler) (ReplicaCalculation, error) {
 	lbl, err := labels.Parse(target.Status.Selector)
 	if err != nil {
 		logger.Error(err, "Could not parse the labels of the target")
@@ -295,7 +296,7 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(logger logr.Logger, target *a
 		MinReplicas:          minReplicas,
 		MaxReplicas:          wpa.Spec.MaxReplicas,
 	}
-	reco, err := c.recommenderClient.GetReplicaRecommendation(&request)
+	reco, err := c.recommenderClient.GetReplicaRecommendation(ctx, &request)
 	if err != nil {
 		// When we add official support for several metrics, move this Delete to only occur if no metric is available at all.
 		labelsWithReason := prometheus.Labels{

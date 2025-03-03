@@ -12,9 +12,11 @@ import (
 	"os"
 	"time"
 
+	"github.com/DataDog/dd-trace-go/v2/ddtrace/tracer"
+	"github.com/DataDog/dd-trace-go/v2/profiler"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"gopkg.in/DataDog/dd-trace-go.v1/profiler"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -59,6 +61,7 @@ func main() {
 	var clientTimeoutDuration time.Duration
 	var clientQPSLimit float64
 	var ddProfilingEnabled bool
+	var ddTracingEnabled bool
 	var workers int
 	var skipNotScalingEvents bool
 	var tlsCAFile string
@@ -77,6 +80,7 @@ func main() {
 	flag.DurationVar(&clientTimeoutDuration, "client-timeout", 0, "The maximum length of time to wait before giving up on a kube-apiserver request") // is set to 0, keep default
 	flag.Float64Var(&clientQPSLimit, "client-qps", 0, "QPS Limit for the Kubernetes client (default 20 qps)")
 	flag.BoolVar(&ddProfilingEnabled, "ddProfilingEnabled", false, "Enable the datadog profiler")
+	flag.BoolVar(&ddTracingEnabled, "ddTracingEnabled", false, "Enable the datadog tracer")
 	flag.IntVar(&workers, "workers", 1, "Maximum number of concurrent Reconciles which can be run")
 	flag.BoolVar(&skipNotScalingEvents, "skipNotScalingEvents", false, "Log NotScaling decisions instead of creating Kubernetes events")
 	flag.StringVar(&tlsCAFile, "tls-ca-file", "", "Default file containing server CA certificate for TLS connection")
@@ -104,6 +108,15 @@ func main() {
 		}
 
 		defer profiler.Stop()
+	}
+
+	if ddTracingEnabled {
+		setupLog.Info("Starting Datadog Tracer")
+		if err := tracer.Start(); err != nil {
+			setupLog.Error(err, "unable to start Datadog Tracer")
+		}
+
+		defer tracer.Stop()
 	}
 
 	if printVersionArg {
