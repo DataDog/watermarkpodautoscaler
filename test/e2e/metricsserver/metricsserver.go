@@ -54,7 +54,7 @@ func InitMetricsServerFiles(r io.Writer, deployDir, namespace string) ([]client.
 		}
 		obj, _, err2 := decode(bytes, nil, nil)
 		if err2 != nil {
-			return nil, err
+			return nil, err2
 		}
 		switch o := obj.(type) {
 		case *corev1.Service:
