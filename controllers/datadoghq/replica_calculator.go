@@ -113,6 +113,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(logger logr.Logger, target
 	}
 
 	ratioReadyPods := (100 * currentReadyReplicas / (int32(len(podList)) - incorrectTargetPodsCount))
+
 	if ratioReadyPods < wpa.Spec.MinAvailableReplicaPercentage {
 		return ReplicaCalculation{}, fmt.Errorf("%d %% of the pods are unready, will not autoscale %s/%s", ratioReadyPods, target.Namespace, target.Name)
 	}
@@ -516,6 +517,15 @@ func (c *ReplicaCalculator) getReadyPodsCount(log logr.Logger, targetName string
 			incorrectTargetPodsCount++
 			continue
 		}
+
+		// During a node-pressure eviction, the kubelet sets the phase for the selected pods to Failed, and terminates the Pod.
+		// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/
+		// These pods should be ignored because they may not be garbage collected for a long time
+		if pod.Status.Phase == corev1.PodFailed {
+			incorrectTargetPodsCount++
+			continue
+		}
+
 		_, condition := getPodCondition(&pod.Status, corev1.PodReady)
 		// We can't distinguish pods that are past the Readiness in the lifecycle but have not reached it
 		// and pods that are still Unschedulable but we don't need this level of granularity.
