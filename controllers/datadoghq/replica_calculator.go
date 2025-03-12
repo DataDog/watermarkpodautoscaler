@@ -517,10 +517,17 @@ func (c *ReplicaCalculator) getReadyPodsCount(log logr.Logger, targetName string
 			continue
 		}
 
-		// During a node-pressure eviction, the kubelet sets the phase for the selected pods to Failed, and terminates the Pod.
+		// PodFailed
+		//During a node-pressure eviction, the kubelet sets the phase for the selected pods to Failed, and terminates
+		// the Pod. These pods should be ignored because they may not be garbage collected for a long time.
 		// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/
-		// These pods should be ignored because they may not be garbage collected for a long time
-		if pod.Status.Phase == corev1.PodFailed {
+
+		// PodSucceeded
+		// A Deployment’s Pod should never be in PodSucceeded. If it is, it usually means:
+		// - The Pod is running a one-shot script instead of a service.
+		// - The restartPolicy is misconfigured.
+		// - A Job-like process was accidentally set up in a Deployment.
+		if pod.Status.Phase == corev1.PodFailed || pod.Status.Phase == corev1.PodSucceeded {
 			incorrectTargetPodsCount++
 			continue
 		}

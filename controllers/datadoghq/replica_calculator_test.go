@@ -1964,10 +1964,11 @@ func TestTooManyUnreadyPods(t *testing.T) {
 	tc.runTest(t)
 }
 
-// We have evicted pods that should not be counted when evaluating the MinAverageReplicaPercentage
-// Previously, evicted pods were incorrectly included in the ready pods calculation which could prevent scaling
-// This test makes sure that an evicted pod does not prevent the WPA from scaling up
-func TestMinAverageReplicaPercentageIgnoresEvictedPods(t *testing.T) {
+// Pods that have either [PodFailed, PodSucceeded] statuses should not be counted when evaluating the
+// MinAverageReplicaPercentage as they both indicate pods that will never be ready again.
+
+// This test makes sure that these pod statuses are ignored when calculating the ready replicas.
+func TestMinAverageReplicaPercentageIgnoresFailedAndSucceededPods(t *testing.T) {
 	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
 		Type: v1alpha1.ExternalMetricSourceType,
@@ -1986,17 +1987,18 @@ func TestMinAverageReplicaPercentageIgnoresEvictedPods(t *testing.T) {
 			isAbove: true,
 			isBelow: false,
 		},
-		scale: makeScale(testDeploymentName, 2, map[string]string{"name": "test-pod"}),
+		scale: makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
 		wpa: &v1alpha1.WatermarkPodAutoscaler{
 			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
 				Algorithm:                     "average",
-				MinAvailableReplicaPercentage: 51, // must use 51 because ratioReady calculation is exclusive
+				MinAvailableReplicaPercentage: 34,
 				Tolerance:                     *resource.NewMilliQuantity(20, resource.DecimalSI),
 				Metrics:                       []v1alpha1.MetricSpec{metric1},
 				ReplicaScalingAbsoluteModulo:  v1alpha1.NewInt32(1),
 			},
 		},
-		podPhase: []corev1.PodPhase{corev1.PodRunning, corev1.PodFailed}, // simulate a pod eviction
+		// simulate a pod eviction and a pod
+		podPhase: []corev1.PodPhase{corev1.PodRunning, corev1.PodFailed, corev1.PodSucceeded},
 		metric: &metricInfo{
 			spec:                metric1,
 			levels:              []int64{30000},
