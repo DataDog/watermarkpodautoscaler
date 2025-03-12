@@ -397,8 +397,16 @@ func tryToConvergeToWatermarkForUsage(logger logr.Logger, convergingType v1alpha
 	maxReplicas := wpa.Spec.MaxReplicas
 
 	var lowerBoundReplicaCount, upperBoundReplicaCount int32
-	lowerBoundReplicaCount = math32.Cap(math32.Ceil(float64(currentReadyReplicas)/float64(highMark.MilliValue())*adjustedUsage), minReplicas, maxReplicas)
-	upperBoundReplicaCount = math32.Cap(math32.Floor(float64(currentReadyReplicas)/float64(lowMark.MilliValue())*adjustedUsage), minReplicas, maxReplicas)
+	if highMark.MilliValue() == 0 {
+		lowerBoundReplicaCount = currentReplicas
+	} else {
+		lowerBoundReplicaCount = math32.Cap(math32.Ceil(float64(currentReadyReplicas)/float64(highMark.MilliValue())*adjustedUsage), minReplicas, maxReplicas)
+	}
+	if lowMark.MilliValue() == 0 {
+		upperBoundReplicaCount = currentReplicas
+	} else {
+		upperBoundReplicaCount = math32.Cap(math32.Floor(float64(currentReadyReplicas)/float64(lowMark.MilliValue())*adjustedUsage), minReplicas, maxReplicas)
+	}
 	return tryToConvergeToWatermark(logger, convergingType, currentReplicas, currentReadyReplicas, wpa, lowerBoundReplicaCount, upperBoundReplicaCount)
 }
 
