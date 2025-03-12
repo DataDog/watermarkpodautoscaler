@@ -481,7 +481,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 func requeueAfterForWPAErrors(err error) time.Duration {
 	// We don't expect this error to be recovered after 1s, so define a longer
 	// delay.
-	if strings.Contains(err.Error(), scaleNotFoundErr) {
+	if err != nil && strings.Contains(err.Error(), scaleNotFoundErr) {
 		return scaleNotFoundRequeueDelay
 	}
 
