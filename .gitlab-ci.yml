@@ -148,8 +148,8 @@ trigger_internal_image_fips:
   variables:
     IMAGE_VERSION: tmpl-v3-fips
     IMAGE_NAME: $PROJECTNAME
-    RELEASE_TAG: ${CI_COMMIT_REF_SLUG}
-    BUILD_TAG: ${CI_COMMIT_REF_SLUG}
+    RELEASE_TAG: ${CI_COMMIT_REF_SLUG}-fips
+    BUILD_TAG: ${CI_COMMIT_REF_SLUG}-fips
     TMPL_SRC_IMAGE: v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
     RELEASE_STAGING: "true"
     RELEASE_PROD: "true"
