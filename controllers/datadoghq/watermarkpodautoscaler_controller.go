@@ -175,6 +175,11 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 	// default ScalingActive to False. The condition should be updated the True if reconcileWPA went well.
 	setCondition(instance, autoscalingv2.ScalingActive, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedProcessWPA, "Error happened while processing the WPA")
 
+	// When we exit, reflect the status of the scaling active condition in a metric.
+	defer func() {
+		updateConditionsMetrics(instance)
+	}()
+
 	if !datadoghqv1alpha1.IsDefaultWatermarkPodAutoscaler(instance) {
 		log.Info("Some configuration options are missing, falling back to the default ones")
 		defaultWPA := datadoghqv1alpha1.DefaultWatermarkPodAutoscaler(instance)
@@ -295,6 +300,24 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 	}
 
 	return resRepeat, nil
+}
+
+func updateConditionsMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
+	labels := prometheus.Labels{
+		wpaNamePromLabel:           wpa.Name,
+		wpaNamespacePromLabel:      wpa.Namespace,
+		resourceNamespacePromLabel: wpa.Namespace,
+		resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
+		resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
+	}
+	isActive := 0
+	for cond := range wpa.Status.Conditions {
+		if wpa.Status.Conditions[cond].Type == autoscalingv2.ScalingActive && wpa.Status.Conditions[cond].Status == corev1.ConditionTrue {
+			isActive = 1
+			break
+		}
+	}
+	scalingActive.With(labels).Set(float64(isActive))
 }
 
 // reconcileWPA is the core of the controller.
