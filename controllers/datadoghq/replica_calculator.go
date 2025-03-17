@@ -397,8 +397,16 @@ func tryToConvergeToWatermarkForUsage(logger logr.Logger, convergingType v1alpha
 	maxReplicas := wpa.Spec.MaxReplicas
 
 	var lowerBoundReplicaCount, upperBoundReplicaCount int32
-	lowerBoundReplicaCount = math32.Cap(math32.Ceil(float64(currentReadyReplicas)/float64(highMark.MilliValue())*adjustedUsage), minReplicas, maxReplicas)
-	upperBoundReplicaCount = math32.Cap(math32.Floor(float64(currentReadyReplicas)/float64(lowMark.MilliValue())*adjustedUsage), minReplicas, maxReplicas)
+	if highMark.MilliValue() == 0 {
+		lowerBoundReplicaCount = currentReplicas
+	} else {
+		lowerBoundReplicaCount = math32.Cap(math32.Ceil(float64(currentReadyReplicas)/float64(highMark.MilliValue())*adjustedUsage), minReplicas, maxReplicas)
+	}
+	if lowMark.MilliValue() == 0 {
+		upperBoundReplicaCount = currentReplicas
+	} else {
+		upperBoundReplicaCount = math32.Cap(math32.Floor(float64(currentReadyReplicas)/float64(lowMark.MilliValue())*adjustedUsage), minReplicas, maxReplicas)
+	}
 	return tryToConvergeToWatermark(logger, convergingType, currentReplicas, currentReadyReplicas, wpa, lowerBoundReplicaCount, upperBoundReplicaCount)
 }
 
@@ -517,6 +525,22 @@ func (c *ReplicaCalculator) getReadyPodsCount(log logr.Logger, targetName string
 			incorrectTargetPodsCount++
 			continue
 		}
+
+		// PodFailed
+		//During a node-pressure eviction, the kubelet sets the phase for the selected pods to Failed, and terminates
+		// the Pod. These pods should be ignored because they may not be garbage collected for a long time.
+		// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/
+
+		// PodSucceeded
+		// A Deployment’s Pod should never be in PodSucceeded. If it is, it usually means:
+		// - The Pod is running a one-shot script instead of a service.
+		// - The restartPolicy is misconfigured.
+		// - A Job-like process was accidentally set up in a Deployment.
+		if pod.Status.Phase == corev1.PodFailed || pod.Status.Phase == corev1.PodSucceeded {
+			incorrectTargetPodsCount++
+			continue
+		}
+
 		_, condition := getPodCondition(&pod.Status, corev1.PodReady)
 		// We can't distinguish pods that are past the Readiness in the lifecycle but have not reached it
 		// and pods that are still Unschedulable but we don't need this level of granularity.

@@ -120,6 +120,7 @@ jobs:
         uses: pozetroninc/github-action-get-latest-release@master
         with:
           owner: ${{ github.repository_owner }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           repo: watermarkpodautoscaler
           excludes: prerelease, draft
       - name: Build

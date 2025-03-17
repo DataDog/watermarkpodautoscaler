@@ -1966,6 +1966,50 @@ func TestTooManyUnreadyPods(t *testing.T) {
 	tc.runTest(t)
 }
 
+// Pods that have either [PodFailed, PodSucceeded] statuses should not be counted when evaluating the
+// MinAverageReplicaPercentage as they both indicate pods that will never be ready again.
+
+// This test makes sure that these pod statuses are ignored when calculating the ready replicas.
+func TestMinAverageReplicaPercentageIgnoresFailedAndSucceededPods(t *testing.T) {
+	logf.SetLogger(zap.New())
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ExternalMetricSourceType,
+		External: &v1alpha1.ExternalMetricSource{
+			MetricName:     "loadbalancer.request.per.seconds",
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"foo": "bar"}},
+			HighWatermark:  resource.NewMilliQuantity(10000, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(7000, resource.DecimalSI),
+		},
+	}
+
+	tc := replicaCalcTestCase{
+		expectedReplicas: 3,
+		readyReplicas:    1,
+		pos: metricPosition{
+			isAbove: true,
+			isBelow: false,
+		},
+		scale: makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				Algorithm:                     "average",
+				MinAvailableReplicaPercentage: 34,
+				Tolerance:                     *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                       []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingAbsoluteModulo:  v1alpha1.NewInt32(1),
+			},
+		},
+		// simulate a pod eviction and a pod
+		podPhase: []corev1.PodPhase{corev1.PodRunning, corev1.PodFailed, corev1.PodSucceeded},
+		metric: &metricInfo{
+			spec:                metric1,
+			levels:              []int64{30000},
+			expectedUtilization: 30000, // only 1 ready replica so it's 100% utilized
+		},
+	}
+	tc.runTest(t)
+}
+
 // We have pods that are pending and one is within an acceptable window.
 func TestPendingNotExpiredScale(t *testing.T) {
 	logf.SetLogger(zap.New())
