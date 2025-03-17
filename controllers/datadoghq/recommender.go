@@ -123,17 +123,30 @@ func (r *RecommenderClientImpl) instrumentedClient(recommender string, tlsConfig
 	return &client, nil
 }
 
+func InstrumentRoundTripperErrors(v *prometheus.CounterVec, rt http.RoundTripper) promhttp.RoundTripperFunc {
+	return func(r *http.Request) (*http.Response, error) {
+		resp, err := rt.RoundTrip(r)
+		if err != nil {
+			v.With(prometheus.Labels{}).Inc()
+		}
+		return resp, err
+	}
+}
+
 func instrumentRoundTripper(recommender string, transport http.RoundTripper) http.RoundTripper {
 	labels := prometheus.Labels{clientPromLabel: recommender}
 
 	return httptrace.WrapRoundTripper(
-		promhttp.InstrumentRoundTripperCounter(
-			requestsTotal.MustCurryWith(labels),
-			promhttp.InstrumentRoundTripperInFlight(
-				responseInflight.With(labels),
-				promhttp.InstrumentRoundTripperDuration(
-					requestDuration.MustCurryWith(labels),
-					transport,
+		InstrumentRoundTripperErrors(
+			requestErrorsTotal.MustCurryWith(labels),
+			promhttp.InstrumentRoundTripperCounter(
+				requestsTotal.MustCurryWith(labels),
+				promhttp.InstrumentRoundTripperInFlight(
+					responseInflight.With(labels),
+					promhttp.InstrumentRoundTripperDuration(
+						requestDuration.MustCurryWith(labels),
+						transport,
+					),
 				),
 			),
 		))

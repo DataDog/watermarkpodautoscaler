@@ -519,6 +519,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			},
 			wantPromMetrics: map[string]float64{
 				"dryRun":                   0,
+				"scalingActive":            0,
 				"value":                    0,
 				"highwm":                   0,
 				"highwmV2":                 0,
@@ -573,6 +574,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			},
 			wantPromMetrics: map[string]float64{
 				"dryRun":                   0,
+				"scalingActive":            0,
 				"value":                    0,
 				"highwm":                   0,
 				"highwmV2":                 0,
@@ -627,6 +629,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			},
 			wantPromMetrics: map[string]float64{
 				"dryRun":                   0,
+				"scalingActive":            0,
 				"value":                    0,
 				"highwm":                   0,
 				"highwmV2":                 0,
@@ -736,6 +739,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			},
 			wantPromMetrics: map[string]float64{
 				"dryRun":                   0,
+				"scalingActive":            0,
 				"value":                    0,
 				"highwm":                   80,
 				"highwmV2":                 80,
@@ -841,6 +845,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			},
 			wantPromMetrics: map[string]float64{
 				"dryRun":                   0,
+				"scalingActive":            0,
 				"value":                    0,
 				"highwm":                   80,
 				"highwmV2":                 80,
@@ -956,6 +961,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			},
 			wantPromMetrics: map[string]float64{
 				"dryRun":                   0.0,
+				"scalingActive":            0,
 				"value":                    0.0,
 				"highwm":                   80.0,
 				"highwmV2":                 80.0,
@@ -1061,6 +1067,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			},
 			wantPromMetrics: map[string]float64{
 				"dryRun":                   0.0,
+				"scalingActive":            0,
 				"value":                    0.0,
 				"highwm":                   80.0,
 				"highwmV2":                 80.0,
@@ -1168,6 +1175,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			},
 			wantPromMetrics: map[string]float64{
 				"dryRun":                   0.0,
+				"scalingActive":            0,
 				"value":                    0.0,
 				"highwm":                   80.0,
 				"highwmV2":                 80.0,
@@ -1292,6 +1300,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			},
 			wantPromMetrics: map[string]float64{
 				"dryRun":                   0,
+				"scalingActive":            0,
 				"value":                    0,
 				"highwm":                   80,
 				"highwmV2":                 80,
@@ -2514,7 +2523,9 @@ func getCounterVal(t *testing.T, metric prometheus.Metric) float64 {
 }
 
 func getMetricKeys() []string {
-	return []string{"dryRun",
+	return []string{
+		"dryRun",
+		"scalingActive",
 		"value",
 		"highwm",
 		"highwmV2",
@@ -2553,6 +2564,7 @@ func getPromMetrics(t *testing.T, wpa *v1alpha1.WatermarkPodAutoscaler) map[stri
 		"replicaMin":       getGaugeVal(t, replicaMin.With(getPromBaseLabels(wpa))),
 		"replicaMax":       getGaugeVal(t, replicaMax.With(getPromBaseLabels(wpa))),
 		"dryRun":           getGaugeVal(t, dryRun.With(getPromBaseLabels(wpa))),
+		"scalingActive":    getGaugeVal(t, scalingActive.With(getPromBaseLabels(wpa))),
 		"upscale":          getCounterVal(t, upscale.With(getPromBaseLabels(wpa))),
 		"downscale":        getCounterVal(t, downscale.With(getPromBaseLabels(wpa))),
 
