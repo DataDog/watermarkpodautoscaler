@@ -661,6 +661,9 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicas(ctx context.Context, 
 	} else {
 		replicas, metric, statuses, timestamp, readyReplicas, isAbove, isBelow, err = r.computeReplicasForMetrics(ctx, logger, wpa, scale)
 	}
+	if err != nil {
+		return 0, "", nil, time.Time{}, 0, false, err
+	}
 
 	condAbove := corev1.ConditionFalse
 	if isAbove {
