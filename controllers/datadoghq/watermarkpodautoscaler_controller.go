@@ -391,13 +391,6 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 
 	proposedReplicas, metricName, metricStatuses, metricTimestamp, readyReplicas, stableRegime, err := r.computeReplicas(ctx, logger, wpa, currentScale)
 
-	span.SetTag("proposed_replicas", proposedReplicas)
-	span.SetTag("metric_name", metricName)
-	span.SetTag("metric_timestamp", metricTimestamp)
-	span.SetTag("ready_replicas", readyReplicas)
-	span.SetTag("stable_regime", stableRegime)
-	span.SetTag("metric_statuses", metricStatuses)
-
 	if err != nil {
 		r.setCurrentReplicasInStatus(wpa, currentReplicas)
 		if err2 := r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa); err2 != nil {
@@ -410,6 +403,14 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 		logger.Info("Failed to compute desired number of replicas based on listed metrics.", "reference", reference, "error", err)
 		return nil
 	}
+
+	span.SetTag("proposed_replicas", proposedReplicas)
+	span.SetTag("metric_name", metricName)
+	span.SetTag("metric_timestamp", metricTimestamp)
+	span.SetTag("ready_replicas", readyReplicas)
+	span.SetTag("stable_regime", stableRegime)
+	span.SetTag("metric_statuses", metricStatuses)
+
 	logger.Info("Proposing replicas", "proposedReplicas", proposedReplicas, "metricName", metricName, "reference", reference, "metric timestamp", metricTimestamp.Format(time.RFC1123))
 
 	rescaleMetric := ""
