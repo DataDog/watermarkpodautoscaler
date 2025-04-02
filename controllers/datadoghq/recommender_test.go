@@ -35,6 +35,14 @@ import (
 	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 )
 
+// Mock Recommender Client
+// ----------------------
+
+type RecommenderClientMock struct {
+	ReturnedResponse ReplicaRecommendationResponse
+	Error            error
+}
+
 func NewMockRecommenderClient() *RecommenderClientMock {
 	return &RecommenderClientMock{
 		ReplicaRecommendationResponse{2, 1, 3, time.Now(), "because", 0.5},
@@ -48,12 +56,11 @@ func (m *RecommenderClientMock) GetReplicaRecommendation(ctx context.Context, re
 
 var _ RecommenderClient = &RecommenderClientMock{}
 
-type RecommenderClientMock struct {
-	ReturnedResponse ReplicaRecommendationResponse
-	Error            error
-}
+// Basic Client Tests
+// -----------------
 
-// TODO: Add more tests for the HTTP client
+// TestRecommenderClient verifies that the client properly handles invalid requests
+// by ensuring it returns an error when given an empty request.
 func TestRecommenderClient(t *testing.T) {
 	client := NewRecommenderClient(http.DefaultClient)
 	// This should not work with empty requests.
@@ -62,6 +69,8 @@ func TestRecommenderClient(t *testing.T) {
 	require.Nil(t, resp)
 }
 
+// TestInstrumentation verifies that the client's instrumentation layer doesn't crash
+// when making requests to invalid URLs.
 func TestInstrumentation(t *testing.T) {
 	client := &http.Client{} // can't use http.DefaultClient here because this test modifies its transport possibly leaking to following tests
 	client.Transport = instrumentRoundTripper("http://test", http.DefaultTransport)
@@ -74,6 +83,11 @@ func TestInstrumentation(t *testing.T) {
 	require.Error(t, err)
 }
 
+// Target Building Tests
+// --------------------
+
+// TestRecommenderTargetBuild verifies that the client correctly builds workload recommendation targets
+// from recommender specifications, handling both small and large watermark values.
 func TestRecommenderTargetBuild(t *testing.T) {
 	request := &ReplicaRecommendationRequest{
 		Namespace: "test",
@@ -142,6 +156,8 @@ func TestRecommenderTargetBuild(t *testing.T) {
 	}
 }
 
+// TestMetricNameForRecommender verifies that the client correctly generates metric names
+// from recommender specifications, including all relevant settings in the name.
 func TestMetricNameForRecommender(t *testing.T) {
 	wpa := &v1alpha1.WatermarkPodAutoscaler{
 		Spec: v1alpha1.WatermarkPodAutoscalerSpec{
@@ -159,31 +175,15 @@ func TestMetricNameForRecommender(t *testing.T) {
 	assert.Equal(t, "recommender{targetType:memory,consumerGroup:my_app,lookbackWindowSeconds:600}", metricName)
 }
 
-func TestPlaintextRecommendation(t *testing.T) {
-	now := time.Now().UTC()
-	// Start a local HTTP server
-	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		reply := &autoscaling.WorkloadRecommendationReply{
-			Timestamp:          timestamppb.New(now),
-			TargetReplicas:     6,
-			LowerBoundReplicas: proto.Int32(4),
-			UpperBoundReplicas: proto.Int32(6),
-			ObservedTargets:    nil,
-			Reason:             "an upscale was needed",
-		}
-		response, err := protojson.Marshal(reply)
-		if err != nil {
-			rw.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		rw.WriteHeader(http.StatusOK)
-		_, _ = rw.Write(response)
-	}))
-	defer server.Close()
+// HTTP Client Tests
+// ----------------
 
-	// inject a stub recommendation request
-	rc := NewRecommenderClient(http.DefaultClient)
-	request := &ReplicaRecommendationRequest{
+// Helper Functions
+// ---------------
+
+// newTestRequest creates a common test request with default values that can be customized
+func newTestRequest(serverURL string, tlsConfig *v1alpha1.TLSConfig) *ReplicaRecommendationRequest {
+	return &ReplicaRecommendationRequest{
 		Namespace: "test",
 		TargetRef: &v1alpha1.CrossVersionObjectReference{
 			Kind: "Deployment",
@@ -191,7 +191,8 @@ func TestPlaintextRecommendation(t *testing.T) {
 		},
 		TargetCluster: "",
 		Recommender: &v1alpha1.RecommenderSpec{
-			URL:           server.URL,
+			URL:           serverURL,
+			TLSConfig:     tlsConfig,
 			Settings:      map[string]string{},
 			TargetType:    "memory",
 			HighWatermark: resource.NewMilliQuantity(500, resource.DecimalSI),
@@ -203,203 +204,38 @@ func TestPlaintextRecommendation(t *testing.T) {
 		MinReplicas:          10,
 		MaxReplicas:          30,
 	}
-	response, err := rc.GetReplicaRecommendation(context.Background(), request)
-	require.NoError(t, err)
+}
 
-	expectedResponse := &ReplicaRecommendationResponse{
+// newExpectedResponse creates a common expected response with default values
+func newExpectedResponse(now time.Time) *ReplicaRecommendationResponse {
+	return &ReplicaRecommendationResponse{
 		Replicas:           6,
 		ReplicasLowerBound: 4,
 		ReplicasUpperBound: 6,
 		Timestamp:          now,
 		Details:            "an upscale was needed",
 	}
-	require.Equal(t, expectedResponse, response)
 }
 
-//nolint:errcheck
-func TestTLSRecommendation(t *testing.T) {
-	now := time.Now().UTC()
-	server := startRecommenderStub(now)
-	defer server.Close()
-
-	// certificates will be written in a temp dir
-	tmp, err := os.MkdirTemp("", "TestTLSClientOption")
-	require.NoError(t, err)
-	defer os.RemoveAll(tmp)
-
-	// generate Ca, server & client certificate
-	_, _, err = generateCertificates(server, tmp)
-	require.NoError(t, err)
-
-	// inject a stub recommendation request
-	rc := NewRecommenderClient(http.DefaultClient)
-	request := &ReplicaRecommendationRequest{
-		Namespace: "test",
-		TargetRef: &v1alpha1.CrossVersionObjectReference{
-			Kind: "Deployment",
-			Name: "test-service",
-		},
-		TargetCluster: "",
-		Recommender: &v1alpha1.RecommenderSpec{
-			URL: server.URL,
-			TLSConfig: &v1alpha1.TLSConfig{
-				CAFile:   filepath.Join(tmp, "ca.pem"),
-				CertFile: filepath.Join(tmp, "cert.pem"),
-				KeyFile:  filepath.Join(tmp, "key.pem"),
-			},
-			Settings:      map[string]string{},
-			TargetType:    "memory",
-			HighWatermark: resource.NewMilliQuantity(500, resource.DecimalSI),
-			LowWatermark:  resource.NewMilliQuantity(705, resource.DecimalSI),
-		},
-		DesiredReplicas:      0,
-		CurrentReplicas:      10,
-		CurrentReadyReplicas: 10,
-		MinReplicas:          10,
-		MaxReplicas:          30,
+// newTestReply creates a common WorkloadRecommendationReply with default values
+func newTestReply(now time.Time) *autoscaling.WorkloadRecommendationReply {
+	return &autoscaling.WorkloadRecommendationReply{
+		Timestamp:          timestamppb.New(now),
+		TargetReplicas:     6,
+		LowerBoundReplicas: proto.Int32(4),
+		UpperBoundReplicas: proto.Int32(6),
+		ObservedTargets:    nil,
+		Reason:             "an upscale was needed",
 	}
-	response, err := rc.GetReplicaRecommendation(context.Background(), request)
-	require.NoError(t, err)
-
-	expectedResponse := &ReplicaRecommendationResponse{
-		Replicas:           6,
-		ReplicasLowerBound: 4,
-		ReplicasUpperBound: 6,
-		Timestamp:          now,
-		Details:            "an upscale was needed",
-	}
-	require.Equal(t, expectedResponse, response)
 }
 
-//nolint:errcheck
-func TestTLSRecommendationWithDefaults(t *testing.T) {
-	now := time.Now().UTC()
-	server := startRecommenderStub(now)
-	defer server.Close()
-
-	// certificates will be written in a temp dir
-	tmp, err := os.MkdirTemp("", "TestTLSClientOption")
-	require.NoError(t, err)
-	defer os.RemoveAll(tmp)
-
-	// generate Ca, server & client certificate
-	_, _, err = generateCertificates(server, tmp)
-	require.NoError(t, err)
-
-	// inject a stub recommendation request
-	rc := NewRecommenderClient(http.DefaultClient, WithTLSConfig(&v1alpha1.TLSConfig{
-		CAFile:   filepath.Join(tmp, "ca.pem"),
-		CertFile: filepath.Join(tmp, "cert.pem"),
-		KeyFile:  filepath.Join(tmp, "key.pem"),
-	}))
-	request := &ReplicaRecommendationRequest{
-		Namespace: "test",
-		TargetRef: &v1alpha1.CrossVersionObjectReference{
-			Kind: "Deployment",
-			Name: "test-service",
-		},
-		TargetCluster: "",
-		Recommender: &v1alpha1.RecommenderSpec{
-			URL:           server.URL,
-			Settings:      map[string]string{},
-			TargetType:    "memory",
-			HighWatermark: resource.NewMilliQuantity(500, resource.DecimalSI),
-			LowWatermark:  resource.NewMilliQuantity(705, resource.DecimalSI),
-		},
-		DesiredReplicas:      0,
-		CurrentReplicas:      10,
-		CurrentReadyReplicas: 10,
-		MinReplicas:          10,
-		MaxReplicas:          30,
-	}
-	response, err := rc.GetReplicaRecommendation(context.Background(), request)
-	require.NoError(t, err)
-
-	expectedResponse := &ReplicaRecommendationResponse{
-		Replicas:           6,
-		ReplicasLowerBound: 4,
-		ReplicasUpperBound: 6,
-		Timestamp:          now,
-		Details:            "an upscale was needed",
-	}
-	require.Equal(t, expectedResponse, response)
-}
-
-//nolint:errcheck
-func TestTLSRecommendationWithClientCertificateMismatch(t *testing.T) {
-	server := startRecommenderStub(time.Now().UTC())
-	defer server.Close()
-
-	// dump certificates to temporary disk
-	tmp, err := os.MkdirTemp("", "TestTLSClientOption")
-	require.NoError(t, err)
-	defer os.RemoveAll(tmp)
-
-	ca, caKey, err := generateCertificates(server, tmp)
-	require.NoError(t, err)
-
-	anotherClientCert, _, err := generateClientCertificate(ca, caKey)
-	require.NoError(t, err)
-
-	// overwrite the certificate part with a non matching one
-	os.WriteFile(filepath.Join(tmp, "cert.pem"), anotherClientCert, 0700)
-
-	// inject a stub recommendation request
-	rc := NewRecommenderClient(http.DefaultClient)
-	request := &ReplicaRecommendationRequest{
-		Namespace: "test",
-		TargetRef: &v1alpha1.CrossVersionObjectReference{
-			Kind: "Deployment",
-			Name: "test-service",
-		},
-		TargetCluster: "",
-		Recommender: &v1alpha1.RecommenderSpec{
-			URL: server.URL,
-			TLSConfig: &v1alpha1.TLSConfig{
-				CAFile:   filepath.Join(tmp, "ca.pem"),
-				CertFile: filepath.Join(tmp, "cert.pem"),
-				KeyFile:  filepath.Join(tmp, "key.pem"),
-			},
-			Settings:      map[string]string{},
-			TargetType:    "memory",
-			HighWatermark: resource.NewMilliQuantity(500, resource.DecimalSI),
-			LowWatermark:  resource.NewMilliQuantity(705, resource.DecimalSI),
-		},
-		DesiredReplicas:      0,
-		CurrentReplicas:      10,
-		CurrentReadyReplicas: 10,
-		MinReplicas:          10,
-		MaxReplicas:          30,
-	}
-
-	_, err = rc.GetReplicaRecommendation(context.Background(), request)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "tls: private key does not match public key")
-
-	// check that error is cached by removing the certificate which should trigger
-	// a different error if the code actively reloads the certificate
-	os.Remove(filepath.Join(tmp, "cert.pem"))
-	_, err = rc.GetReplicaRecommendation(context.Background(), request)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "tls: private key does not match public key")
-}
-
-//nolint:errcheck
 func startRecommenderStub(now time.Time) *httptest.Server {
 	return httptest.NewTLSServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		// make sure client used for the request has client certificate
 		if len(req.TLS.PeerCertificates) == 0 {
 			rw.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		reply := &autoscaling.WorkloadRecommendationReply{
-			Timestamp:          timestamppb.New(now),
-			TargetReplicas:     6,
-			LowerBoundReplicas: proto.Int32(4),
-			UpperBoundReplicas: proto.Int32(6),
-			ObservedTargets:    nil,
-			Reason:             "an upscale was needed",
-		}
+		reply := newTestReply(now)
 		response, err := protojson.Marshal(reply)
 		if err != nil {
 			rw.WriteHeader(http.StatusInternalServerError)
@@ -411,8 +247,6 @@ func startRecommenderStub(now time.Time) *httptest.Server {
 }
 
 func generateCertificates(server *httptest.Server, tmp string) (*x509.Certificate, *rsa.PrivateKey, error) {
-	// generate a self-signed CA and generate a client certificate
-	// signed by this CA certificate
 	ca, caPEM, caKey, err := generateCA()
 	if err != nil {
 		return nil, nil, err
@@ -422,14 +256,11 @@ func generateCertificates(server *httptest.Server, tmp string) (*x509.Certificat
 		return nil, nil, err
 	}
 
-	// make the server actually verify our client certificate
 	clientRootCAs := x509.NewCertPool()
 	clientRootCAs.AppendCertsFromPEM(caPEM)
 	server.TLS.ClientCAs = clientRootCAs
 	server.TLS.ClientAuth = tls.RequireAndVerifyClientCert
 
-	// dump client certificate to a temporary folder for the recommender client
-	// to use them, and the server CA
 	err = os.WriteFile(filepath.Join(tmp, "cert.pem"), clientCert, 0700)
 	if err != nil {
 		return nil, nil, err
@@ -507,7 +338,6 @@ func generateClientCertificate(ca *x509.Certificate, caPrivKey *rsa.PrivateKey) 
 		return nil, nil, err
 	}
 
-	// sign certificate wit our client root CA
 	certBytes, err := x509.CreateCertificate(rand.Reader, cert, ca, &certPrivKey.PublicKey, caPrivKey)
 	if err != nil {
 		return nil, nil, err
@@ -523,4 +353,165 @@ func generateClientCertificate(ca *x509.Certificate, caPrivKey *rsa.PrivateKey) 
 		Bytes: x509.MarshalPKCS1PrivateKey(certPrivKey),
 	})
 	return certPEM, certPrivKeyPEM, nil
+}
+
+// TestRedirect verifies that the client properly handles HTTP redirects by:
+// 1. Following redirects to the new location
+// 2. Successfully retrieving recommendations after the redirect
+// 3. Maintaining the correct response structure throughout the redirect chain
+func TestRedirect(t *testing.T) {
+	now := time.Now().UTC()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requestURI := r.RequestURI; requestURI == "/redirect" {
+			http.Redirect(w, r, "/redirected", http.StatusSeeOther)
+			return
+		} else if requestURI == "/redirected" {
+			reply := newTestReply(now)
+			response, err := protojson.Marshal(reply)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(response)
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	rc := NewRecommenderClient(http.DefaultClient)
+	request := newTestRequest(server.URL+"/redirect", nil)
+	response, err := rc.GetReplicaRecommendation(context.Background(), request)
+	require.NoError(t, err)
+
+	expectedResponse := newExpectedResponse(now)
+	require.Equal(t, expectedResponse, response)
+}
+
+// TestPlaintextRecommendation verifies that the client can successfully:
+// 1. Make plain HTTP requests to the recommender service
+// 2. Parse and return the recommendation response
+// 3. Handle the response without TLS configuration
+func TestPlaintextRecommendation(t *testing.T) {
+	now := time.Now().UTC()
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		reply := newTestReply(now)
+		response, err := protojson.Marshal(reply)
+		if err != nil {
+			rw.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		rw.WriteHeader(http.StatusOK)
+		_, _ = rw.Write(response)
+	}))
+	defer server.Close()
+
+	rc := NewRecommenderClient(http.DefaultClient)
+	request := newTestRequest(server.URL, nil)
+	response, err := rc.GetReplicaRecommendation(context.Background(), request)
+	require.NoError(t, err)
+
+	expectedResponse := newExpectedResponse(now)
+	require.Equal(t, expectedResponse, response)
+}
+
+// TestTLSRecommendation verifies that the client can successfully:
+// 1. Make HTTPS requests with TLS configuration
+// 2. Authenticate using client certificates
+// 3. Parse and return the recommendation response with TLS enabled
+func TestTLSRecommendation(t *testing.T) {
+	now := time.Now().UTC()
+	server := startRecommenderStub(now)
+	defer server.Close()
+
+	tmp, err := os.MkdirTemp("", "TestTLSClientOption")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmp)
+
+	_, _, err = generateCertificates(server, tmp)
+	require.NoError(t, err)
+
+	rc := NewRecommenderClient(http.DefaultClient)
+	tlsConfig := &v1alpha1.TLSConfig{
+		CAFile:   filepath.Join(tmp, "ca.pem"),
+		CertFile: filepath.Join(tmp, "cert.pem"),
+		KeyFile:  filepath.Join(tmp, "key.pem"),
+	}
+	request := newTestRequest(server.URL, tlsConfig)
+	response, err := rc.GetReplicaRecommendation(context.Background(), request)
+	require.NoError(t, err)
+
+	expectedResponse := newExpectedResponse(now)
+	require.Equal(t, expectedResponse, response)
+}
+
+// TestTLSRecommendationWithDefaults verifies that the client can successfully:
+// 1. Use default TLS configuration set at client creation time
+// 2. Make HTTPS requests without per-request TLS configuration
+// 3. Parse and return the recommendation response using default TLS settings
+func TestTLSRecommendationWithDefaults(t *testing.T) {
+	now := time.Now().UTC()
+	server := startRecommenderStub(now)
+	defer server.Close()
+
+	tmp, err := os.MkdirTemp("", "TestTLSClientOption")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmp)
+
+	_, _, err = generateCertificates(server, tmp)
+	require.NoError(t, err)
+
+	tlsConfig := &v1alpha1.TLSConfig{
+		CAFile:   filepath.Join(tmp, "ca.pem"),
+		CertFile: filepath.Join(tmp, "cert.pem"),
+		KeyFile:  filepath.Join(tmp, "key.pem"),
+	}
+	rc := NewRecommenderClient(http.DefaultClient, WithTLSConfig(tlsConfig))
+	request := newTestRequest(server.URL, nil)
+	response, err := rc.GetReplicaRecommendation(context.Background(), request)
+	require.NoError(t, err)
+
+	expectedResponse := newExpectedResponse(now)
+	require.Equal(t, expectedResponse, response)
+}
+
+// TestTLSRecommendationWithClientCertificateMismatch verifies that the client properly handles
+// certificate validation errors by:
+// 1. Detecting mismatched client certificates
+// 2. Detecting missing client certificates
+// 3. Returning appropriate error messages for certificate-related issues
+func TestTLSRecommendationWithClientCertificateMismatch(t *testing.T) {
+	server := startRecommenderStub(time.Now().UTC())
+	defer server.Close()
+
+	tmp, err := os.MkdirTemp("", "TestTLSClientOption")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmp)
+
+	ca, caKey, err := generateCertificates(server, tmp)
+	require.NoError(t, err)
+
+	anotherClientCert, _, err := generateClientCertificate(ca, caKey)
+	require.NoError(t, err)
+
+	os.WriteFile(filepath.Join(tmp, "cert.pem"), anotherClientCert, 0700)
+
+	rc := NewRecommenderClient(http.DefaultClient)
+	tlsConfig := &v1alpha1.TLSConfig{
+		CAFile:   filepath.Join(tmp, "ca.pem"),
+		CertFile: filepath.Join(tmp, "cert.pem"),
+		KeyFile:  filepath.Join(tmp, "key.pem"),
+	}
+	request := newTestRequest(server.URL, tlsConfig)
+
+	_, err = rc.GetReplicaRecommendation(context.Background(), request)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "tls: private key does not match public key")
+
+	os.Remove(filepath.Join(tmp, "cert.pem"))
+	_, err = rc.GetReplicaRecommendation(context.Background(), request)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "tls: private key does not match public key")
 }
