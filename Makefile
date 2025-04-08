@@ -19,6 +19,7 @@ DEFAULT_CHANNEL=alpha
 GOARCH?=amd64
 IMG_NAME=gcr.io/datadoghq/watermarkpodautoscaler
 RELEASE_IMAGE_TAG := $(if $(CI_COMMIT_TAG),--tag $(RELEASE_IMAGE),)
+FIPS_ENABLED?=false
 
 CRD_OPTIONS ?= "crd"
 
@@ -114,14 +115,14 @@ generate: $(CONTROLLER_GEN) generate-openapi
 docker-build: generate docker-build-ci
 
 docker-build-ci:
-	docker build . -t ${IMG} --build-arg LDFLAGS="${LDFLAGS}" --build-arg GOARCH="${GOARCH}"
+	docker build . -t ${IMG} --build-arg FIPS_ENABLED="${FIPS_ENABLED}" --build-arg LDFLAGS="${LDFLAGS}" --build-arg GOARCH="${GOARCH}"
 
 # Push the docker image
 docker-push:
 	docker push ${IMG}
 
 docker-buildx-ci:
-	docker buildx build . --build-arg LDFLAGS="${LDFLAGS}" --platform=linux/arm64,linux/amd64 --label target=build --push --tag ${IMG} ${RELEASE_IMAGE_TAG}
+	docker buildx build . --build-arg FIPS_ENABLED="${FIPS_ENABLED}" --build-arg LDFLAGS="${LDFLAGS}" --platform=linux/arm64,linux/amd64 --label target=build --push --tag ${IMG} ${RELEASE_IMAGE_TAG}
 
 ##@ Tools
 CONTROLLER_GEN = bin/$(PLATFORM)/controller-gen
