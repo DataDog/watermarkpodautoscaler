@@ -195,7 +195,7 @@ For example, suppose you have a 60 second `upscaleDelay` with two metrics, M1 an
 * **Precedence**
 <a name="precedence"></a>
 
-As we retrieve the value of the external metric, we will first compare it to the sum `highWatermark` + `tolerance` and to the difference `lowWatermark` - `tolerance`.
+As we retrieve the value of the external metric, we will first compare it to the sum `highWatermark` + `highTolerance` and to the difference `lowWatermark` - `lowTolerance` (the values of `highTolerance` and `lowTolerance` are computed by multiplying the watermarks by `tolerance`).
 If we are outside of the bounds, we compute the recommended number of replicas. We then compare this value to the current number of replicas to potentially cap the recommended number of replicas also according to `minReplicas` and `maxReplicas`.
 Finally, we look at if we are allowed to scale, given the `downscaleForbiddenWindowSeconds` and `upscaleForbiddenWindowSeconds`.
 
