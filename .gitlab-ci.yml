@@ -8,10 +8,7 @@ variables:
   DOCKER_REGISTRY_LOGIN_SSM_KEY: docker_hub_login
   DOCKER_REGISTRY_PWD_SSM_KEY: docker_hub_pwd
   DOCKER_REGISTRY_URL: docker.io
-cache: &global_cache
-  key: ${CI_COMMIT_REF_SLUG}
-  paths:
-    - /go/pkg/mod
+  FIPS_ENABLED: false
 
 stages:
   - build
@@ -71,7 +68,14 @@ build_image:
     TARGET_IMAGE: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
     RELEASE_IMAGE: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG
   script:
-    - IMG=$TARGET_IMAGE make docker-buildx-ci
+    - IMG=$TARGET_IMAGE FIPS_ENABLED=$FIPS_ENABLED make docker-buildx-ci
+
+build_image_fips:
+  extends: build_image
+  variables:
+    TARGET_IMAGE: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}-fips
+    RELEASE_IMAGE: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG-fips
+    FIPS_ENABLED: "true"
 
 publish_public_main:
   stage: release
@@ -150,6 +154,6 @@ trigger_internal_image_fips:
     IMAGE_NAME: $PROJECTNAME
     RELEASE_TAG: ${CI_COMMIT_REF_SLUG}-fips
     BUILD_TAG: ${CI_COMMIT_REF_SLUG}-fips
-    TMPL_SRC_IMAGE: v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    TMPL_SRC_IMAGE: v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}-fips
     RELEASE_STAGING: "true"
     RELEASE_PROD: "true"
