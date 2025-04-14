@@ -50,7 +50,7 @@ func NewMockRecommenderClient() *RecommenderClientMock {
 	}
 }
 
-func (m *RecommenderClientMock) GetReplicaRecommendation(ctx context.Context, request *ReplicaRecommendationRequest) (*ReplicaRecommendationResponse, error) {
+func (m *RecommenderClientMock) GetReplicaRecommendation(_ context.Context, _ *ReplicaRecommendationRequest) (*ReplicaRecommendationResponse, error) {
 	return &m.ReturnedResponse, m.Error
 }
 
@@ -242,7 +242,7 @@ func startRecommenderStub(now time.Time) *httptest.Server {
 			return
 		}
 		rw.WriteHeader(http.StatusOK)
-		rw.Write(response)
+		_, _ = rw.Write(response)
 	}))
 }
 
@@ -428,7 +428,9 @@ func TestTLSRecommendation(t *testing.T) {
 
 	tmp, err := os.MkdirTemp("", "TestTLSClientOption")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmp)
+	defer func(path string) {
+		_ = os.RemoveAll(path)
+	}(tmp)
 
 	_, _, err = generateCertificates(server, tmp)
 	require.NoError(t, err)
@@ -458,7 +460,9 @@ func TestTLSRecommendationWithDefaults(t *testing.T) {
 
 	tmp, err := os.MkdirTemp("", "TestTLSClientOption")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmp)
+	defer func(path string) {
+		_ = os.RemoveAll(path)
+	}(tmp)
 
 	_, _, err = generateCertificates(server, tmp)
 	require.NoError(t, err)
@@ -488,7 +492,9 @@ func TestTLSRecommendationWithClientCertificateMismatch(t *testing.T) {
 
 	tmp, err := os.MkdirTemp("", "TestTLSClientOption")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmp)
+	defer func(path string) {
+		_ = os.RemoveAll(path)
+	}(tmp)
 
 	ca, caKey, err := generateCertificates(server, tmp)
 	require.NoError(t, err)
@@ -496,7 +502,7 @@ func TestTLSRecommendationWithClientCertificateMismatch(t *testing.T) {
 	anotherClientCert, _, err := generateClientCertificate(ca, caKey)
 	require.NoError(t, err)
 
-	os.WriteFile(filepath.Join(tmp, "cert.pem"), anotherClientCert, 0700)
+	_ = os.WriteFile(filepath.Join(tmp, "cert.pem"), anotherClientCert, 0700)
 
 	rc := NewRecommenderClient(http.DefaultClient)
 	tlsConfig := &v1alpha1.TLSConfig{
@@ -510,7 +516,7 @@ func TestTLSRecommendationWithClientCertificateMismatch(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "tls: private key does not match public key")
 
-	os.Remove(filepath.Join(tmp, "cert.pem"))
+	_ = os.Remove(filepath.Join(tmp, "cert.pem"))
 	_, err = rc.GetReplicaRecommendation(context.Background(), request)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "tls: private key does not match public key")
