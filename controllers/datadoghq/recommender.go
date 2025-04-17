@@ -210,6 +210,13 @@ func (r *RecommenderClientImpl) GetReplicaRecommendation(ctx context.Context, re
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		if resp.Body != nil {
+			errorBody, _ := io.ReadAll(resp.Body)
+			if len(errorBody) > 100 {
+				errorBody = errorBody[:100]
+			}
+			return nil, fmt.Errorf("unexpected response code: %d (%s)", resp.StatusCode, errorBody)
+		}
 		return nil, fmt.Errorf("unexpected response code: %d", resp.StatusCode)
 	}
 
