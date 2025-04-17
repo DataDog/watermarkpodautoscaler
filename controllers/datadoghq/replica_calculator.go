@@ -279,7 +279,7 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(ctx context.Context, logger l
 	}
 
 	// This is because most of the code expects a metric name, so we assume that the recommender is the metric name.
-	var metricName = wpa.Spec.Recommender.URL
+	var metricName = metricNameForRecommender(&wpa.Spec)
 
 	minReplicas := int32(0)
 	if wpa.Spec.MinReplicas != nil {
