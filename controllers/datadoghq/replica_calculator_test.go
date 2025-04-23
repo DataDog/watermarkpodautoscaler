@@ -6,6 +6,7 @@
 package datadoghq
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -52,6 +53,7 @@ type replicaCalcTestCase struct {
 	timestamp        time.Time
 	readyReplicas    int32
 	pos              metricPosition
+	details          string
 
 	namespace           string
 	metric              *metricInfo
@@ -264,17 +266,18 @@ func (tc *replicaCalcTestCase) runTest(t *testing.T) {
 
 	var replicaCalculation ReplicaCalculation
 	var err error
+	ctx := context.TODO()
 	if tc.recommenderResponse != nil {
 		recoClient.ReturnedResponse = *tc.recommenderResponse
 		recoClient.Error = tc.expectedError
-		replicaCalculation, err = replicaCalculator.GetRecommenderReplicas(logf.Log, tc.scale, tc.wpa)
+		replicaCalculation, err = replicaCalculator.GetRecommenderReplicas(ctx, logf.Log, tc.scale, tc.wpa)
 	} else if tc.metric.spec.Resource != nil {
 		// Resource metric tests
 		// Update with the correct labels.
-		replicaCalculation, err = replicaCalculator.GetResourceReplicas(logf.Log, tc.scale, tc.metric.spec, tc.wpa)
+		replicaCalculation, err = replicaCalculator.GetResourceReplicas(ctx, logf.Log, tc.scale, tc.metric.spec, tc.wpa)
 	} else if tc.metric.spec.External != nil {
 		// External metric tests
-		replicaCalculation, err = replicaCalculator.GetExternalMetricReplicas(logf.Log, tc.scale, tc.metric.spec, tc.wpa)
+		replicaCalculation, err = replicaCalculator.GetExternalMetricReplicas(ctx, logf.Log, tc.scale, tc.metric.spec, tc.wpa)
 	}
 	if tc.expectedError != nil {
 		require.Error(t, err, "there should be an error calculating the replica count")
@@ -291,6 +294,7 @@ func (tc *replicaCalcTestCase) runTest(t *testing.T) {
 	assert.Equal(t, tc.readyReplicas, replicaCalculation.readyReplicas, "ready replicas should be as expected")
 	assert.Equal(t, tc.pos.isAbove, replicaCalculation.pos.isAbove, "metric should be above the Watermark")
 	assert.Equal(t, tc.pos.isBelow, replicaCalculation.pos.isBelow, "metric should be below the Watermark")
+	assert.Equal(t, tc.details, replicaCalculation.details, "details should be as expected")
 }
 
 func TestReplicaCalcDisjointResourcesMetrics(t *testing.T) {
@@ -1788,8 +1792,9 @@ func TestReplicaCalcWithRecommender(t *testing.T) {
 				isAbove: false,
 				isBelow: false,
 			},
-			scale: makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
-			wpa:   wpa,
+			details: "Fake",
+			scale:   makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+			wpa:     wpa,
 			recommenderResponse: &ReplicaRecommendationResponse{
 				Replicas:           3,
 				ReplicasLowerBound: 2,
@@ -1807,8 +1812,9 @@ func TestReplicaCalcWithRecommender(t *testing.T) {
 				isAbove: true,
 				isBelow: false,
 			},
-			scale: makeScale(testDeploymentName, 1, map[string]string{"name": "test-pod"}),
-			wpa:   wpa,
+			details: "Fake",
+			scale:   makeScale(testDeploymentName, 1, map[string]string{"name": "test-pod"}),
+			wpa:     wpa,
 			recommenderResponse: &ReplicaRecommendationResponse{
 				Replicas:           5,
 				ReplicasLowerBound: 2,
@@ -1826,12 +1832,33 @@ func TestReplicaCalcWithRecommender(t *testing.T) {
 				isAbove: false,
 				isBelow: true,
 			},
-			scale: makeScale(testDeploymentName, 10, map[string]string{"name": "test-pod"}),
-			wpa:   wpa,
+			details: "Fake",
+			scale:   makeScale(testDeploymentName, 10, map[string]string{"name": "test-pod"}),
+			wpa:     wpa,
 			recommenderResponse: &ReplicaRecommendationResponse{
 				Replicas:           2,
 				ReplicasLowerBound: 2,
 				ReplicasUpperBound: 6,
+				Timestamp:          ts,
+				Details:            "Fake",
+			},
+		},
+		// toward downscale but within bounds should not have isAbove/isBelow all true
+		{
+			expectedReplicas: 31,
+			readyReplicas:    40,
+			timestamp:        ts,
+			pos: metricPosition{
+				isAbove: false,
+				isBelow: false,
+			},
+			details: "Fake",
+			scale:   makeScale(testDeploymentName, 40, map[string]string{"name": "test-pod"}),
+			wpa:     wpa,
+			recommenderResponse: &ReplicaRecommendationResponse{
+				Replicas:           31,
+				ReplicasLowerBound: 27,
+				ReplicasUpperBound: 53,
 				Timestamp:          ts,
 				Details:            "Fake",
 			},
@@ -1935,6 +1962,50 @@ func TestTooManyUnreadyPods(t *testing.T) {
 		podPhase:      []corev1.PodPhase{corev1.PodPending, corev1.PodPending, corev1.PodPending, corev1.PodRunning},
 		metric:        &metricInfo{spec: metric1},
 		expectedError: fmt.Errorf("25 %% of the pods are unready, will not autoscale /foo-bar-123"),
+	}
+	tc.runTest(t)
+}
+
+// Pods that have either [PodFailed, PodSucceeded] statuses should not be counted when evaluating the
+// MinAverageReplicaPercentage as they both indicate pods that will never be ready again.
+
+// This test makes sure that these pod statuses are ignored when calculating the ready replicas.
+func TestMinAverageReplicaPercentageIgnoresFailedAndSucceededPods(t *testing.T) {
+	logf.SetLogger(zap.New())
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ExternalMetricSourceType,
+		External: &v1alpha1.ExternalMetricSource{
+			MetricName:     "loadbalancer.request.per.seconds",
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"foo": "bar"}},
+			HighWatermark:  resource.NewMilliQuantity(10000, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(7000, resource.DecimalSI),
+		},
+	}
+
+	tc := replicaCalcTestCase{
+		expectedReplicas: 3,
+		readyReplicas:    1,
+		pos: metricPosition{
+			isAbove: true,
+			isBelow: false,
+		},
+		scale: makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				Algorithm:                     "average",
+				MinAvailableReplicaPercentage: 34,
+				Tolerance:                     *resource.NewMilliQuantity(20, resource.DecimalSI),
+				Metrics:                       []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingAbsoluteModulo:  v1alpha1.NewInt32(1),
+			},
+		},
+		// simulate a pod eviction and a pod
+		podPhase: []corev1.PodPhase{corev1.PodRunning, corev1.PodFailed, corev1.PodSucceeded},
+		metric: &metricInfo{
+			spec:                metric1,
+			levels:              []int64{30000},
+			expectedUtilization: 30000, // only 1 ready replica so it's 100% utilized
+		},
 	}
 	tc.runTest(t)
 }

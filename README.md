@@ -195,7 +195,7 @@ For example, suppose you have a 60 second `upscaleDelay` with two metrics, M1 an
 * **Precedence**
 <a name="precedence"></a>
 
-As we retrieve the value of the external metric, we will first compare it to the sum `highWatermark` + `tolerance` and to the difference `lowWatermark` - `tolerance`.
+As we retrieve the value of the external metric, we will first compare it to the sum `highWatermark` + `highTolerance` and to the difference `lowWatermark` - `lowTolerance` (the values of `highTolerance` and `lowTolerance` are computed by multiplying the watermarks by `tolerance`).
 If we are outside of the bounds, we compute the recommended number of replicas. We then compare this value to the current number of replicas to potentially cap the recommended number of replicas also according to `minReplicas` and `maxReplicas`.
 Finally, we look at if we are allowed to scale, given the `downscaleForbiddenWindowSeconds` and `upscaleForbiddenWindowSeconds`.
 
@@ -387,6 +387,12 @@ Will yield:
 
     Yes, WPA can scale on multiple metrics and works similar to [HPA](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#scaling-on-multiple-metrics). WPA evaluates each metric separately and proposes the number of replicas associated with the metric that requires the largest number. For example, if WPA evaluates metric1, metric2, metric3, and for each it calculates 10, 20, 30 replica proposals respectively, the final proposal is 30.
 
+- **Should I specify replicas in my Deployment manifest?**
+
+    No. If you define the replicas field in your Deployment spec, every time you apply the manifest, the replica count is reset to that specified value.
+    For example, if you have replicas: 2 in your Deployment but the Watermark Pod Autoscaler (WPA) has scaled the Deployment up to 10 replicas, reapplying the manifest will revert the replica count to 2. This causes the Deployment to scale down immediately, and WPA must scale it back up again.
+    To avoid conflicts between the Deployment controller and WPA over the desired replica count, omit the replicas field entirely. This allows WPA to manage scaling without interference.
+    Also see the [Kubernetes docs on migrating to HPA](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#migrating-deployments-and-statefulsets-to-horizontal-autoscaling).
 
 #### RBAC
 

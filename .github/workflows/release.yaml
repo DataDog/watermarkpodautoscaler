@@ -19,7 +19,7 @@ jobs:
     permissions:
       # https://github.com/marketplace/actions/goreleaser-action
       contents: write
-      # actions/upload-artifact@v3
+      # actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
       actions: write
     steps:
       - name: Checkout
@@ -50,7 +50,7 @@ jobs:
         env:
           GORELEASER_PREVIOUS_TAG: ${{steps.latest_version.outputs.release}}
       - name: Upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
           name: kubectl-wpa-linux
           path: |
@@ -63,7 +63,7 @@ jobs:
     permissions:
       # https://github.com/marketplace/actions/goreleaser-action
       contents: write
-      # actions/upload-artifact@v3
+      # actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
       actions: write
     steps:
       - uses: actions/checkout@v3
@@ -90,7 +90,7 @@ jobs:
         env:
           GORELEASER_PREVIOUS_TAG: ${{steps.latest_version.outputs.release}}
       - name: Upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
           name: kubectl-wpa-darwin
           path: |
@@ -102,7 +102,7 @@ jobs:
     permissions:
       # https://github.com/marketplace/actions/goreleaser-action
       contents: write
-      # actions/upload-artifact@v3
+      # actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
       actions: write
     steps:
       - uses: actions/checkout@v3
@@ -120,6 +120,7 @@ jobs:
         uses: pozetroninc/github-action-get-latest-release@master
         with:
           owner: ${{ github.repository_owner }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           repo: watermarkpodautoscaler
           excludes: prerelease, draft
       - name: Build
@@ -129,7 +130,7 @@ jobs:
         env:
           GORELEASER_PREVIOUS_TAG: ${{steps.latest_version.outputs.release}}
       - name: Upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
           name: kubectl-wpa-windows
           path: |
@@ -143,7 +144,7 @@ jobs:
       # https://github.com/marketplace/actions/goreleaser-action
       # https://github.com/softprops/action-gh-release?tab=readme-ov-file#permissions 
       contents: write
-      # actions/download-artifact@v3
+      # actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
       actions: read
       # rajatjindal/krew-release-bot@v0.0.43
       pull-requests: write
@@ -158,17 +159,17 @@ jobs:
           mkdir -p ./dist/darwin
           mkdir -p ./dist/windows
       - name: Download linux binaries
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           name: kubectl-wpa-linux
           path: ./tmp-build/linux
       - name: Download darwin binaries
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           name: kubectl-wpa-darwin
           path: ./tmp-build/darwin
       - name: Download windows binaries
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           name: kubectl-wpa-windows
           path: ./tmp-build/windows

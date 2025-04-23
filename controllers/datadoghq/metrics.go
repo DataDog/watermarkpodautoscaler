@@ -262,6 +262,20 @@ var (
 			resourceNamePromLabel,
 			resourceKindPromLabel,
 		})
+	scalingActive = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "scaling_active",
+			Help:      "Gauge indicating whether the WPA is currently scaling",
+		},
+		[]string{
+			wpaNamePromLabel,
+			wpaNamespacePromLabel,
+			resourceNamespacePromLabel,
+			resourceNamePromLabel,
+			resourceKindPromLabel,
+		},
+	)
 	labelsInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
@@ -283,6 +297,12 @@ var (
 			Name: "http_client_requests_total",
 			Help: "Tracks the number of HTTP requests.",
 		}, []string{clientPromLabel, methodPromLabel, codePromLabel},
+	)
+	requestErrorsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "http_client_requests_errors_total",
+			Help: "Tracks the number of HTTP requests that resulted in an error.",
+		}, []string{clientPromLabel},
 	)
 	responseInflight = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -322,9 +342,11 @@ func init() {
 	sigmetrics.Registry.MustRegister(replicaMin)
 	sigmetrics.Registry.MustRegister(replicaMax)
 	sigmetrics.Registry.MustRegister(dryRun)
+	sigmetrics.Registry.MustRegister(scalingActive)
 	sigmetrics.Registry.MustRegister(labelsInfo)
 	sigmetrics.Registry.MustRegister(requestDuration)
 	sigmetrics.Registry.MustRegister(requestsTotal)
+	sigmetrics.Registry.MustRegister(requestErrorsTotal)
 	sigmetrics.Registry.MustRegister(responseInflight)
 	sigmetrics.Registry.MustRegister(conditions)
 }
@@ -363,6 +385,8 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 		labelsInfo.Delete(promLabelsInfo)
 		dryRun.Delete(promLabelsForWpa)
 
+		scalingActive.Delete(promLabelsForWpa)
+
 		for _, labelVal := range trackedConditions {
 			promLabelsForWpa[conditionPromLabel] = labelVal
 			conditions.Delete(promLabelsForWpa)
@@ -376,16 +400,13 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 		} else {
 			promLabelsForWpa[metricNamePromLabel] = metricSpec.External.MetricName
 		}
-
-		lowwm.Delete(promLabelsForWpa)
-		lowwmV2.Delete(promLabelsForWpa)
-		replicaProposal.Delete(promLabelsForWpa)
-		highwm.Delete(promLabelsForWpa)
-		highwmV2.Delete(promLabelsForWpa)
-		value.Delete(promLabelsForWpa)
-		upscale.Delete(promLabelsForWpa)
-		downscale.Delete(promLabelsForWpa)
+		cleanupForLabels(promLabelsForWpa)
 	}
+	if wpa.Spec.Recommender != nil {
+		promLabelsForWpa[metricNamePromLabel] = metricNameForRecommender(&wpa.Spec)
+		cleanupForLabels(promLabelsForWpa)
+	}
+
 	// TODO this only be cleaned up as part of the finalizer.
 	// Until the feature is moved to the Spec, updating the annotation to disable the feature will not clean up the metric.
 	lifecycleControlStatus.Delete(prometheus.Labels{
@@ -395,6 +416,17 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 		monitorName:           wpa.Name,
 		monitorNamespace:      wpa.Namespace,
 	})
+}
+
+func cleanupForLabels(labels prometheus.Labels) {
+	lowwm.Delete(labels)
+	lowwmV2.Delete(labels)
+	replicaProposal.Delete(labels)
+	highwm.Delete(labels)
+	highwmV2.Delete(labels)
+	value.Delete(labels)
+	upscale.Delete(labels)
+	downscale.Delete(labels)
 }
 
 func getPrometheusLabels(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) prometheus.Labels {

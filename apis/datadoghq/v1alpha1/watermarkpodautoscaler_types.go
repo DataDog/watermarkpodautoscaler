@@ -19,8 +19,8 @@ import (
 // +kubebuilder:printcolumn:name="condition",type="string",JSONPath=".status.lastConditionType"
 // +kubebuilder:printcolumn:name="condition state",type="string",JSONPath=".status.lastConditionState"
 // +kubebuilder:printcolumn:name="value",type="string",JSONPath=".status.currentMetrics[*].external.currentValue.."
-// +kubebuilder:printcolumn:name="high watermark",type="string",JSONPath=".spec.metrics[*].external.highWatermark.."
-// +kubebuilder:printcolumn:name="low watermark",type="string",JSONPath=".spec.metrics[*].external.lowWatermark.."
+// +kubebuilder:printcolumn:name="high watermark",type="string",JSONPath=".spec..highWatermark"
+// +kubebuilder:printcolumn:name="low watermark",type="string",JSONPath=".spec..lowWatermark"
 // +kubebuilder:printcolumn:name="age",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:printcolumn:name="min replicas",type="integer",JSONPath=".spec.minReplicas"
 // +kubebuilder:printcolumn:name="max replicas",type="integer",JSONPath=".spec.maxReplicas"
@@ -132,6 +132,38 @@ type WatermarkPodAutoscalerSpec struct {
 	ReadinessDelaySeconds int32 `json:"readinessDelaySeconds,omitempty"`
 }
 
+// TLSConfig specifies the Recommender http client TLS configuration
+// +k8s:openapi-gen=true
+type TLSConfig struct {
+	// CAFile is a path to a CA certificate
+	// +optional
+	CAFile string `json:"caFile,omitempty"`
+
+	// CertFile is a path to a client Cert
+	// +optional
+	CertFile string `json:"certFile,omitempty"`
+
+	// Keyfile is a path to the client certificate key (mandatory if CertFile is set)
+	// +optional
+	KeyFile string `json:"keyFile,omitempty"`
+
+	// ServerName is a settings to activate TLS SNI
+	ServerName string `json:"serverName,omitempty"`
+
+	// InsecureSkipVerify when true disable verifying server certificate
+	InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
+
+	// MinVersion, mininum TLS version to accept for the connection. If not set will default to Go default (TLS1.2)
+	// +optional
+	// +kubebuilder:validation:Pattern:=`^TLS1[0-3]$`
+	MinVersion string `json:"minVersion,omitempty"`
+
+	// MaxVersion, maximum TLS version to accept for the connection. If not set will default to Go default (TLS1.2)
+	// +optional
+	// +kubebuilder:validation:Pattern:=`^TLS1[0-3]$`
+	MaxVersion string `json:"maxVersion,omitempty"`
+}
+
 // RecommenderSpec indicates which recommender service to use to calculate the desired replica count
 //
 // See https://github.com/DataDog/agent-payload/pull/348 for details about the API.
@@ -140,6 +172,10 @@ type WatermarkPodAutoscalerSpec struct {
 type RecommenderSpec struct {
 	// URL of the recommender service to use
 	URL string `json:"url"`
+
+	// TLS Configuration for the http client allowing to set up a client certificate or server CA certificate
+	// +optional
+	TLSConfig *TLSConfig `json:"tlsConfig,omitempty"`
 
 	// Settings to pass to the recommender service
 	// +optional

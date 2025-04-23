@@ -6,14 +6,17 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"time"
 
+	"github.com/DataDog/dd-trace-go/v2/ddtrace/tracer"
+	"github.com/DataDog/dd-trace-go/v2/profiler"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"gopkg.in/DataDog/dd-trace-go.v1/profiler"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -58,8 +61,14 @@ func main() {
 	var clientTimeoutDuration time.Duration
 	var clientQPSLimit float64
 	var ddProfilingEnabled bool
+	var ddTracingEnabled bool
 	var workers int
 	var skipNotScalingEvents bool
+	var tlsCAFile string
+	var tlsCertFile string
+	var tlsKeyFile string
+	var tlsInsecureSkipVerify bool
+	var tlsServerName string
 	flag.BoolVar(&printVersionArg, "version", false, "print version and exit")
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", true,
@@ -71,8 +80,14 @@ func main() {
 	flag.DurationVar(&clientTimeoutDuration, "client-timeout", 0, "The maximum length of time to wait before giving up on a kube-apiserver request") // is set to 0, keep default
 	flag.Float64Var(&clientQPSLimit, "client-qps", 0, "QPS Limit for the Kubernetes client (default 20 qps)")
 	flag.BoolVar(&ddProfilingEnabled, "ddProfilingEnabled", false, "Enable the datadog profiler")
+	flag.BoolVar(&ddTracingEnabled, "ddTracingEnabled", false, "Enable the datadog tracer")
 	flag.IntVar(&workers, "workers", 1, "Maximum number of concurrent Reconciles which can be run")
 	flag.BoolVar(&skipNotScalingEvents, "skipNotScalingEvents", false, "Log NotScaling decisions instead of creating Kubernetes events")
+	flag.StringVar(&tlsCAFile, "tls-ca-file", "", "Default file containing server CA certificate for TLS connection")
+	flag.StringVar(&tlsCertFile, "tls-cert-file", "", "Default file containing client certificate to activate client certificate validation")
+	flag.StringVar(&tlsKeyFile, "tls-key-file", "", "Default file containing client key matching client certificate")
+	flag.BoolVar(&tlsInsecureSkipVerify, "tls-insecure-skip-verify", false, "Default to skip TLS server certificate verification")
+	flag.StringVar(&tlsServerName, "tls-server-name", "", "Default server name to use for TLS SNI")
 
 	logLevel := zap.LevelFlag("loglevel", zapcore.InfoLevel, "Set log level")
 
@@ -93,6 +108,15 @@ func main() {
 		}
 
 		defer profiler.Stop()
+	}
+
+	if ddTracingEnabled {
+		setupLog.Info("Starting Datadog Tracer")
+		if err := tracer.Start(); err != nil {
+			setupLog.Error(err, "unable to start Datadog Tracer")
+		}
+
+		defer tracer.Stop()
 	}
 
 	if printVersionArg {
@@ -132,11 +156,25 @@ func main() {
 	managerLogger := ctrl.Log.WithName("controllers").WithName("WatermarkPodAutoscaler")
 	klog.SetLogger(managerLogger) // Redirect klog to the controller logger (zap)
 
+	reconcilerOptions := datadoghqcontrollers.Options{SkipNotScalingEvents: skipNotScalingEvents}
+	if tlsCAFile != "" || tlsCertFile != "" {
+		if tlsCertFile != "" && tlsKeyFile == "" {
+			setupLog.Error(errors.New("no TLS key file"), "TLS key file and certificate file must be specified together")
+			os.Exit(1)
+		}
+		reconcilerOptions.TLSConfig = &datadoghqv1alpha1.TLSConfig{
+			CAFile:             tlsCAFile,
+			CertFile:           tlsCertFile,
+			KeyFile:            tlsKeyFile,
+			ServerName:         tlsServerName,
+			InsecureSkipVerify: tlsInsecureSkipVerify,
+		}
+	}
 	if err = (&datadoghqcontrollers.WatermarkPodAutoscalerReconciler{
 		Client:  mgr.GetClient(),
 		Log:     managerLogger,
 		Scheme:  mgr.GetScheme(),
-		Options: datadoghqcontrollers.Options{SkipNotScalingEvents: skipNotScalingEvents},
+		Options: reconcilerOptions,
 	}).SetupWithManager(mgr, workers); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WatermarkPodAutoscaler")
 		os.Exit(1)
