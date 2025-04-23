@@ -869,6 +869,22 @@ func setCondition(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, conditionType a
 	wpa.Status.Conditions = setConditionInList(wpa.Status.Conditions, conditionType, status, reason, message, args...)
 	wpa.Status.LastConditionState = string(status)
 	wpa.Status.LastConditionType = string(conditionType)
+
+	if labelVal := trackedConditions[conditionType]; labelVal != "" {
+		promLabelsForWpaWithMetricName := prometheus.Labels{
+			wpaNamePromLabel:           wpa.Name,
+			wpaNamespacePromLabel:      wpa.Namespace,
+			resourceNamespacePromLabel: wpa.Namespace,
+			resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
+			resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
+			conditionPromLabel:         labelVal,
+		}
+		var val float64
+		if status == corev1.ConditionTrue {
+			val = 1
+		}
+		conditions.With(promLabelsForWpaWithMetricName).Set(val)
+	}
 }
 
 // getCondition returns the desired condition's state and last update.
