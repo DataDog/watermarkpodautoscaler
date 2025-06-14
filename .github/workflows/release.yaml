@@ -42,6 +42,7 @@ jobs:
           owner: ${{ github.repository_owner }}
           repo: watermarkpodautoscaler
           excludes: prerelease, draft
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v3
         with:
