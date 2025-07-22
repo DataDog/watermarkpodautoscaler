@@ -378,6 +378,42 @@ func TestReplicaCalcAbsoluteScaleUp(t *testing.T) {
 	tc.runTest(t)
 }
 
+func TestReplicaCalcAbsoluteScaleUpNoModulo(t *testing.T) {
+	logf.SetLogger(zap.New())
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ResourceMetricSourceType,
+		Resource: &v1alpha1.ResourceMetricSource{
+			Name:           corev1.ResourceCPU,
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
+			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
+		},
+	}
+
+	tc := replicaCalcTestCase{
+		expectedReplicas: 21,
+		readyReplicas:    3,
+		pos: metricPosition{
+			isAbove: true,
+			isBelow: false,
+		},
+		scale: makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				Algorithm: "absolute",
+				Tolerance: *resource.NewMilliQuantity(25, resource.DecimalSI), // 25m represents 2.5%
+				Metrics:   []v1alpha1.MetricSpec{metric1},
+			},
+		},
+		metric: &metricInfo{
+			spec:                metric1,
+			levels:              []int64{90000, 90000, 90000}, // We are higher than the HighWatermark
+			expectedUtilization: 270000,
+		},
+	}
+	tc.runTest(t)
+}
+
 func TestScaleIntervalReplicaCalcAbsoluteScaleUp(t *testing.T) {
 	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{

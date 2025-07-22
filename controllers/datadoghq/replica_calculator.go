@@ -344,8 +344,11 @@ func getReplicaCountUpscale(logger logr.Logger, currentReplicas, currentReadyRep
 
 func roundReplicaCountToAbsoluteModulo(replicaCount int32, wpa *v1alpha1.WatermarkPodAutoscaler) int32 {
 	// Scale up the computed replica count so that it is evenly divisible by the ReplicaScalingAbsoluteModulo.
-	if replicaScalingAbsoluteModuloRemainder := math32.Mod(replicaCount, *wpa.Spec.ReplicaScalingAbsoluteModulo); replicaScalingAbsoluteModuloRemainder > 0 {
-		replicaCount += *wpa.Spec.ReplicaScalingAbsoluteModulo - replicaScalingAbsoluteModuloRemainder
+	if wpa.Spec.ReplicaScalingAbsoluteModulo != nil && *wpa.Spec.ReplicaScalingAbsoluteModulo > 0 {
+		replicaScalingAbsoluteModuloRemainder := math32.Mod(replicaCount, *wpa.Spec.ReplicaScalingAbsoluteModulo)
+		if replicaScalingAbsoluteModuloRemainder > 0 {
+			replicaCount += *wpa.Spec.ReplicaScalingAbsoluteModulo - replicaScalingAbsoluteModuloRemainder
+		}
 	}
 	return replicaCount
 }
