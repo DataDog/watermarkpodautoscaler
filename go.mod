@@ -1,13 +1,12 @@
 module github.com/DataDog/watermarkpodautoscaler
 
-go 1.22.0
-
-toolchain go1.22.7
+go 1.23.0
 
 require (
 	github.com/DataDog/agent-payload/v5 v5.0.135-0.20241016074204-82c61e7189e0
 	github.com/DataDog/dd-trace-go/contrib/net/http/v2 v2.0.0-rc.3
 	github.com/DataDog/dd-trace-go/v2 v2.0.0-rc.3
+	github.com/DataDog/watermarkpodautoscaler/apis v0.0.0-20250614153355-cc19438f3b6d
 	github.com/go-logr/logr v1.4.2
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.34.1
@@ -99,7 +98,6 @@ require (
 	github.com/monochromegane/go-gitignore v0.0.0-20200626010858-205db1a8cc00 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/nxadm/tail v1.4.11 // indirect
-	github.com/onsi/ginkgo/v2 v2.20.2 // indirect
 	github.com/outcaste-io/ristretto v0.2.3 // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/philhofer/fwd v1.1.3-0.20240916144458-20a13a1f6b7c // indirect
@@ -135,7 +133,7 @@ require (
 	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0 // indirect
 	golang.org/x/mod v0.22.0 // indirect
 	golang.org/x/net v0.33.0 // indirect
-	golang.org/x/oauth2 v0.23.0 // indirect
+	golang.org/x/oauth2 v0.27.0 // indirect
 	golang.org/x/sync v0.10.0 // indirect
 	golang.org/x/sys v0.28.0 // indirect
 	golang.org/x/term v0.27.0 // indirect
