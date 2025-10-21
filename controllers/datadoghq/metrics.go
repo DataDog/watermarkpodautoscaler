@@ -24,6 +24,7 @@ const (
 	wpaNamePromLabel           = "wpa_name"
 	wpaNamespacePromLabel      = "wpa_namespace"
 	resourceNamePromLabel      = "resource_name"
+	targetNamePromLabel        = "target_name"
 	resourceKindPromLabel      = "resource_kind"
 	resourceNamespacePromLabel = "resource_namespace"
 	metricNamePromLabel        = "metric_name"
@@ -67,6 +68,7 @@ var (
 			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
+			targetNamePromLabel,
 			resourceKindPromLabel,
 		},
 	)
@@ -81,6 +83,7 @@ var (
 			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
+			targetNamePromLabel,
 			resourceKindPromLabel,
 		},
 	)
@@ -96,6 +99,7 @@ var (
 			metricNamePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
+			targetNamePromLabel,
 			resourceKindPromLabel,
 		})
 	highwm = prometheus.NewGaugeVec(
@@ -109,6 +113,7 @@ var (
 			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
+			targetNamePromLabel,
 			resourceKindPromLabel,
 			metricNamePromLabel,
 		})
@@ -123,6 +128,7 @@ var (
 			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
+			targetNamePromLabel,
 			resourceKindPromLabel,
 			metricNamePromLabel,
 		})
@@ -138,6 +144,7 @@ var (
 			transitionPromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
+			targetNamePromLabel,
 			resourceKindPromLabel,
 		})
 	lifecycleControlStatus = prometheus.NewGaugeVec(
@@ -165,6 +172,7 @@ var (
 			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
+			targetNamePromLabel,
 			resourceKindPromLabel,
 			metricNamePromLabel,
 		})
@@ -179,6 +187,7 @@ var (
 			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
+			targetNamePromLabel,
 			resourceKindPromLabel,
 			metricNamePromLabel,
 		})
@@ -193,6 +202,7 @@ var (
 			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
+			targetNamePromLabel,
 			resourceKindPromLabel,
 			metricNamePromLabel,
 		})
@@ -207,6 +217,7 @@ var (
 			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
+			targetNamePromLabel,
 			resourceKindPromLabel,
 		})
 	restrictedScaling = prometheus.NewGaugeVec(
@@ -221,6 +232,7 @@ var (
 			reasonPromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
+			targetNamePromLabel,
 			resourceKindPromLabel,
 		})
 	replicaMin = prometheus.NewGaugeVec(
@@ -234,6 +246,7 @@ var (
 			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
+			targetNamePromLabel,
 			resourceKindPromLabel,
 		})
 	replicaMax = prometheus.NewGaugeVec(
@@ -247,6 +260,7 @@ var (
 			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
+			targetNamePromLabel,
 			resourceKindPromLabel,
 		})
 	dryRun = prometheus.NewGaugeVec(
@@ -260,6 +274,7 @@ var (
 			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
+			targetNamePromLabel,
 			resourceKindPromLabel,
 		})
 	scalingActive = prometheus.NewGaugeVec(
@@ -273,6 +288,7 @@ var (
 			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
+			targetNamePromLabel,
 			resourceKindPromLabel,
 		},
 	)
@@ -321,6 +337,7 @@ var (
 			wpaNamespacePromLabel,
 			resourceNamespacePromLabel,
 			resourceNamePromLabel,
+			targetNamePromLabel,
 			resourceKindPromLabel,
 			conditionPromLabel,
 		})
@@ -357,6 +374,7 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 		wpaNamespacePromLabel:      wpa.Namespace,
 		resourceNamespacePromLabel: wpa.Namespace,
 		resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
+		targetNamePromLabel:        wpa.Spec.ScaleTargetRef.Name,
 		resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
 	}
 
@@ -412,6 +430,7 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 	lifecycleControlStatus.Delete(prometheus.Labels{
 		wpaNamePromLabel:      wpa.Name,
 		wpaNamespacePromLabel: wpa.Namespace,
+		targetNamePromLabel:   wpa.Spec.ScaleTargetRef.Name,
 		lifecycleStatus:       lifecycleControlBlockedStatus,
 		monitorName:           wpa.Name,
 		monitorNamespace:      wpa.Namespace,
@@ -434,6 +453,7 @@ func getPrometheusLabels(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) promethe
 		wpaNamePromLabel:           wpa.Name,
 		wpaNamespacePromLabel:      wpa.Namespace,
 		resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
+		targetNamePromLabel:        wpa.Spec.ScaleTargetRef.Name,
 		resourceNamespacePromLabel: wpa.Namespace,
 		resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
 	}
