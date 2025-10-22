@@ -133,15 +133,8 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(ctx context.Context, logge
 	metrics, timestamp, err := c.metricsClient.GetExternalMetric(metricName, wpa.Namespace, labelSelector)
 	if err != nil {
 		// When we add official support for several metrics, move this Delete to only occur if no metric is available at all.
-		labelsWithReason := prometheus.Labels{
-			wpaNamePromLabel:           wpa.Name,
-			wpaNamespacePromLabel:      wpa.Namespace,
-			resourceNamespacePromLabel: wpa.Namespace,
-			resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
-			targetNamePromLabel:        wpa.Spec.ScaleTargetRef.Name,
-			resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
-			reasonPromLabel:            upscaleCappingPromLabelVal,
-		}
+		labelsWithReason := getPrometheusLabels(wpa)
+		labelsWithReason[reasonPromLabel] = upscaleCappingPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
 		labelsWithReason[reasonPromLabel] = downscaleCappingPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
@@ -187,15 +180,8 @@ func (c *ReplicaCalculator) GetResourceReplicas(ctx context.Context, logger logr
 	metrics, timestamp, err := c.metricsClient.GetResourceMetric(resourceName, namespace, labelSelector, "")
 	if err != nil {
 		// When we add official support for several metrics, move this Delete to only occur if no metric is available at all.
-		labelsWithReason := prometheus.Labels{
-			wpaNamePromLabel:           wpa.Name,
-			wpaNamespacePromLabel:      wpa.Namespace,
-			resourceNamespacePromLabel: wpa.Namespace,
-			resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
-			targetNamePromLabel:        wpa.Spec.ScaleTargetRef.Name,
-			resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
-			reasonPromLabel:            upscaleCappingPromLabelVal,
-		}
+		labelsWithReason := getPrometheusLabels(wpa)
+		labelsWithReason[reasonPromLabel] = upscaleCappingPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
 		labelsWithReason[reasonPromLabel] = downscaleCappingPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
@@ -301,15 +287,8 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(ctx context.Context, logger l
 	reco, err := c.recommenderClient.GetReplicaRecommendation(ctx, &request)
 	if err != nil {
 		// When we add official support for several metrics, move this Delete to only occur if no metric is available at all.
-		labelsWithReason := prometheus.Labels{
-			wpaNamePromLabel:           wpa.Name,
-			wpaNamespacePromLabel:      wpa.Namespace,
-			resourceNamespacePromLabel: wpa.Namespace,
-			resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
-			targetNamePromLabel:        wpa.Spec.ScaleTargetRef.Name,
-			resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
-			reasonPromLabel:            upscaleCappingPromLabelVal,
-		}
+		labelsWithReason := getPrometheusLabels(wpa)
+		labelsWithReason[reasonPromLabel] = upscaleCappingPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
 		labelsWithReason[reasonPromLabel] = downscaleCappingPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
@@ -332,7 +311,8 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(ctx context.Context, logger l
 
 	utilizationQuantity := int64(reco.ObservedTargetValue * 1000) // We need to multiply by 1000 to convert it to milliValue
 
-	labelsWithMetricName := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, targetNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, metricNamePromLabel: metricName}
+	labelsWithMetricName := getPrometheusLabels(wpa)
+	labelsWithMetricName[metricNamePromLabel] = metricName
 	value.With(labelsWithMetricName).Set(float64(utilizationQuantity))
 
 	replicaCount, metricPos := adjustReplicaCount(logger, target.Status.Replicas, currentReadyReplicas, wpa, int32(reco.Replicas), int32(reco.ReplicasLowerBound), int32(reco.ReplicasUpperBound))
@@ -454,8 +434,10 @@ func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas i
 	adjustedHM := float64(highMark.MilliValue() + highMark.MilliValue()*wpa.Spec.Tolerance.MilliValue()/1000.)
 	adjustedLM := float64(lowMark.MilliValue() - lowMark.MilliValue()*wpa.Spec.Tolerance.MilliValue()/1000.)
 
-	labelsWithReason := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, targetNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reasonPromLabel: withinBoundsPromLabelVal}
-	labelsWithMetricName := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, targetNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, metricNamePromLabel: name}
+	labelsWithReason := getPrometheusLabels(wpa)
+	labelsWithReason[reasonPromLabel] = withinBoundsPromLabelVal
+	labelsWithMetricName := getPrometheusLabels(wpa)
+	labelsWithMetricName[metricNamePromLabel] = name
 
 	value.With(labelsWithMetricName).Set(adjustedUsage)
 	msg := ""
@@ -489,7 +471,8 @@ func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas i
 }
 
 func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, recommendedReplicaCount, lowerBoundReplicas, upperBoundReplicas int32) (replicaCount int32, position metricPosition) {
-	labelsWithReason := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, targetNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind, reasonPromLabel: withinBoundsPromLabelVal}
+	labelsWithReason := getPrometheusLabels(wpa)
+	labelsWithReason[reasonPromLabel] = withinBoundsPromLabelVal
 	msg := ""
 
 	position.isBelow = currentReplicas > upperBoundReplicas

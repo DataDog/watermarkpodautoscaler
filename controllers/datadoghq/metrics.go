@@ -24,9 +24,10 @@ const (
 	wpaNamePromLabel           = "wpa_name"
 	wpaNamespacePromLabel      = "wpa_namespace"
 	resourceNamePromLabel      = "resource_name"
-	targetNamePromLabel        = "target_name"
+	targetNamePromLabel        = "target_name" // matches the value of resourceNamePromLabel, used to compare with DPA
 	resourceKindPromLabel      = "resource_kind"
 	resourceNamespacePromLabel = "resource_namespace"
+	namespacePromLabel         = "namespace" // matches the value of resourceNamespacePromLabel, used to compare with DPA
 	metricNamePromLabel        = "metric_name"
 	reasonPromLabel            = "reason"
 	transitionPromLabel        = "transition"
@@ -53,6 +54,16 @@ var trackedConditions = map[autoscalingv2.HorizontalPodAutoscalerConditionType]s
 	datadoghqv1alpha1.ScalingBlocked: "scaling_blocked",
 }
 
+var defaultPromLabels = []string{
+	wpaNamePromLabel,
+	wpaNamespacePromLabel,
+	resourceNamespacePromLabel,
+	resourceNamePromLabel,
+	resourceKindPromLabel,
+	targetNamePromLabel,
+	namespacePromLabel,
+}
+
 // Labels to add to an info metric and join on (with wpaNamePromLabel) in the Datadog prometheus check
 var extraPromLabels = strings.Fields(os.Getenv("DD_LABELS_AS_TAGS"))
 
@@ -63,14 +74,7 @@ var (
 			Name:      "upscale_replicas_total",
 			Help:      "",
 		},
-		[]string{
-			wpaNamePromLabel,
-			wpaNamespacePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			targetNamePromLabel,
-			resourceKindPromLabel,
-		},
+		defaultPromLabels,
 	)
 	downscale = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -78,14 +82,7 @@ var (
 			Name:      "downscale_replicas_total",
 			Help:      "",
 		},
-		[]string{
-			wpaNamePromLabel,
-			wpaNamespacePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			targetNamePromLabel,
-			resourceKindPromLabel,
-		},
+		defaultPromLabels,
 	)
 	value = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -93,60 +90,32 @@ var (
 			Name:      "value",
 			Help:      "Gauge of the value used for autoscaling",
 		},
-		[]string{
-			wpaNamePromLabel,
-			wpaNamespacePromLabel,
-			metricNamePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			targetNamePromLabel,
-			resourceKindPromLabel,
-		})
+		append(defaultPromLabels, metricNamePromLabel),
+	)
 	highwm = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
 			Name:      "high_watermak",
 			Help:      "Gauge for the high watermark of a given WPA",
 		},
-		[]string{
-			wpaNamePromLabel,
-			wpaNamespacePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			targetNamePromLabel,
-			resourceKindPromLabel,
-			metricNamePromLabel,
-		})
+		append(defaultPromLabels, metricNamePromLabel),
+	)
 	highwmV2 = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
 			Name:      "high_watermark",
 			Help:      "Gauge for the high watermark of a given WPA",
 		},
-		[]string{
-			wpaNamePromLabel,
-			wpaNamespacePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			targetNamePromLabel,
-			resourceKindPromLabel,
-			metricNamePromLabel,
-		})
+		append(defaultPromLabels, metricNamePromLabel),
+	)
 	transitionCountdown = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
 			Name:      "transition_countdown",
 			Help:      "Gauge indicating the time in seconds before scaling is authorized",
 		},
-		[]string{
-			wpaNamePromLabel,
-			wpaNamespacePromLabel,
-			transitionPromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			targetNamePromLabel,
-			resourceKindPromLabel,
-		})
+		append(defaultPromLabels, transitionPromLabel),
+	)
 	lifecycleControlStatus = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
@@ -159,6 +128,7 @@ var (
 			lifecycleStatus,
 			monitorName,
 			monitorNamespace,
+			namespacePromLabel,
 		},
 	)
 	lowwm = prometheus.NewGaugeVec(
@@ -167,130 +137,71 @@ var (
 			Name:      "low_watermak",
 			Help:      "Gauge for the low watermark of a given WPA",
 		},
-		[]string{
-			wpaNamePromLabel,
-			wpaNamespacePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			targetNamePromLabel,
-			resourceKindPromLabel,
-			metricNamePromLabel,
-		})
+		append(defaultPromLabels, metricNamePromLabel),
+	)
 	lowwmV2 = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
 			Name:      "low_watermark",
 			Help:      "Gauge for the low watermark of a given WPA",
 		},
-		[]string{
-			wpaNamePromLabel,
-			wpaNamespacePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			targetNamePromLabel,
-			resourceKindPromLabel,
-			metricNamePromLabel,
-		})
+		append(defaultPromLabels, metricNamePromLabel),
+	)
 	replicaProposal = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
 			Name:      "replicas_scaling_proposal",
 			Help:      "Gauge for the number of replicas the WPA will suggest to scale to",
 		},
-		[]string{
-			wpaNamePromLabel,
-			wpaNamespacePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			targetNamePromLabel,
-			resourceKindPromLabel,
-			metricNamePromLabel,
-		})
+		append(defaultPromLabels, metricNamePromLabel),
+	)
 	replicaEffective = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
 			Name:      "replicas_scaling_effective",
 			Help:      "Gauge for the number of replicas the WPA will instruct to scale to",
 		},
-		[]string{
-			wpaNamePromLabel,
-			wpaNamespacePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			targetNamePromLabel,
-			resourceKindPromLabel,
-		})
+		defaultPromLabels,
+	)
 	restrictedScaling = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
 			Name:      "restricted_scaling",
 			Help:      "Gauge indicating whether the metric is within the watermarks bounds",
 		},
-		[]string{
-			wpaNamePromLabel,
-			wpaNamespacePromLabel,
-			reasonPromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			targetNamePromLabel,
-			resourceKindPromLabel,
-		})
+		append(defaultPromLabels, reasonPromLabel),
+	)
 	replicaMin = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
 			Name:      "min_replicas",
 			Help:      "Gauge for the minReplicas value of a given WPA",
 		},
-		[]string{
-			wpaNamePromLabel,
-			wpaNamespacePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			targetNamePromLabel,
-			resourceKindPromLabel,
-		})
+		defaultPromLabels,
+	)
 	replicaMax = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
 			Name:      "max_replicas",
 			Help:      "Gauge for the maxReplicas value of a given WPA",
 		},
-		[]string{
-			wpaNamePromLabel,
-			wpaNamespacePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			targetNamePromLabel,
-			resourceKindPromLabel,
-		})
+		defaultPromLabels,
+	)
 	dryRun = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
 			Name:      "dry_run",
 			Help:      "Gauge reflecting the WPA dry-run status",
 		},
-		[]string{
-			wpaNamePromLabel,
-			wpaNamespacePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			targetNamePromLabel,
-			resourceKindPromLabel,
-		})
+		defaultPromLabels,
+	)
 	scalingActive = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
 			Name:      "scaling_active",
 			Help:      "Gauge indicating whether the WPA is currently scaling",
 		},
-		[]string{
-			wpaNamePromLabel,
-			wpaNamespacePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			targetNamePromLabel,
-			resourceKindPromLabel,
-		},
+		defaultPromLabels,
 	)
 	labelsInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -298,7 +209,7 @@ var (
 			Name:      "labels_info",
 			Help:      "Info metric for additional labels to associate to metrics as tags",
 		},
-		append(extraPromLabels, wpaNamePromLabel, wpaNamespacePromLabel, resourceNamespacePromLabel),
+		append(extraPromLabels, wpaNamePromLabel, wpaNamespacePromLabel, resourceNamespacePromLabel, namespacePromLabel),
 	)
 	requestDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -332,15 +243,8 @@ var (
 			Name:      "conditions",
 			Help:      "Gauge reflecting the current state of certain tracked conditions",
 		},
-		[]string{
-			wpaNamePromLabel,
-			wpaNamespacePromLabel,
-			resourceNamespacePromLabel,
-			resourceNamePromLabel,
-			targetNamePromLabel,
-			resourceKindPromLabel,
-			conditionPromLabel,
-		})
+		append(defaultPromLabels, conditionPromLabel),
+	)
 )
 
 func init() {
@@ -369,14 +273,7 @@ func init() {
 }
 
 func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onlyMetricsSpecific bool) {
-	promLabelsForWpa := prometheus.Labels{
-		wpaNamePromLabel:           wpa.Name,
-		wpaNamespacePromLabel:      wpa.Namespace,
-		resourceNamespacePromLabel: wpa.Namespace,
-		resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
-		targetNamePromLabel:        wpa.Spec.ScaleTargetRef.Name,
-		resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
-	}
+	promLabelsForWpa := getPrometheusLabels(wpa)
 
 	if !onlyMetricsSpecific {
 		replicaEffective.Delete(promLabelsForWpa)
@@ -432,8 +329,8 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 		wpaNamespacePromLabel: wpa.Namespace,
 		targetNamePromLabel:   wpa.Spec.ScaleTargetRef.Name,
 		lifecycleStatus:       lifecycleControlBlockedStatus,
-		monitorName:           wpa.Name,
 		monitorNamespace:      wpa.Namespace,
+		namespacePromLabel:    wpa.Namespace,
 	})
 }
 
@@ -453,8 +350,9 @@ func getPrometheusLabels(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) promethe
 		wpaNamePromLabel:           wpa.Name,
 		wpaNamespacePromLabel:      wpa.Namespace,
 		resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
-		targetNamePromLabel:        wpa.Spec.ScaleTargetRef.Name,
 		resourceNamespacePromLabel: wpa.Namespace,
 		resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
+		targetNamePromLabel:        wpa.Spec.ScaleTargetRef.Name,
+		namespacePromLabel:         wpa.Namespace,
 	}
 }
