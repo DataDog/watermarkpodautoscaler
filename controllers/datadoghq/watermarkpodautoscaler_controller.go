@@ -224,7 +224,6 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 			monitorName:           instance.Name,
 			monitorNamespace:      instance.Namespace,
 			lifecycleStatus:       lifecycleControlBlockedStatus,
-			namespacePromLabel:    instance.Namespace,
 		}
 		dmon := types.NamespacedName{
 			Name:      instance.Name,
