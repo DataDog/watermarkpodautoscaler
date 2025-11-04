@@ -2554,6 +2554,8 @@ func getPromBaseLabels(wpa *v1alpha1.WatermarkPodAutoscaler) prometheus.Labels {
 		resourceNamespacePromLabel: wpa.Namespace,
 		resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
 		resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
+		targetNamePromLabel:        wpa.Spec.ScaleTargetRef.Name,
+		namespacePromLabel:         wpa.Namespace,
 	}
 }
 

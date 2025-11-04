@@ -224,6 +224,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 			monitorName:           instance.Name,
 			monitorNamespace:      instance.Namespace,
 			lifecycleStatus:       lifecycleControlBlockedStatus,
+			namespacePromLabel:    instance.Namespace,
 		}
 		dmon := types.NamespacedName{
 			Name:      instance.Name,
@@ -304,13 +305,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 }
 
 func updateConditionsMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
-	labels := prometheus.Labels{
-		wpaNamePromLabel:           wpa.Name,
-		wpaNamespacePromLabel:      wpa.Namespace,
-		resourceNamespacePromLabel: wpa.Namespace,
-		resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
-		resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
-	}
+	wpaLabels := getPrometheusLabels(wpa)
 	isActive := 0
 	for cond := range wpa.Status.Conditions {
 		if wpa.Status.Conditions[cond].Type == autoscalingv2.ScalingActive && wpa.Status.Conditions[cond].Status == corev1.ConditionTrue {
@@ -318,7 +313,7 @@ func updateConditionsMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
 			break
 		}
 	}
-	scalingActive.With(labels).Set(float64(isActive))
+	scalingActive.With(wpaLabels).Set(float64(isActive))
 }
 
 // reconcileWPA is the core of the controller.
@@ -364,12 +359,14 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	span.SetTag("current_replicas", currentReplicas)
 
 	// add additional labels to info metric
-	promLabels := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace}
+	promLabels := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, namespacePromLabel: wpa.Namespace}
 	for _, eLabel := range extraPromLabels {
 		eLabelValue := wpa.Labels[eLabel]
 		promLabels[eLabel] = eLabelValue
 	}
 	labelsInfo.With(promLabels).Set(1)
+
+	wpaLabels := getPrometheusLabels(wpa)
 
 	dryRunMetricValue := 0
 	if wpa.Spec.DryRun {
@@ -378,7 +375,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	} else {
 		setCondition(wpa, datadoghqv1alpha1.WatermarkPodAutoscalerStatusDryRunCondition, corev1.ConditionFalse, "DryRun mode disabled", "Scaling changes can be applied")
 	}
-	dryRun.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(float64(dryRunMetricValue))
+	dryRun.With(wpaLabels).Set(float64(dryRunMetricValue))
 
 	span.SetTag("dry_run", wpa.Spec.DryRun)
 
@@ -460,7 +457,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 		if wpa.Spec.DryRun {
 			logger.Info("DryRun mode: scaling change was inhibited", "currentReplicas", currentReplicas, "desiredReplicas", desiredReplicas)
 			setStatus(wpa, currentReplicas, desiredReplicas, metricStatuses, rescale)
-			replicaEffective.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(float64(desiredReplicas))
+			replicaEffective.With(wpaLabels).Set(float64(desiredReplicas))
 			return r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa)
 		}
 
@@ -482,9 +479,9 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 
 		logger.Info("Successful rescale", "currentReplicas", currentReplicas, "desiredReplicas", desiredReplicas, "rescaleReason", rescaleReason)
 		if currentReplicas < desiredReplicas {
-			upscale.With(getPrometheusLabels(wpa)).Add(float64(desiredReplicas - currentReplicas))
+			upscale.With(wpaLabels).Add(float64(desiredReplicas - currentReplicas))
 		} else {
-			downscale.With(getPrometheusLabels(wpa)).Add(float64(currentReplicas - desiredReplicas))
+			downscale.With(wpaLabels).Add(float64(currentReplicas - desiredReplicas))
 		}
 	} else {
 		if r.Options.SkipNotScalingEvents {
@@ -496,7 +493,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 		desiredReplicas = currentReplicas
 	}
 
-	replicaEffective.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(float64(desiredReplicas))
+	replicaEffective.With(wpaLabels).Set(float64(desiredReplicas))
 
 	setStatus(wpa, currentReplicas, desiredReplicas, metricStatuses, rescale)
 	return r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa)
@@ -548,20 +545,24 @@ func shouldScale(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 	downscaleForbiddenWindow := time.Duration(wpa.Spec.DownscaleForbiddenWindowSeconds) * time.Second
 	downscaleCountdown := wpa.Status.LastScaleTime.Add(downscaleForbiddenWindow).Sub(timestamp).Seconds()
 
+	wpaLabels := getPrometheusLabels(wpa)
+	wpaLabels[transitionPromLabel] = "downscale"
+
 	if downscaleCountdown > 0 {
-		transitionCountdown.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, transitionPromLabel: "downscale", resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(downscaleCountdown)
+		transitionCountdown.With(wpaLabels).Set(downscaleCountdown)
 		setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonBackOffDownscale, "the time since the previous scale is still within the downscale forbidden window")
 		backoffDown = true
 		logger.Info("Too early to downscale", "lastScaleTime", wpa.Status.LastScaleTime, "nextDownscaleTimestamp", metav1.Time{Time: wpa.Status.LastScaleTime.Add(downscaleForbiddenWindow)}, "lastMetricsTimestamp", metav1.Time{Time: timestamp})
 	} else {
-		transitionCountdown.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, transitionPromLabel: "downscale", resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(0)
+		transitionCountdown.With(wpaLabels).Set(0)
 	}
 	upscaleForbiddenWindow := time.Duration(wpa.Spec.UpscaleForbiddenWindowSeconds) * time.Second
 	upscaleCountdown := wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow).Sub(timestamp).Seconds()
 
+	wpaLabels[transitionPromLabel] = "upscale"
 	// Only upscale if there was no rescaling in the last upscaleForbiddenWindow
 	if upscaleCountdown > 0 {
-		transitionCountdown.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, transitionPromLabel: "upscale", resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(upscaleCountdown)
+		transitionCountdown.With(wpaLabels).Set(upscaleCountdown)
 		backoffUp = true
 		logger.Info("Too early to upscale", "lastScaleTime", wpa.Status.LastScaleTime, "nextUpscaleTimestamp", metav1.Time{Time: wpa.Status.LastScaleTime.Add(upscaleForbiddenWindow)}, "lastMetricsTimestamp", metav1.Time{Time: timestamp})
 
@@ -571,7 +572,7 @@ func shouldScale(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 			setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonBackOffUpscale, "the time since the previous scale is still within the upscale forbidden window")
 		}
 	} else {
-		transitionCountdown.With(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, transitionPromLabel: "upscale", resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}).Set(0)
+		transitionCountdown.With(wpaLabels).Set(0)
 	}
 
 	logger.Info("Cooldown status", "backoffUp", backoffUp, "backoffDown", backoffDown, "desiredReplicas", desiredReplicas, "currentReplicas", currentReplicas)
@@ -647,13 +648,13 @@ func setStatus(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, d
 }
 
 func (r *WatermarkPodAutoscalerReconciler) computeReplicas(ctx context.Context, logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, readyReplicas int32, stableRegime bool, err error) {
-	labels := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, resourceNamePromLabel: wpa.Spec.ScaleTargetRef.Name, resourceKindPromLabel: wpa.Spec.ScaleTargetRef.Kind}
+	wpaLabels := getPrometheusLabels(wpa)
 	minReplicas := float64(0)
 	if wpa.Spec.MinReplicas != nil {
 		minReplicas = float64(*wpa.Spec.MinReplicas)
 	}
-	replicaMin.With(labels).Set(minReplicas)
-	replicaMax.With(labels).Set(float64(wpa.Spec.MaxReplicas))
+	replicaMin.With(wpaLabels).Set(minReplicas)
+	replicaMax.With(wpaLabels).Set(float64(wpa.Spec.MaxReplicas))
 
 	var isAbove, isBelow bool
 	var reason string
@@ -703,23 +704,17 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(ctx context
 		var timestampProposal time.Time
 		var metricNameProposal string
 		var readyReplicasProposal int32
+
+		wpaLabels := getPrometheusLabels(wpa)
 		switch metricSpec.Type {
 		case datadoghqv1alpha1.ExternalMetricSourceType:
 			if metricSpec.External.HighWatermark != nil && metricSpec.External.LowWatermark != nil {
 				metricNameProposal = fmt.Sprintf("%s{%v}", metricSpec.External.MetricName, metricSpec.External.MetricSelector.MatchLabels)
-
-				promLabelsForWpaWithMetricName := prometheus.Labels{
-					wpaNamePromLabel:           wpa.Name,
-					wpaNamespacePromLabel:      wpa.Namespace,
-					resourceNamespacePromLabel: wpa.Namespace,
-					resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
-					resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
-					metricNamePromLabel:        metricSpec.External.MetricName,
-				}
+				wpaLabels[metricNamePromLabel] = metricSpec.External.MetricName
 
 				replicaCalculation, errMetricsServer := r.replicaCalc.GetExternalMetricReplicas(ctx, logger, scale, metricSpec, wpa)
 				if errMetricsServer != nil {
-					replicaProposal.Delete(promLabelsForWpaWithMetricName)
+					replicaProposal.Delete(wpaLabels)
 					r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedGetExternalMetrics, errMetricsServer.Error())
 					setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedGetExternalMetrics, "the WPA was unable to compute the replica count: %v", errMetricsServer)
 					return 0, "", nil, time.Time{}, 0, false, false, fmt.Errorf("failed to compute replicas based on external metric %s: %w", metricSpec.External.MetricName, errMetricsServer)
@@ -733,11 +728,11 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(ctx context
 				isAbove = isAbove || replicaCalculation.pos.isAbove
 				isBelow = isBelow || replicaCalculation.pos.isBelow
 
-				lowwm.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.External.LowWatermark.MilliValue()))
-				lowwmV2.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.External.LowWatermark.MilliValue()))
-				highwm.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.External.HighWatermark.MilliValue()))
-				highwmV2.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.External.HighWatermark.MilliValue()))
-				replicaProposal.With(promLabelsForWpaWithMetricName).Set(float64(replicaCountProposal))
+				lowwm.With(wpaLabels).Set(float64(metricSpec.External.LowWatermark.MilliValue()))
+				lowwmV2.With(wpaLabels).Set(float64(metricSpec.External.LowWatermark.MilliValue()))
+				highwm.With(wpaLabels).Set(float64(metricSpec.External.HighWatermark.MilliValue()))
+				highwmV2.With(wpaLabels).Set(float64(metricSpec.External.HighWatermark.MilliValue()))
+				replicaProposal.With(wpaLabels).Set(float64(replicaCountProposal))
 
 				statuses[i] = autoscalingv2.MetricStatus{
 					Type: autoscalingv2.ExternalMetricSourceType,
@@ -756,18 +751,11 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(ctx context
 		case datadoghqv1alpha1.ResourceMetricSourceType:
 			if metricSpec.Resource.HighWatermark != nil && metricSpec.Resource.LowWatermark != nil {
 				metricNameProposal = fmt.Sprintf("%s{%v}", metricSpec.Resource.Name, metricSpec.Resource.MetricSelector.MatchLabels)
-				promLabelsForWpaWithMetricName := prometheus.Labels{
-					wpaNamePromLabel:           wpa.Name,
-					wpaNamespacePromLabel:      wpa.Namespace,
-					resourceNamespacePromLabel: wpa.Namespace,
-					resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
-					resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
-					metricNamePromLabel:        string(metricSpec.Resource.Name),
-				}
+				wpaLabels[metricNamePromLabel] = string(metricSpec.Resource.Name)
 
 				replicaCalculation, errMetricsServer := r.replicaCalc.GetResourceReplicas(ctx, logger, scale, metricSpec, wpa)
 				if errMetricsServer != nil {
-					replicaProposal.Delete(promLabelsForWpaWithMetricName)
+					replicaProposal.Delete(wpaLabels)
 					r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedGetResourceMetric, errMetricsServer.Error())
 					setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedGetResourceMetric, "the WPA was unable to compute the replica count: %v", errMetricsServer)
 					return 0, "", nil, time.Time{}, 0, false, false, fmt.Errorf("failed to get resource metric %s: %w", metricSpec.Resource.Name, errMetricsServer)
@@ -781,11 +769,11 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(ctx context
 				isAbove = isAbove || replicaCalculation.pos.isAbove
 				isBelow = isBelow || replicaCalculation.pos.isBelow
 
-				lowwm.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.Resource.LowWatermark.MilliValue()))
-				lowwmV2.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.Resource.LowWatermark.MilliValue()))
-				highwm.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.Resource.HighWatermark.MilliValue()))
-				highwmV2.With(promLabelsForWpaWithMetricName).Set(float64(metricSpec.Resource.HighWatermark.MilliValue()))
-				replicaProposal.With(promLabelsForWpaWithMetricName).Set(float64(replicaCountProposal))
+				lowwm.With(wpaLabels).Set(float64(metricSpec.Resource.LowWatermark.MilliValue()))
+				lowwmV2.With(wpaLabels).Set(float64(metricSpec.Resource.LowWatermark.MilliValue()))
+				highwm.With(wpaLabels).Set(float64(metricSpec.Resource.HighWatermark.MilliValue()))
+				highwmV2.With(wpaLabels).Set(float64(metricSpec.Resource.HighWatermark.MilliValue()))
+				replicaProposal.With(wpaLabels).Set(float64(replicaCountProposal))
 
 				statuses[i] = autoscalingv2.MetricStatus{
 					Type: autoscalingv2.ResourceMetricSourceType,
@@ -825,28 +813,22 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasWithRecommender(ctx co
 
 	statuses = make([]autoscalingv2.MetricStatus, 0)
 	recommenderName := metricNameForRecommender(&wpa.Spec)
-	promLabelsForWpaWithMetricName := prometheus.Labels{
-		wpaNamePromLabel:           wpa.Name,
-		wpaNamespacePromLabel:      wpa.Namespace,
-		resourceNamespacePromLabel: wpa.Namespace,
-		resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
-		resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
-		metricNamePromLabel:        recommenderName,
-	}
+	wpaLabelsWithMetricName := getPrometheusLabels(wpa)
+	wpaLabelsWithMetricName[metricNamePromLabel] = recommenderName
 
 	replicaCalculation, errMetricsServer := r.replicaCalc.GetRecommenderReplicas(ctx, logger, scale, wpa)
 	if errMetricsServer != nil {
-		replicaProposal.Delete(promLabelsForWpaWithMetricName)
+		replicaProposal.Delete(wpaLabelsWithMetricName)
 		r.eventRecorder.Event(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedGetResourceMetric, errMetricsServer.Error())
 		setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedGetResourceMetric, "the WPA was unable to compute the replica count: %v", errMetricsServer)
 		return 0, "", nil, time.Time{}, 0, false, false, "", fmt.Errorf("failed to get the recommendation from %s: %w", recommenderSpec.URL, errMetricsServer)
 	}
 
-	lowwm.With(promLabelsForWpaWithMetricName).Set(float64(recommenderSpec.LowWatermark.MilliValue()))
-	lowwmV2.With(promLabelsForWpaWithMetricName).Set(float64(recommenderSpec.LowWatermark.MilliValue()))
-	highwm.With(promLabelsForWpaWithMetricName).Set(float64(recommenderSpec.HighWatermark.MilliValue()))
-	highwmV2.With(promLabelsForWpaWithMetricName).Set(float64(recommenderSpec.HighWatermark.MilliValue()))
-	replicaProposal.With(promLabelsForWpaWithMetricName).Set(float64(replicaCalculation.replicaCount))
+	lowwm.With(wpaLabelsWithMetricName).Set(float64(recommenderSpec.LowWatermark.MilliValue()))
+	lowwmV2.With(wpaLabelsWithMetricName).Set(float64(recommenderSpec.LowWatermark.MilliValue()))
+	highwm.With(wpaLabelsWithMetricName).Set(float64(recommenderSpec.HighWatermark.MilliValue()))
+	highwmV2.With(wpaLabelsWithMetricName).Set(float64(recommenderSpec.HighWatermark.MilliValue()))
+	replicaProposal.With(wpaLabelsWithMetricName).Set(float64(replicaCalculation.replicaCount))
 
 	status := autoscalingv2.MetricStatus{
 		Type: autoscalingv2.ResourceMetricSourceType,
@@ -871,19 +853,14 @@ func setCondition(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, conditionType a
 	wpa.Status.LastConditionType = string(conditionType)
 
 	if labelVal := trackedConditions[conditionType]; labelVal != "" {
-		promLabelsForWpaWithMetricName := prometheus.Labels{
-			wpaNamePromLabel:           wpa.Name,
-			wpaNamespacePromLabel:      wpa.Namespace,
-			resourceNamespacePromLabel: wpa.Namespace,
-			resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
-			resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
-			conditionPromLabel:         labelVal,
-		}
+		wpaLabels := getPrometheusLabels(wpa)
+		wpaLabels[conditionPromLabel] = labelVal
+
 		var val float64
 		if status == corev1.ConditionTrue {
 			val = 1
 		}
-		conditions.With(promLabelsForWpaWithMetricName).Set(val)
+		conditions.With(wpaLabels).Set(val)
 	}
 }
 
@@ -965,21 +942,16 @@ func convertDesiredReplicasWithRules(logger logr.Logger, wpa *datadoghqv1alpha1.
 	var possibleLimitingReason string
 
 	scaleDownLimit := calculateScaleDownLimit(wpa, currentReplicas)
-	promLabelsForWpa := prometheus.Labels{
-		wpaNamePromLabel:           wpa.Name,
-		wpaNamespacePromLabel:      wpa.Namespace,
-		resourceNamespacePromLabel: wpa.Namespace,
-		resourceNamePromLabel:      wpa.Spec.ScaleTargetRef.Name,
-		resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
-		reasonPromLabel:            "downscale_capping",
-	}
+	wpaLabels := getPrometheusLabels(wpa)
+	wpaLabels[reasonPromLabel] = "downscale_capping"
+
 	// Compute the maximum and minimum number of replicas we can have
 	switch {
 	case wpaMinReplicas == 0:
 		minimumAllowedReplicas = 1
 	case desiredReplicas < scaleDownLimit:
 		minimumAllowedReplicas = int32(math.Max(float64(scaleDownLimit), float64(wpaMinReplicas)))
-		restrictedScaling.With(promLabelsForWpa).Set(1)
+		restrictedScaling.With(wpaLabels).Set(1)
 		possibleLimitingCondition = "ScaleDownLimit"
 		possibleLimitingReason = "the desired replica count is decreasing faster than the maximum scale rate"
 		logger.Info("Downscaling rate higher than limit set by `scaleDownLimitFactor`, capping the maximum downscale to 'minimumAllowedReplicas'", "scaleDownLimitFactor", fmt.Sprintf("%.1f", float64(wpa.Spec.ScaleDownLimitFactor.MilliValue()/1000)), "wpaMinReplicas", wpaMinReplicas, "minimumAllowedReplicas", minimumAllowedReplicas)
@@ -989,7 +961,7 @@ func convertDesiredReplicasWithRules(logger logr.Logger, wpa *datadoghqv1alpha1.
 		}
 	case desiredReplicas >= scaleDownLimit:
 		minimumAllowedReplicas = wpaMinReplicas
-		restrictedScaling.With(promLabelsForWpa).Set(0)
+		restrictedScaling.With(wpaLabels).Set(0)
 		possibleLimitingCondition = "TooFewReplicas"
 		possibleLimitingReason = "the desired replica count is below the minimum replica count"
 	}
@@ -1002,14 +974,14 @@ func convertDesiredReplicasWithRules(logger logr.Logger, wpa *datadoghqv1alpha1.
 
 	if desiredReplicas > scaleUpLimit {
 		maximumAllowedReplicas = int32(math.Min(float64(scaleUpLimit), float64(wpaMaxReplicas)))
-		promLabelsForWpa[reasonPromLabel] = upscaleCappingPromLabelVal
-		restrictedScaling.With(promLabelsForWpa).Set(1)
+		wpaLabels[reasonPromLabel] = upscaleCappingPromLabelVal
+		restrictedScaling.With(wpaLabels).Set(1)
 		logger.Info("Upscaling rate higher than limit set by 'ScaleUpLimitFactor', capping the maximum upscale to 'maximumAllowedReplicas'", "scaleUpLimitFactor", fmt.Sprintf("%.1f", float64(wpa.Spec.ScaleUpLimitFactor.MilliValue()/1000)), "wpaMaxReplicas", wpaMaxReplicas, "maximumAllowedReplicas", maximumAllowedReplicas)
 		possibleLimitingCondition = "ScaleUpLimit"
 		possibleLimitingReason = "the desired replica count is increasing faster than the maximum scale rate"
 	} else {
 		maximumAllowedReplicas = wpaMaxReplicas
-		restrictedScaling.With(promLabelsForWpa).Set(0)
+		restrictedScaling.With(wpaLabels).Set(0)
 		possibleLimitingCondition = "TooManyReplicas"
 		possibleLimitingReason = "the desired replica count is above the maximum replica count"
 	}
