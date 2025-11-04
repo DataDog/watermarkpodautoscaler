@@ -128,7 +128,6 @@ var (
 			lifecycleStatus,
 			monitorName,
 			monitorNamespace,
-			namespacePromLabel,
 		},
 	)
 	lowwm = prometheus.NewGaugeVec(
@@ -327,10 +326,9 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 	lifecycleControlStatus.Delete(prometheus.Labels{
 		wpaNamePromLabel:      wpa.Name,
 		wpaNamespacePromLabel: wpa.Namespace,
-		targetNamePromLabel:   wpa.Spec.ScaleTargetRef.Name,
 		lifecycleStatus:       lifecycleControlBlockedStatus,
+		monitorName:           wpa.Name,
 		monitorNamespace:      wpa.Namespace,
-		namespacePromLabel:    wpa.Namespace,
 	})
 }
 
