@@ -1,10 +1,10 @@
 ---
-image: registry.ddbuild.io/images/mirror/golang:1.22
+image: registry.ddbuild.io/images/mirror/golang:1.24
 variables:
   PROJECTNAME: "watermarkpodautoscaler"
   TARGET_TAG: v$CI_PIPELINE_ID-$CI_COMMIT_SHORT_SHA
   BUILD_DOCKER_REGISTRY: "registry.ddbuild.io/ci"
-  JOB_DOCKER_IMAGE: "registry.ddbuild.io/ci-containers-project:v50051243-ace27e7-v1.22"
+  JOB_DOCKER_IMAGE: "registry.ddbuild.io/ci-containers-project:v82230424-51af9b5-v1.24"
   DOCKER_REGISTRY_LOGIN_SSM_KEY: docker_hub_login
   DOCKER_REGISTRY_PWD_SSM_KEY: docker_hub_pwd
   DOCKER_REGISTRY_URL: docker.io

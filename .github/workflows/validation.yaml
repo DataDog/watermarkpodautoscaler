@@ -7,7 +7,7 @@ permissions:
 env:
   GO111MODULE: "on"
   PROJECTNAME: "watermarkpodautoscaler"
-  GO_VERSION: 1.22
+  GO_VERSION: 1.24
 jobs:
   build:
     runs-on: ubuntu-latest

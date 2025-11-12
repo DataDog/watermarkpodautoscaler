@@ -184,7 +184,7 @@ install-tools: bin/$(PLATFORM)/golangci-lint bin/$(PLATFORM)/operator-sdk bin/$(
 
 .PHONY: generate-openapi
 generate-openapi: bin/$(PLATFORM)/openapi-gen
-	bin/$(PLATFORM)/openapi-gen --logtostderr --output-dir apis/datadoghq/v1alpha1 --output-file zz_generated.openapi.go --output-pkg apis/datadoghq/v1alpha1 --go-header-file ./hack/boilerplate.go.txt ./apis/datadoghq/v1alpha1
+	bin/$(PLATFORM)/openapi-gen --output-dir apis/datadoghq/v1alpha1 --output-file zz_generated.openapi.go --output-pkg apis/datadoghq/v1alpha1 --go-header-file ./hack/boilerplate.go.txt ./apis/datadoghq/v1alpha1
 
 .PHONY: patch-crds
 patch-crds: bin/$(PLATFORM)/yq
@@ -215,10 +215,10 @@ bin/$(PLATFORM)/jq: Makefile
 	hack/install-jq.sh "bin/$(PLATFORM)" 1.7.1
 
 bin/$(PLATFORM)/golangci-lint: Makefile
-	hack/install-golangci-lint.sh -b "bin/$(PLATFORM)" v1.61.0
+	hack/install-golangci-lint.sh -b "bin/$(PLATFORM)" v1.64.8
 
 bin/$(PLATFORM)/operator-sdk: Makefile
-	hack/install-operator-sdk.sh v1.23.0
+	hack/install-operator-sdk.sh v1.41.1
 
 bin/$(PLATFORM)/go-licenses:
 	mkdir -p $(ROOT)bin/$(PLATFORM)
@@ -235,7 +235,7 @@ bin/$(PLATFORM)/openapi-gen:
 	GOBIN=$(ROOT)/bin/$(PLATFORM) go install k8s.io/kube-openapi/cmd/openapi-gen
 
 bin/$(PLATFORM)/kubebuilder:
-	hack/install-kubebuilder.sh 3.4.0 ./bin/$(PLATFORM)
+	hack/install-kubebuilder.sh 4.6.0 ./bin/$(PLATFORM)
 
 bin/$(PLATFORM)/kubebuilder-tools:
-	hack/install-kubebuilder-tools.sh 1.24.1 ./bin/$(PLATFORM)
+	hack/install-kubebuilder-tools.sh 1.29.3 ./bin/$(PLATFORM)
