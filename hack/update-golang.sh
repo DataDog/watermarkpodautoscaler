@@ -52,7 +52,7 @@ fi
 dev_container_file="$ROOT/.devcontainer/devcontainer.json"
 if [[ -f $dev_container_file ]]; then
     echo "Processing $dev_container_file..."
-    sed -i -E "s|(mcr\.microsoft\.com/devcontainers/go:)[^\"]+|\11-$new_minor_version|" "$dev_container_file"
+    sed -i -E "s|(mcr\.microsoft\.com/devcontainers/go:)[^\"]+|\12-$new_minor_version|" "$dev_container_file"
 else
     echo "Warning: $dev_container_file not found, skipping."
 fi
