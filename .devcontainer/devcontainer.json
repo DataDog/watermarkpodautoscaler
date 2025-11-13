@@ -7,8 +7,13 @@
 	"features": {
 		"ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {},
 		"ghcr.io/devcontainers-extra/features/kubectx-kubens:1": {},
-		"ghcr.io/devcontainers-extra/features/kind:1": {}
+		"ghcr.io/devcontainers-extra/features/kind:1": {},
+		"ghcr.io/devcontainers/features/node:1": {},
+		"ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
 	},
+	"mounts": [
+		"source=${localWorkspaceFolder}/.devcontainer/claude-data/,target=/home/vscode/.claude,type=bind"
+	],
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	// "features": {},
