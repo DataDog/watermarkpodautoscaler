@@ -44,7 +44,6 @@
     "funlen",
     "gocognit",
     "cyclop",
-    "gomnd",
     "wrapcheck",
     "forcetypeassert",
     "err113",
@@ -76,6 +75,7 @@
     "depguard",
     "perfsprint",
     "mnd",
+    "tenv",
   ]
 
 [issues]

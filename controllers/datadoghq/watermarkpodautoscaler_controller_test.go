@@ -175,7 +175,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 			wantFunc: func(c client.Client) error {
 				rq := newRequest(testingNamespace, testingWPAName)
 				wpa := &v1alpha1.WatermarkPodAutoscaler{}
-				err := c.Get(context.TODO(), rq.NamespacedName, wpa)
+				err := c.Get(t.Context(), rq.NamespacedName, wpa)
 				if err != nil {
 					return err
 				}
@@ -222,7 +222,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 			wantFunc: func(c client.Client) error {
 				rq := newRequest(testingNamespace, testingWPAName)
 				wpa := &v1alpha1.WatermarkPodAutoscaler{}
-				err := c.Get(context.TODO(), rq.NamespacedName, wpa)
+				err := c.Get(t.Context(), rq.NamespacedName, wpa)
 				if err != nil {
 					return err
 				}
@@ -281,7 +281,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 			wantFunc: func(c client.Client) error {
 				rq := newRequest(testingNamespace, testingWPAName)
 				wpa := &v1alpha1.WatermarkPodAutoscaler{}
-				err := c.Get(context.TODO(), rq.NamespacedName, wpa)
+				err := c.Get(t.Context(), rq.NamespacedName, wpa)
 				if err != nil {
 					return err
 				}
@@ -323,7 +323,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 			wantFunc: func(c client.Client) error {
 				rq := newRequest(testingNamespace, testingWPAName)
 				wpa := &v1alpha1.WatermarkPodAutoscaler{}
-				err := c.Get(context.TODO(), rq.NamespacedName, wpa)
+				err := c.Get(t.Context(), rq.NamespacedName, wpa)
 				if err != nil {
 					return err
 				}
@@ -375,7 +375,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 			wantFunc: func(c client.Client) error {
 				rq := newRequest(testingNamespace, testingWPAName)
 				wpa := &v1alpha1.WatermarkPodAutoscaler{}
-				err := c.Get(context.TODO(), rq.NamespacedName, wpa)
+				err := c.Get(t.Context(), rq.NamespacedName, wpa)
 				if err != nil {
 					return err
 				}
@@ -425,14 +425,14 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				promMetrics := getPromMetrics(t, wpa)
 				assertZeroMetrics(t, promMetrics)
 
-				err := r.Client.Create(context.TODO(), wpa)
+				err := r.Client.Create(t.Context(), wpa)
 				require.NoError(t, err)
 			}
 			if tt.args.datadogMonitorFunc != nil {
-				err := r.Client.Create(context.TODO(), tt.args.datadogMonitorFunc(t))
+				err := r.Client.Create(t.Context(), tt.args.datadogMonitorFunc(t))
 				require.NoError(t, err)
 			}
-			got, err := r.Reconcile(context.TODO(), tt.args.request)
+			got, err := r.Reconcile(t.Context(), tt.args.request)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ReconcileWatermarkPodAutoscaler.Reconcile() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -557,7 +557,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
 
-					_ = c.Create(context.TODO(), wpa)
+					_ = c.Create(t.Context(), wpa)
 				},
 			},
 			wantErr: false,
@@ -614,7 +614,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
 
-					_ = c.Create(context.TODO(), wpa)
+					_ = c.Create(t.Context(), wpa)
 				},
 			},
 			wantErr: false,
@@ -671,7 +671,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
 
-					_ = c.Create(context.TODO(), wpa)
+					_ = c.Create(t.Context(), wpa)
 				},
 			},
 			wantErr: false,
@@ -762,7 +762,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) {
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
-					_ = c.Create(context.TODO(), wpa)
+					_ = c.Create(t.Context(), wpa)
 				},
 			},
 			wantErr: false,
@@ -874,7 +874,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) {
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
-					_ = c.Create(context.TODO(), wpa)
+					_ = c.Create(t.Context(), wpa)
 				},
 			},
 			wantErr: false,
@@ -992,7 +992,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) {
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
-					_ = c.Create(context.TODO(), wpa)
+					_ = c.Create(t.Context(), wpa)
 				},
 			},
 			wantErr: false,
@@ -1100,7 +1100,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) {
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
-					_ = c.Create(context.TODO(), wpa)
+					_ = c.Create(t.Context(), wpa)
 				},
 			},
 			wantErr: false,
@@ -1210,7 +1210,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) {
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
-					_ = c.Create(context.TODO(), wpa)
+					_ = c.Create(t.Context(), wpa)
 				},
 			},
 			wantErr: false,
@@ -1329,7 +1329,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) {
 					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
 					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
-					_ = c.Create(context.TODO(), wpa)
+					_ = c.Create(t.Context(), wpa)
 				},
 			},
 			wantErr: false,
@@ -1416,11 +1416,11 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				tt.args.loadFunc(r.Client, tt.args.wpa)
 			}
 			wpa := &v1alpha1.WatermarkPodAutoscaler{}
-			if err := r.Client.Get(context.TODO(), types.NamespacedName{Name: tt.args.wpa.Name, Namespace: tt.args.wpa.Namespace}, wpa); err != nil {
+			if err := r.Client.Get(t.Context(), types.NamespacedName{Name: tt.args.wpa.Name, Namespace: tt.args.wpa.Namespace}, wpa); err != nil {
 				t.Errorf("unable to get wpa, err: %v", err)
 			}
 			originalWPAStatus := wpa.Status.DeepCopy()
-			err := r.reconcileWPA(context.TODO(), logf.Log.WithName(tt.name), originalWPAStatus, wpa)
+			err := r.reconcileWPA(t.Context(), logf.Log.WithName(tt.name), originalWPAStatus, wpa)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ReconcileWatermarkPodAutoscaler.Reconcile() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -1661,7 +1661,7 @@ func TestReconcileWatermarkPodAutoscaler_computeReplicas(t *testing.T) {
 			}
 			// If we have 2 metrics, we can assert on the two statuses
 			// We can also use the returned replica, metric etc that is from the highest scaling event
-			replicas, metric, statuses, _, _, _, err := r.computeReplicas(context.TODO(), logf.Log.WithName(tt.name), tt.args.wpa, tt.args.scale)
+			replicas, metric, statuses, _, _, _, err := r.computeReplicas(t.Context(), logf.Log.WithName(tt.name), tt.args.wpa, tt.args.scale)
 			if err != nil || tt.err != nil {
 				require.Error(t, err)
 				require.Equal(t, tt.err.Error(), err.Error())

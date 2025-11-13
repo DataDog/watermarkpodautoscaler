@@ -64,7 +64,7 @@ var _ RecommenderClient = &RecommenderClientMock{}
 func TestRecommenderClient(t *testing.T) {
 	client := NewRecommenderClient(http.DefaultClient)
 	// This should not work with empty requests.
-	resp, err := client.GetReplicaRecommendation(context.Background(), &ReplicaRecommendationRequest{})
+	resp, err := client.GetReplicaRecommendation(t.Context(), &ReplicaRecommendationRequest{})
 	require.Error(t, err)
 	require.Nil(t, resp)
 }
@@ -75,7 +75,7 @@ func TestInstrumentation(t *testing.T) {
 	client := &http.Client{} // can't use http.DefaultClient here because this test modifies its transport possibly leaking to following tests
 	client.Transport = instrumentRoundTripper("http://test", http.DefaultTransport)
 	// This simply makes sure the instrumentation does crash.
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "fake://fake", nil)
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "fake://fake", nil)
 	resp, err := client.Do(req)
 	if resp != nil {
 		_ = resp.Body.Close()
@@ -383,7 +383,7 @@ func TestRedirect(t *testing.T) {
 
 	rc := NewRecommenderClient(http.DefaultClient)
 	request := newTestRequest(server.URL+"/redirect", nil)
-	response, err := rc.GetReplicaRecommendation(context.Background(), request)
+	response, err := rc.GetReplicaRecommendation(t.Context(), request)
 	require.NoError(t, err)
 
 	expectedResponse := newExpectedResponse(now)
@@ -410,7 +410,7 @@ func TestPlaintextRecommendation(t *testing.T) {
 
 	rc := NewRecommenderClient(http.DefaultClient)
 	request := newTestRequest(server.URL, nil)
-	response, err := rc.GetReplicaRecommendation(context.Background(), request)
+	response, err := rc.GetReplicaRecommendation(t.Context(), request)
 	require.NoError(t, err)
 
 	expectedResponse := newExpectedResponse(now)
@@ -426,12 +426,12 @@ func TestTLSRecommendation(t *testing.T) {
 	server := startRecommenderStub(now)
 	defer server.Close()
 
-	tmp, err := os.MkdirTemp("", "TestTLSClientOption")
-	require.NoError(t, err)
+	tmp := t.TempDir()
 	defer func(path string) {
 		_ = os.RemoveAll(path)
 	}(tmp)
 
+	var err error
 	_, _, err = generateCertificates(server, tmp)
 	require.NoError(t, err)
 
@@ -442,7 +442,7 @@ func TestTLSRecommendation(t *testing.T) {
 		KeyFile:  filepath.Join(tmp, "key.pem"),
 	}
 	request := newTestRequest(server.URL, tlsConfig)
-	response, err := rc.GetReplicaRecommendation(context.Background(), request)
+	response, err := rc.GetReplicaRecommendation(t.Context(), request)
 	require.NoError(t, err)
 
 	expectedResponse := newExpectedResponse(now)
@@ -458,12 +458,12 @@ func TestTLSRecommendationWithDefaults(t *testing.T) {
 	server := startRecommenderStub(now)
 	defer server.Close()
 
-	tmp, err := os.MkdirTemp("", "TestTLSClientOption")
-	require.NoError(t, err)
+	tmp := t.TempDir()
 	defer func(path string) {
 		_ = os.RemoveAll(path)
 	}(tmp)
 
+	var err error
 	_, _, err = generateCertificates(server, tmp)
 	require.NoError(t, err)
 
@@ -474,7 +474,7 @@ func TestTLSRecommendationWithDefaults(t *testing.T) {
 	}
 	rc := NewRecommenderClient(http.DefaultClient, WithTLSConfig(tlsConfig))
 	request := newTestRequest(server.URL, nil)
-	response, err := rc.GetReplicaRecommendation(context.Background(), request)
+	response, err := rc.GetReplicaRecommendation(t.Context(), request)
 	require.NoError(t, err)
 
 	expectedResponse := newExpectedResponse(now)
@@ -490,8 +490,7 @@ func TestTLSRecommendationWithClientCertificateMismatch(t *testing.T) {
 	server := startRecommenderStub(time.Now().UTC())
 	defer server.Close()
 
-	tmp, err := os.MkdirTemp("", "TestTLSClientOption")
-	require.NoError(t, err)
+	tmp := t.TempDir()
 	defer func(path string) {
 		_ = os.RemoveAll(path)
 	}(tmp)
@@ -512,12 +511,12 @@ func TestTLSRecommendationWithClientCertificateMismatch(t *testing.T) {
 	}
 	request := newTestRequest(server.URL, tlsConfig)
 
-	_, err = rc.GetReplicaRecommendation(context.Background(), request)
+	_, err = rc.GetReplicaRecommendation(t.Context(), request)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "tls: private key does not match public key")
 
 	_ = os.Remove(filepath.Join(tmp, "cert.pem"))
-	_, err = rc.GetReplicaRecommendation(context.Background(), request)
+	_, err = rc.GetReplicaRecommendation(t.Context(), request)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "tls: private key does not match public key")
 }

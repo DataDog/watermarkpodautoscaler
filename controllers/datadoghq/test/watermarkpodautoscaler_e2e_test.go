@@ -11,6 +11,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -74,7 +75,10 @@ func ginkgoLog(format string, a ...interface{}) {
 	fmt.Fprintf(GinkgoWriter, format+"\n", a...)
 }
 
-var alreadyExistingObjs = map[dynclient.Object]bool{}
+var (
+	alreadyExistingObjs   = map[dynclient.Object]bool{}
+	alreadyExistingObjsMu sync.Mutex
+)
 
 func objectsBeforeEachFunc() {
 	objs, err := metricsserver.InitMetricsServerFiles(GinkgoWriter, "../../../test/e2e/metricsserver/deploy", namespace)
@@ -85,7 +89,9 @@ func objectsBeforeEachFunc() {
 		info("evaluating", obj)
 		if err = createWrapper(ctx, obj); err != nil {
 			if !apierrors.IsAlreadyExists(err) {
+				alreadyExistingObjsMu.Lock()
 				alreadyExistingObjs[obj] = true
+				alreadyExistingObjsMu.Unlock()
 				warn(err.Error())
 			}
 			if err = k8sClient.Update(ctx, obj); err != nil {
@@ -107,11 +113,20 @@ func objectsBeforeEachFunc() {
 }
 
 func cleanUpAfter() {
+	alreadyExistingObjsMu.Lock()
+	objsToDelete := make([]dynclient.Object, 0, len(alreadyExistingObjs))
 	for obj := range alreadyExistingObjs {
+		objsToDelete = append(objsToDelete, obj)
+	}
+	alreadyExistingObjsMu.Unlock()
+
+	for _, obj := range objsToDelete {
 		Eventually(func() bool {
 			if err := k8sClient.Delete(ctx, obj); err != nil {
 				if apierrors.IsNotFound(err) {
+					alreadyExistingObjsMu.Lock()
 					delete(alreadyExistingObjs, obj)
+					alreadyExistingObjsMu.Unlock()
 					return true
 				}
 			}
@@ -125,7 +140,9 @@ func createWrapper(ctx context.Context, obj dynclient.Object, opts ...dynclient.
 	if err := k8sClient.Create(ctx, obj, opts...); err != nil {
 		return err
 	}
+	alreadyExistingObjsMu.Lock()
 	alreadyExistingObjs[obj] = true
+	alreadyExistingObjsMu.Unlock()
 	return nil
 }
 
