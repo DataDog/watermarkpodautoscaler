@@ -3245,6 +3245,45 @@ func Test_checkOwnerRef(t *testing.T) {
 			},
 			want: false,
 		},
+		{
+			name: "custom resource should match",
+			args: args{
+				ownerRef: []metav1.OwnerReference{
+					{
+						Kind: "EphemeraKV",
+						Name: "my-ephemera",
+					},
+				},
+				targetName: "my-ephemera",
+			},
+			want: true,
+		},
+		{
+			name: "custom resource should not match",
+			args: args{
+				ownerRef: []metav1.OwnerReference{
+					{
+						Kind: "EphemeraKV",
+						Name: "my-ephemera",
+					},
+				},
+				targetName: "other-ephemera",
+			},
+			want: false,
+		},
+		{
+			name: "any custom kind should match when name matches",
+			args: args{
+				ownerRef: []metav1.OwnerReference{
+					{
+						Kind: "CustomController",
+						Name: "test-resource",
+					},
+				},
+				targetName: "test-resource",
+			},
+			want: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
