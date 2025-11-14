@@ -11,6 +11,8 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 
 	"github.com/DataDog/watermarkpodautoscaler/cmd/kubectl-wpa/app/dryrun"
+	"github.com/DataDog/watermarkpodautoscaler/cmd/kubectl-wpa/app/metriccheck"
+	"github.com/DataDog/watermarkpodautoscaler/cmd/kubectl-wpa/app/querycollection"
 )
 
 // WatermarkPodAutoscalerOptions provides information required to manage WatermarkPodAutoscaler.
@@ -37,6 +39,8 @@ func NewCmdRoot(streams genericclioptions.IOStreams) *cobra.Command {
 	}
 
 	cmd.AddCommand(dryrun.NewCmdDryRun(streams))
+	cmd.AddCommand(metriccheck.NewCmdMetricCheck(streams))
+	cmd.AddCommand(querycollection.NewCmdQueryCollectionCheck(streams))
 
 	o.configFlags.AddFlags(cmd.Flags())
 
