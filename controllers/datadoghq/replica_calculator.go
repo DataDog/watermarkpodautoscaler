@@ -557,18 +557,20 @@ const (
 
 func checkOwnerRef(ownerRef []metav1.OwnerReference, targetName string) bool {
 	for _, o := range ownerRef {
-		if o.Kind != replicaSetKind && o.Kind != statefulSetKind {
-			continue
-		}
-
 		mainOwnerRef := o.Name
+
+		// For ReplicaSets managed by Deployments, we need to strip the generated suffix
+		// to get the Deployment name (e.g., "myapp-7d8f9c5b6d" -> "myapp")
 		if o.Kind == replicaSetKind {
-			// removes the last section from the replicaSet name to get the deployment name.
 			lastIndex := strings.LastIndex(o.Name, "-")
 			if lastIndex > -1 {
 				mainOwnerRef = o.Name[:lastIndex]
 			}
 		}
+
+		// Check if the owner reference matches the target name
+		// This now supports any Kind that implements the scale subresource
+		// (Deployment, StatefulSet, custom resources, etc.)
 		if mainOwnerRef == targetName {
 			return true
 		}
