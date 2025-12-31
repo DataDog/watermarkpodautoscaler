@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/olekukonko/tablewriter"
@@ -39,9 +40,26 @@ const (
 	OutputFormatTable   = "table"
 	OutputFormatCSV     = "csv"
 	DefaultOutputFormat = OutputFormatTable
+
+	// DefaultWorkerCount is the default number of concurrent workers.
+	DefaultWorkerCount = 5
 )
 
 var headers = []string{"Namespace", "Name", "Orphan", "Team", "Service", "KubeContext", "TargetRefKind", "TargetRefNS", "TargetRefName", "Query"}
+
+// wpaJob represents a WPA to process with its index for order preservation.
+type wpaJob struct {
+	wpa *v1alpha1.WatermarkPodAutoscaler
+}
+
+// processedResult holds the result of processing a WPA with ordering info.
+type processedResult struct {
+	wpaResult *WpaResult
+	err       error
+}
+
+// collectorFunc is a function type that collects and writes results.
+type collectorFunc func(<-chan processedResult) error
 
 // queryCollectionOptions provides information required to manage WatermarkPodAutoscaler.
 type queryCollectionOptions struct {
@@ -58,12 +76,14 @@ type queryCollectionOptions struct {
 	userWPAName   string
 	labelSelector string
 	verbose       bool
+	debug         bool
 
 	allWPA             bool
 	allNamespaces      bool
 	kubeClusterName    string
 	currentContextName string
 	outputFormat       string
+	workerCount        int
 }
 
 // newMetricCheckOptions provides an instance of GetOptions with default values.
@@ -111,8 +131,10 @@ func NewCmdQueryCollectionCheck(streams genericclioptions.IOStreams) *cobra.Comm
 	cmd.Flags().BoolVarP(&o.allWPA, "all", "", false, "Use select all existing WPA instances in a cluster")
 	cmd.Flags().BoolVarP(&o.allNamespaces, "all-namespaces", "", false, "Use to search in all namespaces")
 	cmd.Flags().BoolVarP(&o.verbose, "verbose", "v", false, "verbose")
+	cmd.Flags().BoolVarP(&o.debug, "debug", "d", false, "debug mode - print name and namespace of each processed WPA")
 
 	cmd.Flags().StringVarP(&o.outputFormat, "output", "o", DefaultOutputFormat, "Use to select output format (table, csv)")
+	cmd.Flags().IntVarP(&o.workerCount, "workers", "w", DefaultWorkerCount, "Number of concurrent workers for processing WPAs")
 
 	o.configFlags.AddFlags(cmd.Flags())
 
@@ -205,11 +227,75 @@ type ValueResult struct {
 	Timestamp float64
 }
 
+// worker processes WPA jobs concurrently.
+func (o *queryCollectionOptions) worker(jobs <-chan wpaJob, results chan<- processedResult, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	for job := range jobs {
+		wpaResult, err := o.processWPA(job.wpa)
+		results <- processedResult{
+			wpaResult: wpaResult,
+			err:       err,
+		}
+	}
+}
+
+// processConcurrently is a generic function that processes WPAs concurrently using a worker pool.
+func (o *queryCollectionOptions) processConcurrently(wpas []v1alpha1.WatermarkPodAutoscaler, collector collectorFunc) error {
+	// Create channels
+	jobs := make(chan wpaJob, o.workerCount*2)
+	results := make(chan processedResult, len(wpas))
+
+	// Start worker pool
+	var wg sync.WaitGroup
+	for range o.workerCount {
+		wg.Add(1)
+		go o.worker(jobs, results, &wg)
+	}
+
+	// Send jobs
+	go func() {
+		for i := range wpas {
+			jobs <- wpaJob{wpa: &wpas[i]}
+		}
+		close(jobs)
+	}()
+
+	// Wait for workers and close results
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Collect and write results using the provided collector function
+	var err error
+	var wgWrite sync.WaitGroup
+	wgWrite.Add(1)
+	go func() {
+		defer wgWrite.Done()
+		err = collector(results)
+	}()
+
+	// Wait until writing is done
+	wgWrite.Wait()
+
+	return err
+}
+
 func (o *queryCollectionOptions) listTable(wpas []v1alpha1.WatermarkPodAutoscaler) error {
 	if len(wpas) == 0 {
 		return fmt.Errorf("no matching WatermarkPodAutoscaler intance")
 	}
 
+	// Use sequential processing for single WPA or when workers = 1
+	if len(wpas) == 1 || o.workerCount == 1 {
+		return o.listTableSequential(wpas)
+	}
+
+	return o.listTableConcurrent(wpas)
+}
+
+func (o *queryCollectionOptions) listTableSequential(wpas []v1alpha1.WatermarkPodAutoscaler) error {
 	table := newGetTable(o.Out)
 	writeFunc := func(data []string) error {
 		table.Append(data)
@@ -226,10 +312,66 @@ func (o *queryCollectionOptions) listTable(wpas []v1alpha1.WatermarkPodAutoscale
 	return goerrors.Join(errs...)
 }
 
+func (o *queryCollectionOptions) listTableConcurrent(wpas []v1alpha1.WatermarkPodAutoscaler) error {
+	return o.processConcurrently(wpas, o.collectAndWriteTable)
+}
+
+func (o *queryCollectionOptions) collectAndWriteTable(results <-chan processedResult) error {
+	// Collect all results
+	// Write in order
+	table := newGetTable(o.Out)
+	var errs []error
+	for result := range results {
+		if result.err != nil {
+			errs = append(errs, result.err)
+			continue
+		}
+
+		if err := o.writeWpaResultToTable(table, result.wpaResult); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	table.Render()
+	return goerrors.Join(errs...)
+}
+
+func (o *queryCollectionOptions) writeWpaResultToTable(table *tablewriter.Table, wpaResult *WpaResult) error {
+	wpaCommonData := []string{
+		wpaResult.Namespace,
+		wpaResult.Name,
+		BoolToString(wpaResult.Orphan),
+		wpaResult.Team,
+		wpaResult.Service,
+		o.currentContextName,
+		wpaResult.TargetRef.Kind,
+		wpaResult.Namespace,
+		wpaResult.TargetRef.Name,
+	}
+
+	var errors []error
+	for _, metric := range wpaResult.Metrics {
+		data := append([]string{}, wpaCommonData...)
+		data = append(data, metric.Query)
+		table.Append(data)
+	}
+	return goerrors.Join(errors...)
+}
+
 func (o *queryCollectionOptions) listCSV(wpas []v1alpha1.WatermarkPodAutoscaler) error {
 	if len(wpas) == 0 {
 		return fmt.Errorf("no matching WatermarkPodAutoscaler intance")
 	}
+
+	// Use sequential processing for single WPA or when workers = 1
+	if len(wpas) == 1 || o.workerCount == 1 {
+		return o.listCSVSequential(wpas)
+	}
+
+	return o.listCSVConcurrent(wpas)
+}
+
+func (o *queryCollectionOptions) listCSVSequential(wpas []v1alpha1.WatermarkPodAutoscaler) error {
 	writer := csv.NewWriter(o.Out)
 	defer writer.Flush()
 
@@ -246,6 +388,61 @@ func (o *queryCollectionOptions) listCSV(wpas []v1alpha1.WatermarkPodAutoscaler)
 	}
 
 	return goerrors.Join(errs...)
+}
+
+func (o *queryCollectionOptions) listCSVConcurrent(wpas []v1alpha1.WatermarkPodAutoscaler) error {
+	return o.processConcurrently(wpas, o.collectAndWriteCSV)
+}
+
+func (o *queryCollectionOptions) collectAndWriteCSV(results <-chan processedResult) error {
+	// Write in order
+	writer := csv.NewWriter(o.Out)
+	defer writer.Flush()
+
+	// Write header
+	if err := writer.Write(headers); err != nil {
+		return fmt.Errorf("unable to write header, err: %w", err)
+	}
+
+	// Collect all results
+	var errs []error
+	for result := range results {
+		if result.err != nil {
+			errs = append(errs, result.err)
+			continue
+		}
+
+		if err := o.writeWpaResultToCSV(writer, result.wpaResult); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	writer.Flush()
+	return goerrors.Join(errs...)
+}
+
+func (o *queryCollectionOptions) writeWpaResultToCSV(writer *csv.Writer, wpaResult *WpaResult) error {
+	wpaCommonData := []string{
+		wpaResult.Namespace,
+		wpaResult.Name,
+		BoolToString(wpaResult.Orphan),
+		wpaResult.Team,
+		wpaResult.Service,
+		o.currentContextName,
+		wpaResult.TargetRef.Kind,
+		wpaResult.Namespace,
+		wpaResult.TargetRef.Name,
+	}
+
+	var errors []error
+	for _, metric := range wpaResult.Metrics {
+		data := append([]string{}, wpaCommonData...)
+		data = append(data, metric.Query)
+		if err := writer.Write(data); err != nil {
+			errors = append(errors, err)
+		}
+	}
+	return goerrors.Join(errors...)
 }
 
 func (o *queryCollectionOptions) generateRaw(wpa *v1alpha1.WatermarkPodAutoscaler, writeRawFunc func([]string) error) error {
@@ -358,6 +555,11 @@ func (o *queryCollectionOptions) processWPA(wpa *v1alpha1.WatermarkPodAutoscaler
 			fmt.Fprintf(o.ErrOut, "- WatermarkPodAutoscaler '%s/%s' orphan:%v\n", wpa.Namespace, wpa.Name, result.Orphan)
 		}
 	}
+
+	if o.debug {
+		fmt.Fprintf(o.ErrOut, "[DEBUG] Completed processing WPA: %s/%s (metrics: %d)\n", wpa.GetNamespace(), wpa.GetName(), len(result.Metrics))
+	}
+
 	return result, nil
 }
 
