@@ -132,7 +132,7 @@ trigger_internal_image:
     branch: master
     strategy: depend
   variables:
-    IMAGE_VERSION: tmpl-v3
+    IMAGE_VERSION: tmpl-v5
     IMAGE_NAME: $PROJECTNAME
     RELEASE_TAG: ${CI_COMMIT_REF_SLUG}
     BUILD_TAG: ${CI_COMMIT_REF_SLUG}
@@ -150,7 +150,7 @@ trigger_internal_image_fips:
     branch: master
     strategy: depend
   variables:
-    IMAGE_VERSION: tmpl-v3-fips
+    IMAGE_VERSION: tmpl-v5-fips
     IMAGE_NAME: $PROJECTNAME
     RELEASE_TAG: ${CI_COMMIT_REF_SLUG}-fips
     BUILD_TAG: ${CI_COMMIT_REF_SLUG}-fips
