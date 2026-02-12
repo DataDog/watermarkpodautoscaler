@@ -11,7 +11,7 @@ links:
   - name: watermarkpodautoscaler
     type: repo
     provider: github
-    url: https://github.com/DataDog/datadog-operator
+    url: https://github.com/DataDog/watermarkpodautoscaler
   - name: internal-chart
     type: repo
     provider: github
