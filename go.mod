@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.24.10
 
 require (
-	github.com/DataDog/agent-payload/v5 v5.0.135-0.20241016074204-82c61e7189e0
+	github.com/DataDog/agent-payload/v5 v5.0.179
 	github.com/DataDog/dd-trace-go/contrib/net/http/v2 v2.0.0-rc.3
 	github.com/DataDog/dd-trace-go/v2 v2.0.0-rc.3
 	github.com/DataDog/watermarkpodautoscaler/apis v0.0.0-20250908194611-f887ec99e8f9

@@ -2,8 +2,8 @@ cloud.google.com/go v0.26.0/go.mod h1:aQUYkXzVsufM+DwF1aE+0xfcU+56JwCaLick0ClmMT
 github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 h1:L/gRVlceqvL25UVaW/CKtUDjefjrs0SPonmDGUVOYP0=
 github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
-github.com/DataDog/agent-payload/v5 v5.0.135-0.20241016074204-82c61e7189e0 h1:p4l2kLoQDprGu2R9LESlAq0GLQgkHjskVqKETNv/dPU=
-github.com/DataDog/agent-payload/v5 v5.0.135-0.20241016074204-82c61e7189e0/go.mod h1:FgVQKmVdqdmZTbxIptqJC/l+xEzdiXsaAOs/vGAvWzs=
+github.com/DataDog/agent-payload/v5 v5.0.179 h1:RGwAyXHqioHy/ARYDoX4XuEVZjipIoIjdpFW6aKr5dc=
+github.com/DataDog/agent-payload/v5 v5.0.179/go.mod h1:9PtvPKsgZVTTvqgYtcwB4bjXAkxYzC2wzSXSadPRHv8=
 github.com/DataDog/appsec-internal-go v1.9.0 h1:cGOneFsg0JTRzWl5U2+og5dbtyW3N8XaYwc5nXe39Vw=
 github.com/DataDog/appsec-internal-go v1.9.0/go.mod h1:wW0cRfWBo4C044jHGwYiyh5moQV2x0AhnwqMuiX7O/g=
 github.com/DataDog/datadog-agent/pkg/obfuscate v0.59.0 h1:uX6/XoKMS7KYXe+R+vwgw+eRdmn16xfa9PDF5dxgumE=
