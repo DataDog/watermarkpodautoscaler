@@ -2889,7 +2889,7 @@ func TestGroupPods(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			readyPods, ignoredPods := groupPods(logf.Log.WithName(tc.name), tc.pods, tc.targetName, tc.metrics, tc.resource, time.Duration(readinessDelay)*time.Second)
+			readyPods, ignoredPods := groupPods(logf.Log.WithName(tc.name), tc.pods, tc.targetName, tc.metrics, tc.resource, time.Duration(readinessDelay)*time.Second, false)
 			readyPodCount := len(readyPods)
 			assert.Equal(t, tc.expectReadyPodCount, readyPodCount, "%s got readyPodCount %d, expected %d", tc.name, readyPodCount, tc.expectReadyPodCount)
 			assert.EqualValues(t, tc.expectIgnoredPods, ignoredPods, "%s got unreadyPods %v, expected %v", tc.name, ignoredPods, tc.expectIgnoredPods)
@@ -3146,7 +3146,7 @@ func TestGetReadyPodsCount(t *testing.T) {
 			podList, err := replicaCalculator.podLister.Pods(tc.scale.Namespace).List(labels.SelectorFromSet(f.selector))
 			require.NoError(t, err)
 
-			val, _, err := replicaCalculator.getReadyPodsCount(logf.Log, tc.scale.Name, podList, readinessDelay*time.Second)
+			val, _, err := replicaCalculator.getReadyPodsCount(logf.Log, tc.scale.Name, podList, readinessDelay*time.Second, false)
 			assert.Equal(t, f.expected, val)
 			if f.errorExpected != nil {
 				assert.EqualError(t, f.errorExpected, err.Error())
@@ -3339,4 +3339,100 @@ func Test_checkOwnerRef(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestShouldSkipOwnerCheck(t *testing.T) {
+	tests := []struct {
+		name        string
+		annotations map[string]string
+		want        bool
+	}{
+		{
+			name:        "nil annotations",
+			annotations: nil,
+			want:        false,
+		},
+		{
+			name:        "empty annotations",
+			annotations: map[string]string{},
+			want:        false,
+		},
+		{
+			name:        "annotation set to true",
+			annotations: map[string]string{skipOwnerCheckAnnotationKey: "true"},
+			want:        true,
+		},
+		{
+			name:        "annotation set to false",
+			annotations: map[string]string{skipOwnerCheckAnnotationKey: "false"},
+			want:        false,
+		},
+		{
+			name:        "annotation set to other value",
+			annotations: map[string]string{skipOwnerCheckAnnotationKey: "yes"},
+			want:        false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wpa := &v1alpha1.WatermarkPodAutoscaler{}
+			wpa.Annotations = tt.annotations
+			if got := shouldSkipOwnerCheck(wpa); got != tt.want {
+				t.Errorf("shouldSkipOwnerCheck() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetReadyPodsCount_SkipOwnerCheck(t *testing.T) {
+	// When skipOwnerCheck is true, pods with non-matching OwnerReferences should still be counted.
+	// This simulates a CRD (e.g., CassandraDatacenter) that creates pods via intermediate StatefulSets.
+	podList := []*corev1.Pod{
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-0",
+				Namespace: "default",
+				OwnerReferences: []metav1.OwnerReference{
+					{Kind: "StatefulSet", Name: "dc1-rack1"},
+				},
+			},
+			Status: corev1.PodStatus{
+				Phase:     corev1.PodRunning,
+				StartTime: &metav1.Time{Time: time.Now().Add(-time.Hour)},
+				Conditions: []corev1.PodCondition{
+					{Type: corev1.PodReady, Status: corev1.ConditionTrue, LastTransitionTime: metav1.Now()},
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-1",
+				Namespace: "default",
+				OwnerReferences: []metav1.OwnerReference{
+					{Kind: "StatefulSet", Name: "dc1-rack2"},
+				},
+			},
+			Status: corev1.PodStatus{
+				Phase:     corev1.PodRunning,
+				StartTime: &metav1.Time{Time: time.Now().Add(-time.Hour)},
+				Conditions: []corev1.PodCondition{
+					{Type: corev1.PodReady, Status: corev1.ConditionTrue, LastTransitionTime: metav1.Now()},
+				},
+			},
+		},
+	}
+
+	rc := &ReplicaCalculator{}
+
+	// Without skipOwnerCheck, these pods don't match "dc1" and should not be counted
+	count, incorrectCount, err := rc.getReadyPodsCount(logf.Log, "dc1", podList, 0, false)
+	require.Error(t, err, "should error when no pods match")
+	assert.Equal(t, int32(0), count)
+	assert.Equal(t, int32(2), incorrectCount)
+
+	// With skipOwnerCheck, both pods should be counted regardless of OwnerReferences
+	count, incorrectCount, err = rc.getReadyPodsCount(logf.Log, "dc1", podList, 0, true)
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), count)
+	assert.Equal(t, int32(0), incorrectCount)
 }
