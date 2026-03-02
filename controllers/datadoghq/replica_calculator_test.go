@@ -6,7 +6,6 @@
 package datadoghq
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -266,7 +265,7 @@ func (tc *replicaCalcTestCase) runTest(t *testing.T) {
 
 	var replicaCalculation ReplicaCalculation
 	var err error
-	ctx := context.TODO()
+	ctx := t.Context()
 	if tc.recommenderResponse != nil {
 		recoClient.ReturnedResponse = *tc.recommenderResponse
 		recoClient.Error = tc.expectedError

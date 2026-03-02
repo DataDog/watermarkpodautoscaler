@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -20,8 +21,19 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+var registerSchemeOnce sync.Once
+
 // InitMetricsServerFiles used to initialize the fake-custom-metrics-server
 func InitMetricsServerFiles(r io.Writer, deployDir, namespace string) ([]client.Object, error) {
+	// Register apiregistration types once to avoid concurrent map access
+	var regErr error
+	registerSchemeOnce.Do(func() {
+		regErr = apiregistrationv1.AddToScheme(scheme.Scheme)
+	})
+	if regErr != nil {
+		return nil, regErr
+	}
+
 	files, err := os.ReadDir(deployDir)
 	if err != nil {
 		return nil, err
@@ -48,10 +60,6 @@ func InitMetricsServerFiles(r io.Writer, deployDir, namespace string) ([]client.
 			return nil, err
 		}
 		decode := scheme.Codecs.UniversalDeserializer().Decode
-		err = apiregistrationv1.AddToScheme(scheme.Scheme)
-		if err != nil {
-			return nil, err
-		}
 		obj, _, err2 := decode(bytes, nil, nil)
 		if err2 != nil {
 			return nil, err2
