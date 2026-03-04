@@ -15,7 +15,6 @@ import (
 	"github.com/DataDog/watermarkpodautoscaler/pkg/math32"
 
 	"github.com/go-logr/logr"
-	"github.com/prometheus/client_golang/prometheus"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -140,7 +139,9 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(ctx context.Context, logge
 		restrictedScaling.Delete(labelsWithReason)
 		labelsWithReason[reasonPromLabel] = withinBoundsPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
-		value.Delete(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: metricName})
+		labelsWithMetricName := getPrometheusLabels(wpa)
+		labelsWithMetricName[metricNamePromLabel] = metricName
+		value.Delete(labelsWithMetricName)
 		return EmptyReplicaCalculation(), fmt.Errorf("unable to get external metric %s/%s/%+v: %s", wpa.Namespace, metricName, selector, err) //nolint:errorlint
 	}
 	logger.V(2).Info("Metrics from the External Metrics Provider", "metrics", metrics)
@@ -187,7 +188,9 @@ func (c *ReplicaCalculator) GetResourceReplicas(ctx context.Context, logger logr
 		restrictedScaling.Delete(labelsWithReason)
 		labelsWithReason[reasonPromLabel] = withinBoundsPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
-		value.Delete(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: string(resourceName)})
+		labelsWithMetricName := getPrometheusLabels(wpa)
+		labelsWithMetricName[metricNamePromLabel] = string(resourceName)
+		value.Delete(labelsWithMetricName)
 		return EmptyReplicaCalculation(), fmt.Errorf("unable to get resource metric %s/%s/%+v: %s", wpa.Namespace, resourceName, selector, err) //nolint:errorlint
 	}
 	logger.Info("Metrics from the Resource Client", "metrics", metrics)
@@ -294,7 +297,9 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(ctx context.Context, logger l
 		restrictedScaling.Delete(labelsWithReason)
 		labelsWithReason[reasonPromLabel] = withinBoundsPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
-		value.Delete(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: metricName})
+		labelsWithMetricName := getPrometheusLabels(wpa)
+		labelsWithMetricName[metricNamePromLabel] = metricName
+		value.Delete(labelsWithMetricName)
 		return EmptyReplicaCalculation(), fmt.Errorf("unable to get external recommendation %+v: %s", metricName, err) //nolint:errorlint
 	}
 	logger.V(2).Info("Replica recommendation from the external replicas recommender", "replicas", reco.Replicas, "timestamp", reco.Timestamp, "details", reco.Details, "replicasLowerBound", reco.ReplicasLowerBound, "replicasUpperBound", reco.ReplicasUpperBound)
