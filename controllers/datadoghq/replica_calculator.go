@@ -140,7 +140,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(ctx context.Context, logge
 		restrictedScaling.Delete(labelsWithReason)
 		labelsWithReason[reasonPromLabel] = withinBoundsPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
-		value.Delete(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: metricName})
+		value.DeletePartialMatch(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: metricName})
 		return EmptyReplicaCalculation(), fmt.Errorf("unable to get external metric %s/%s/%+v: %s", wpa.Namespace, metricName, selector, err) //nolint:errorlint
 	}
 	logger.V(2).Info("Metrics from the External Metrics Provider", "metrics", metrics)
@@ -187,7 +187,7 @@ func (c *ReplicaCalculator) GetResourceReplicas(ctx context.Context, logger logr
 		restrictedScaling.Delete(labelsWithReason)
 		labelsWithReason[reasonPromLabel] = withinBoundsPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
-		value.Delete(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: string(resourceName)})
+		value.DeletePartialMatch(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: string(resourceName)})
 		return EmptyReplicaCalculation(), fmt.Errorf("unable to get resource metric %s/%s/%+v: %s", wpa.Namespace, resourceName, selector, err) //nolint:errorlint
 	}
 	logger.Info("Metrics from the Resource Client", "metrics", metrics)
@@ -294,7 +294,7 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(ctx context.Context, logger l
 		restrictedScaling.Delete(labelsWithReason)
 		labelsWithReason[reasonPromLabel] = withinBoundsPromLabelVal
 		restrictedScaling.Delete(labelsWithReason)
-		value.Delete(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: metricName})
+		value.DeletePartialMatch(prometheus.Labels{wpaNamePromLabel: wpa.Name, metricNamePromLabel: metricName})
 		return EmptyReplicaCalculation(), fmt.Errorf("unable to get external recommendation %+v: %s", metricName, err) //nolint:errorlint
 	}
 	logger.V(2).Info("Replica recommendation from the external replicas recommender", "replicas", reco.Replicas, "timestamp", reco.Timestamp, "details", reco.Details, "replicasLowerBound", reco.ReplicasLowerBound, "replicasUpperBound", reco.ReplicasUpperBound)
