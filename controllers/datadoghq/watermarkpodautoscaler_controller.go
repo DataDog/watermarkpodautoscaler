@@ -69,10 +69,21 @@ const (
 
 	// the lifecycleControl annotation allows users to specify whether to use a DatadogMonitor alongside their WPA object to better inform the scaling decisions.
 	lifecycleControlEnabledAnnotationKey = "wpa.datadoghq.com/lifecycle-control.enabled"
-	monitorStatusErrorDuration           = time.Minute
-	lifecycleControlBlockedStatus        = "blocked"
-	defaultRequeueDelay                  = time.Second
-	scaleNotFoundRequeueDelay            = 10 * time.Second
+
+	// skipOwnerCheckAnnotationKey allows skipping pod OwnerReference validation when the scale target
+	// is a custom resource whose pods are owned by intermediate resources (e.g., CassandraDatacenter -> StatefulSet -> Pod).
+	// In such cases, checkOwnerRef cannot match pods to the target because the pod's OwnerReference points to the
+	// intermediate resource, not the top-level CRD. When this annotation is set to "true", WPA trusts the label
+	// selector from the Scale subresource to identify pods instead.
+	//
+	// This is a temporary workaround. The long-term fix is to walk the OwnerReference chain from pod to top-level
+	// controller (similar to the Kubernetes VPA controller_fetcher):
+	// https://github.com/kubernetes/autoscaler/blob/46bb45f204cef0114d9eca40294df467940ec55b/vertical-pod-autoscaler/pkg/target/controller_fetcher/controller_fetcher.go
+	skipOwnerCheckAnnotationKey   = "wpa.datadoghq.com/skip-owner-check"
+	monitorStatusErrorDuration    = time.Minute
+	lifecycleControlBlockedStatus = "blocked"
+	defaultRequeueDelay           = time.Second
+	scaleNotFoundRequeueDelay     = 10 * time.Second
 
 	desiredCountAcceptable = "the desired count is within the acceptable range"
 
