@@ -102,7 +102,8 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(ctx context.Context, logge
 		return ReplicaCalculation{}, fmt.Errorf("no pods returned by selector while calculating replica count")
 	}
 
-	currentReadyReplicas, incorrectTargetPodsCount, err := c.getReadyPodsCount(logger, target.Name, podList, time.Duration(wpa.Spec.ReadinessDelaySeconds)*time.Second)
+	skipOwnerCheck := shouldSkipOwnerCheck(wpa)
+	currentReadyReplicas, incorrectTargetPodsCount, err := c.getReadyPodsCount(logger, target.Name, podList, time.Duration(wpa.Spec.ReadinessDelaySeconds)*time.Second, skipOwnerCheck)
 	if err != nil {
 		return ReplicaCalculation{}, fmt.Errorf("unable to get the number of ready pods across all namespaces for %v: %w", lbl, err)
 	}
@@ -206,7 +207,7 @@ func (c *ReplicaCalculator) GetResourceReplicas(ctx context.Context, logger logr
 		return EmptyReplicaCalculation(), fmt.Errorf("no pods returned by selector while calculating replica count")
 	}
 	readiness := time.Duration(wpa.Spec.ReadinessDelaySeconds) * time.Second
-	readyPods, ignoredPods := groupPods(logger, podList, target.Name, metrics, resourceName, readiness)
+	readyPods, ignoredPods := groupPods(logger, podList, target.Name, metrics, resourceName, readiness, shouldSkipOwnerCheck(wpa))
 	readyPodCount := len(readyPods)
 
 	ratioReadyPods := int32(100 * readyPodCount / (len(podList) - len(ignoredPods)))
@@ -250,7 +251,7 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(ctx context.Context, logger l
 		return ReplicaCalculation{}, fmt.Errorf("no pods returned by selector while calculating replica count")
 	}
 
-	currentReadyReplicas, incorrectTargetPodsCount, err := c.getReadyPodsCount(logger, target.Name, podList, time.Duration(wpa.Spec.ReadinessDelaySeconds)*time.Second)
+	currentReadyReplicas, incorrectTargetPodsCount, err := c.getReadyPodsCount(logger, target.Name, podList, time.Duration(wpa.Spec.ReadinessDelaySeconds)*time.Second, shouldSkipOwnerCheck(wpa))
 	if err != nil {
 		return ReplicaCalculation{}, fmt.Errorf("unable to get the number of ready pods across all namespaces for %v: %w", lbl, err)
 	}
@@ -502,14 +503,19 @@ func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplica
 	return replicaCount, position
 }
 
-func (c *ReplicaCalculator) getReadyPodsCount(log logr.Logger, targetName string, podList []*corev1.Pod, readinessDelay time.Duration) (int32, int32, error) {
+func (c *ReplicaCalculator) getReadyPodsCount(log logr.Logger, targetName string, podList []*corev1.Pod, readinessDelay time.Duration, skipOwnerCheck bool) (int32, int32, error) {
 	toleratedAsReadyPodCount := 0
 	var incorrectTargetPodsCount int
 	for _, pod := range podList {
-		// matchLabel might be too broad, use the OwnerRef to scope over the actual target
-		if ok := checkOwnerRef(pod.OwnerReferences, targetName); !ok {
-			incorrectTargetPodsCount++
-			continue
+		// matchLabel might be too broad, use the OwnerRef to scope over the actual target.
+		// When skipOwnerCheck is true, we trust the label selector from the Scale subresource.
+		// This is needed for custom resources where pods are owned by intermediate resources
+		// (e.g., CassandraDatacenter -> StatefulSet -> Pod).
+		if !skipOwnerCheck {
+			if ok := checkOwnerRef(pod.OwnerReferences, targetName); !ok {
+				incorrectTargetPodsCount++
+				continue
+			}
 		}
 
 		// PodFailed
@@ -555,6 +561,14 @@ const (
 	statefulSetKind = "StatefulSet"
 )
 
+// shouldSkipOwnerCheck returns true if the WPA is annotated to skip pod OwnerReference validation.
+func shouldSkipOwnerCheck(wpa *v1alpha1.WatermarkPodAutoscaler) bool {
+	if wpa.Annotations == nil {
+		return false
+	}
+	return wpa.Annotations[skipOwnerCheckAnnotationKey] == "true"
+}
+
 func checkOwnerRef(ownerRef []metav1.OwnerReference, targetName string) bool {
 	for _, o := range ownerRef {
 		if o.Kind != replicaSetKind && o.Kind != statefulSetKind {
@@ -576,16 +590,19 @@ func checkOwnerRef(ownerRef []metav1.OwnerReference, targetName string) bool {
 	return false
 }
 
-func groupPods(logger logr.Logger, podList []*corev1.Pod, targetName string, metrics metricsclient.PodMetricsInfo, resource corev1.ResourceName, delayOfInitialReadinessStatus time.Duration) (readyPods, ignoredPods sets.Set[string]) {
+func groupPods(logger logr.Logger, podList []*corev1.Pod, targetName string, metrics metricsclient.PodMetricsInfo, resource corev1.ResourceName, delayOfInitialReadinessStatus time.Duration, skipOwnerCheck bool) (readyPods, ignoredPods sets.Set[string]) {
 	readyPods = sets.New[string]()
 	ignoredPods = sets.New[string]()
 	missing := sets.New[string]()
 	var incorrectTargetPodsCount int
 	for _, pod := range podList {
-		// matchLabel might be too broad, use the OwnerRef to scope over the actual target
-		if ok := checkOwnerRef(pod.OwnerReferences, targetName); !ok {
-			incorrectTargetPodsCount++
-			continue
+		// matchLabel might be too broad, use the OwnerRef to scope over the actual target.
+		// When skipOwnerCheck is true, we trust the label selector from the Scale subresource.
+		if !skipOwnerCheck {
+			if ok := checkOwnerRef(pod.OwnerReferences, targetName); !ok {
+				incorrectTargetPodsCount++
+				continue
+			}
 		}
 		// Failed pods shouldn't produce metrics, but add to ignoredPods to be safe
 		if pod.Status.Phase == corev1.PodFailed {
