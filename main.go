@@ -78,7 +78,7 @@ func main() {
 	flag.StringVar(&logTimestampFormat, "log-timestamp-format", "millis", "log timestamp format ('millis', 'nanos', 'epoch', 'rfc3339' or 'rfc3339nano')")
 	flag.IntVar(&syncPeriodSeconds, "syncPeriodSeconds", 60*60, "The informers resync period in seconds")                                            // default 1 hour
 	flag.DurationVar(&clientTimeoutDuration, "client-timeout", 0, "The maximum length of time to wait before giving up on a kube-apiserver request") // is set to 0, keep default
-	flag.Float64Var(&clientQPSLimit, "client-qps", 0, "QPS Limit for the Kubernetes client (default 20 qps)")
+	flag.Float64Var(&clientQPSLimit, "client-qps", 20, "QPS Limit for the Kubernetes client (set to 0 to disable rate limiting)")
 	flag.BoolVar(&ddProfilingEnabled, "ddProfilingEnabled", false, "Enable the datadog profiler")
 	flag.BoolVar(&ddTracingEnabled, "ddTracingEnabled", false, "Enable the datadog tracer")
 	flag.IntVar(&workers, "workers", 1, "Maximum number of concurrent Reconciles which can be run")
