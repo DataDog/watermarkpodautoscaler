@@ -485,7 +485,7 @@ func addUpdateReactor(s *fakescale.FakeScaleClient) {
 	})
 }
 
-func addGetReactor(s *fakescale.FakeScaleClient, replicas int32) {
+func addGetReactorWithSurge(s *fakescale.FakeScaleClient, specReplicas, statusReplicas int32) {
 	s.AddReactor("get", "deployments", func(rawAction testcore.Action) (handled bool, ret runtime.Object, err error) {
 		action := rawAction.(testcore.GetAction)
 		if action.GetName() != testingDeployName {
@@ -497,10 +497,10 @@ func addGetReactor(s *fakescale.FakeScaleClient, replicas int32) {
 				Namespace: action.GetNamespace(),
 			},
 			Spec: autoscalingv1.ScaleSpec{
-				Replicas: replicas,
+				Replicas: specReplicas,
 			},
 			Status: autoscalingv1.ScaleStatus{
-				Replicas: replicas,
+				Replicas: statusReplicas,
 			},
 		}
 		return true, obj, nil
@@ -1386,6 +1386,165 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				"conditionsScalingLimited": 0,
 			},
 		},
+		{
+			name: "maxSurge: no false upscale to max when Status.Replicas > Spec.Replicas",
+			fields: fields{
+				client:        fake.NewClientBuilder().WithStatusSubresource(&v1alpha1.WatermarkPodAutoscaler{}).Build(),
+				scaleclient:   &fakescale.FakeScaleClient{},
+				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
+				scheme:        s,
+				eventRecorder: eventRecorder,
+			},
+			args: args{
+				replicaCalculatorFunc: func(metric *v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
+					// Metric says we should stay at 25 replicas (same as Spec.Replicas)
+					return ReplicaCalculation{25, 50, time.Now(), 25, metricPosition{false, false}, ""}, nil
+				},
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Labels: map[string]string{"foo-key": "bar-value"},
+					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
+						LastScaleTime: &metav1.Time{Time: time.Now().Add(-120 * time.Second)},
+					},
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						ScaleTargetRef: testCrossVersionObjectRef,
+						MaxReplicas:    40,
+						MinReplicas:    getReplicas(1),
+						Metrics: []v1alpha1.MetricSpec{
+							{
+								Type: v1alpha1.ExternalMetricSourceType,
+								External: &v1alpha1.ExternalMetricSource{
+									MetricName:     "deadbeef",
+									MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}},
+									HighWatermark:  resource.NewMilliQuantity(80, resource.DecimalSI),
+									LowWatermark:   resource.NewMilliQuantity(70, resource.DecimalSI),
+								},
+							},
+						},
+					},
+				}),
+				// Spec.Replicas=25 (desired target), Status.Replicas=50 (includes maxSurge pods)
+				scale:             newScaleForDeploymentWithSurge(25, 50),
+				wantReplicasCount: 25,
+				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) {
+					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
+					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
+					_ = c.Create(t.Context(), wpa)
+				},
+			},
+			wantErr: false,
+			wantFunc: func(c client.Client, desired int32, wpa *v1alpha1.WatermarkPodAutoscaler) error {
+				if wpa.Status.DesiredReplicas != desired {
+					return fmt.Errorf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas)
+				}
+				return nil
+			},
+			wantPromMetrics: map[string]float64{
+				"dryRun":                   0,
+				"scalingActive":            0,
+				"value":                    0,
+				"highwm":                   80,
+				"highwmV2":                 80,
+				"lowwm":                    70,
+				"lowwmV2":                  70,
+				"replicaProposal":          25,
+				"replicaEffective":         25,
+				"replicaMin":               1,
+				"replicaMax":               40,
+				"restrictedScalingDownCap": 0,
+				"restrictedScalingUpCap":   0,
+				"restrictedScalingOk":      0,
+				"conditionsAbleToScale":    0,
+				"conditionsScalingLimited": 0,
+			},
+		},
+		{
+			name: "maxSurge: metric-driven downscale uses Spec.Replicas as velocity base",
+			fields: fields{
+				client:        fake.NewClientBuilder().WithStatusSubresource(&v1alpha1.WatermarkPodAutoscaler{}).Build(),
+				scaleclient:   &fakescale.FakeScaleClient{},
+				restmapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
+				scheme:        s,
+				eventRecorder: eventRecorder,
+			},
+			args: args{
+				replicaCalculatorFunc: func(metric *v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error) {
+					// Metric says we should scale down to 20 replicas
+					return ReplicaCalculation{20, 50, time.Now(), 25, metricPosition{false, true}, ""}, nil
+				},
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Labels: map[string]string{"foo-key": "bar-value"},
+					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
+						LastScaleTime: &metav1.Time{Time: time.Now().Add(-120 * time.Second)},
+						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+							{
+								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
+								Status:             corev1.ConditionFalse,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-120 * time.Second)},
+							},
+							{
+								Type:               v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark,
+								Status:             corev1.ConditionTrue,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-120 * time.Second)},
+							},
+						},
+					},
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						ScaleTargetRef:                      testCrossVersionObjectRef,
+						MaxReplicas:                         40,
+						MinReplicas:                         getReplicas(1),
+						ScaleDownLimitFactor:                resource.NewQuantity(30, resource.DecimalSI),
+						DownscaleForbiddenWindowSeconds:     60,
+						DownscaleDelayBelowWatermarkSeconds: 60,
+						Metrics: []v1alpha1.MetricSpec{
+							{
+								Type: v1alpha1.ExternalMetricSourceType,
+								External: &v1alpha1.ExternalMetricSource{
+									MetricName:     "deadbeef",
+									MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}},
+									HighWatermark:  resource.NewMilliQuantity(80, resource.DecimalSI),
+									LowWatermark:   resource.NewMilliQuantity(70, resource.DecimalSI),
+								},
+							},
+						},
+					},
+				}),
+				// Spec=25, Status=50 (surge). Velocity limit with ScaleDownLimitFactor=30%
+				// should use Spec=25 as base: floor(25 * (1 - 30/100)) = floor(17.5) = 17
+				// Since desired=20 > 17, no capping, so we expect 20.
+				scale:             newScaleForDeploymentWithSurge(25, 50),
+				wantReplicasCount: 20,
+				loadFunc: func(c client.Client, wpa *v1alpha1.WatermarkPodAutoscaler) {
+					wpa = v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
+					wpa.Spec.ScaleTargetRef = testCrossVersionObjectRef
+					_ = c.Create(t.Context(), wpa)
+				},
+			},
+			wantErr: false,
+			wantFunc: func(c client.Client, desired int32, wpa *v1alpha1.WatermarkPodAutoscaler) error {
+				if wpa.Status.DesiredReplicas != desired {
+					return fmt.Errorf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas)
+				}
+				return nil
+			},
+			wantPromMetrics: map[string]float64{
+				"dryRun":                   0,
+				"scalingActive":            0,
+				"value":                    0,
+				"highwm":                   80,
+				"highwmV2":                 80,
+				"lowwm":                    70,
+				"lowwmV2":                  70,
+				"replicaProposal":          20,
+				"replicaEffective":         20,
+				"replicaMin":               1,
+				"replicaMax":               40,
+				"restrictedScalingDownCap": 0,
+				"restrictedScalingUpCap":   0,
+				"restrictedScalingOk":      0,
+				"conditionsAbleToScale":    1,
+				"conditionsScalingLimited": 0,
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1403,7 +1562,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 			fsc := &fakescale.FakeScaleClient{}
 			// update Reactor is not required in this suite, but still used as invoked
 			addUpdateReactor(fsc)
-			addGetReactor(fsc, tt.args.scale.Status.Replicas)
+			addGetReactorWithSurge(fsc, tt.args.scale.Spec.Replicas, tt.args.scale.Status.Replicas)
 			r.scaleClient = fsc
 			if tt.args.replicaCalculatorFunc != nil {
 				cl := &fakeReplicaCalculator{
@@ -2352,15 +2511,22 @@ func TestGetCondition(t *testing.T) {
 	}
 }
 
-func newScaleForDeployment(replicasStatus int32) *autoscalingv1.Scale {
+func newScaleForDeployment(replicas int32) *autoscalingv1.Scale {
+	return newScaleForDeploymentWithSurge(replicas, replicas)
+}
+
+func newScaleForDeploymentWithSurge(specReplicas, statusReplicas int32) *autoscalingv1.Scale {
 	return &autoscalingv1.Scale{
 		TypeMeta: metav1.TypeMeta{Kind: "Scale"},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      testingDeployName,
 			Namespace: testingNamespace,
 		},
+		Spec: autoscalingv1.ScaleSpec{
+			Replicas: specReplicas,
+		},
 		Status: autoscalingv1.ScaleStatus{
-			Replicas: replicasStatus,
+			Replicas: statusReplicas,
 		},
 	}
 }

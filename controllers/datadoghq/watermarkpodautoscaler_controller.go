@@ -364,7 +364,8 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 		return err
 	}
 	currentReplicas := currentScale.Status.Replicas
-	logger.Info("Target deploy", "replicas", currentReplicas)
+	specReplicas := currentScale.Spec.Replicas
+	logger.Info("Target deploy", "replicas", currentReplicas, "specReplicas", specReplicas)
 
 	span.SetTag("current_replicas", currentReplicas)
 
@@ -425,19 +426,19 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 		desiredReplicas = proposedReplicas
 		rescaleMetric = metricName
 	}
-	if desiredReplicas > currentReplicas {
+	if desiredReplicas > specReplicas {
 		rescaleReason = fmt.Sprintf("%s above target", rescaleMetric)
 	}
-	if desiredReplicas < currentReplicas {
+	if desiredReplicas < specReplicas {
 		rescaleReason = "All metrics below target"
 	}
-	desiredReplicas = normalizeDesiredReplicas(logger, wpa, currentReplicas, desiredReplicas, readyReplicas)
+	desiredReplicas = normalizeDesiredReplicas(logger, wpa, specReplicas, desiredReplicas, readyReplicas)
 	// update rescale reason if converging.
-	if stableRegime && desiredReplicas != currentReplicas {
+	if stableRegime && desiredReplicas != specReplicas {
 		rescaleReason = "Metric within watermarks, attempting to scale to converge towards watermark"
 	}
 	logger.Info("Normalized Desired replicas", "desiredReplicas", desiredReplicas)
-	rescale := shouldScale(logger, wpa, currentReplicas, desiredReplicas, now, stableRegime)
+	rescale := shouldScale(logger, wpa, specReplicas, desiredReplicas, now, stableRegime)
 
 	switch {
 	case currentScale.Spec.Replicas == 0:
@@ -445,12 +446,12 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 		desiredReplicas = 0
 		rescale = false
 		setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonScalingDisabled, "scaling is disabled since the replica count of the target is zero")
-	case currentReplicas > wpa.Spec.MaxReplicas:
+	case specReplicas > wpa.Spec.MaxReplicas:
 		rescaleReason = "Current number of replicas above Spec.MaxReplicas"
 		desiredReplicas = wpa.Spec.MaxReplicas
 		rescale = true
 		metricStatuses = wpaStatusOriginal.CurrentMetrics
-	case wpa.Spec.MinReplicas != nil && currentReplicas < *wpa.Spec.MinReplicas:
+	case wpa.Spec.MinReplicas != nil && specReplicas < *wpa.Spec.MinReplicas:
 		rescaleReason = "Current number of replicas below Spec.MinReplicas"
 		desiredReplicas = *wpa.Spec.MinReplicas
 		rescale = true
@@ -488,10 +489,10 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 		r.eventRecorder.Eventf(wpa, corev1.EventTypeNormal, datadoghqv1alpha1.ReasonScaling, fmt.Sprintf("New size: %d; reason: %s", desiredReplicas, rescaleReason))
 
 		logger.Info("Successful rescale", "currentReplicas", currentReplicas, "desiredReplicas", desiredReplicas, "rescaleReason", rescaleReason)
-		if currentReplicas < desiredReplicas {
-			upscale.With(wpaLabels).Add(float64(desiredReplicas - currentReplicas))
+		if specReplicas < desiredReplicas {
+			upscale.With(wpaLabels).Add(float64(desiredReplicas - specReplicas))
 		} else {
-			downscale.With(wpaLabels).Add(float64(currentReplicas - desiredReplicas))
+			downscale.With(wpaLabels).Add(float64(specReplicas - desiredReplicas))
 		}
 	} else {
 		if r.Options.SkipNotScalingEvents {
@@ -500,7 +501,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 			r.eventRecorder.Eventf(wpa, corev1.EventTypeNormal, datadoghqv1alpha1.ConditionReasonNotScaling, fmt.Sprintf("Decided not to scale %s to %d (last scale time was %v )", reference, desiredReplicas, wpa.Status.LastScaleTime))
 		}
 
-		desiredReplicas = currentReplicas
+		desiredReplicas = specReplicas
 	}
 
 	replicaEffective.With(wpaLabels).Set(float64(desiredReplicas))

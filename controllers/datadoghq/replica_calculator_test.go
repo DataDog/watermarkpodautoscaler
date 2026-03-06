@@ -329,13 +329,20 @@ func TestReplicaCalcDisjointResourcesMetrics(t *testing.T) {
 }
 
 func makeScale(_ string, currentReplicas int32, labelsMap map[string]string) *autoscalingv1.Scale {
+	return makeScaleWithSurge("", currentReplicas, currentReplicas, labelsMap)
+}
+
+func makeScaleWithSurge(_ string, specReplicas, statusReplicas int32, labelsMap map[string]string) *autoscalingv1.Scale {
 	return &autoscalingv1.Scale{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testDeploymentName,
 		},
+		Spec: autoscalingv1.ScaleSpec{
+			Replicas: specReplicas,
+		},
 		Status: autoscalingv1.ScaleStatus{
 			Selector: labels.FormatLabels(labelsMap),
-			Replicas: currentReplicas,
+			Replicas: statusReplicas,
 		},
 	}
 }
@@ -371,6 +378,46 @@ func TestReplicaCalcAbsoluteScaleUp(t *testing.T) {
 		metric: &metricInfo{
 			spec:                metric1,
 			levels:              []int64{90000, 90000, 90000}, // We are higher than the HighWatermark
+			expectedUtilization: 270000,
+		},
+	}
+	tc.runTest(t)
+}
+
+func TestReplicaCalcAbsoluteScaleUpWithSurge(t *testing.T) {
+	logf.SetLogger(zap.New())
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ResourceMetricSourceType,
+		Resource: &v1alpha1.ResourceMetricSource{
+			Name:           corev1.ResourceCPU,
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
+			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
+		},
+	}
+
+	// Spec.Replicas=3, Status.Replicas=6 (maxSurge during rolling update).
+	// The calculator should use Spec.Replicas (3) as the base for scaling decisions,
+	// not the inflated Status.Replicas (6).
+	tc := replicaCalcTestCase{
+		expectedReplicas: 21,
+		readyReplicas:    3,
+		pos: metricPosition{
+			isAbove: true,
+			isBelow: false,
+		},
+		scale: makeScaleWithSurge(testDeploymentName, 3, 6, map[string]string{"name": "test-pod"}),
+		wpa: &v1alpha1.WatermarkPodAutoscaler{
+			Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+				Algorithm:                    "absolute",
+				Tolerance:                    *resource.NewMilliQuantity(25, resource.DecimalSI),
+				Metrics:                      []v1alpha1.MetricSpec{metric1},
+				ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
+			},
+		},
+		metric: &metricInfo{
+			spec:                metric1,
+			levels:              []int64{90000, 90000, 90000},
 			expectedUtilization: 270000,
 		},
 	}

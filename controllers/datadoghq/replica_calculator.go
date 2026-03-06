@@ -162,7 +162,7 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(ctx context.Context, logge
 
 	// if the average algorithm is used, the metrics retrieved has to be divided by the number of available replicas.
 	adjustedUsage := float64(sum) / averaged
-	replicaCount, utilizationQuantity, metricPos := getReplicaCount(logger, target.Status.Replicas, currentReadyReplicas, wpa, metricName, adjustedUsage, metric.External.LowWatermark, metric.External.HighWatermark)
+	replicaCount, utilizationQuantity, metricPos := getReplicaCount(logger, target.Spec.Replicas, currentReadyReplicas, wpa, metricName, adjustedUsage, metric.External.LowWatermark, metric.External.HighWatermark)
 	logger.Info("External Metric replica calculation", "metricName", metricName, "replicaCount", replicaCount, "utilizationQuantity", utilizationQuantity, "timestamp", timestamp, "currentReadyReplicas", currentReadyReplicas)
 	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp, currentReadyReplicas, metricPos, ""}, nil
 }
@@ -232,7 +232,7 @@ func (c *ReplicaCalculator) GetResourceReplicas(ctx context.Context, logger logr
 	}
 	adjustedUsage := float64(sum) / averaged
 
-	replicaCount, utilizationQuantity, metricPos := getReplicaCount(logger, target.Status.Replicas, int32(readyPodCount), wpa, string(resourceName), adjustedUsage, metric.Resource.LowWatermark, metric.Resource.HighWatermark)
+	replicaCount, utilizationQuantity, metricPos := getReplicaCount(logger, target.Spec.Replicas, int32(readyPodCount), wpa, string(resourceName), adjustedUsage, metric.Resource.LowWatermark, metric.Resource.HighWatermark)
 	logger.Info("Resource Metric replica calculation", "metricName", metric.Resource.Name, "replicaCount", replicaCount, "utilizationQuantity", utilizationQuantity, "timestamp", timestamp, "currentReadyReplicas", int32(readyPodCount))
 	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp, int32(readyPodCount), metricPos, ""}, nil
 }
@@ -316,7 +316,7 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(ctx context.Context, logger l
 	labelsWithMetricName[metricNamePromLabel] = metricName
 	value.With(labelsWithMetricName).Set(float64(utilizationQuantity))
 
-	replicaCount, metricPos := adjustReplicaCount(logger, target.Status.Replicas, currentReadyReplicas, wpa, int32(reco.Replicas), int32(reco.ReplicasLowerBound), int32(reco.ReplicasUpperBound))
+	replicaCount, metricPos := adjustReplicaCount(logger, target.Spec.Replicas, currentReadyReplicas, wpa, int32(reco.Replicas), int32(reco.ReplicasLowerBound), int32(reco.ReplicasUpperBound))
 	logger.Info("Replicas Recommender replica calculation", "metricName", metricName, "replicaCount", replicaCount, "utilizationQuantity", utilizationQuantity, "timestamp", reco.Timestamp, "currentReadyReplicas", currentReadyReplicas)
 	return ReplicaCalculation{replicaCount, utilizationQuantity, reco.Timestamp, currentReadyReplicas, metricPos, reco.Details}, nil
 }
