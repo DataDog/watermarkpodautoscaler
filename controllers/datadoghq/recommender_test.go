@@ -520,3 +520,65 @@ func TestTLSRecommendationWithClientCertificateMismatch(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "tls: private key does not match public key")
 }
+
+func TestBuildReplicaRecommendationResponse(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+	tests := []struct {
+		name                    string
+		reply                   *autoscaling.WorkloadRecommendationReply
+		expectedObservedTarget  float64
+		expectError             bool
+	}{
+		{
+			name:                   "nil observed targets",
+			reply:                  newTestReply(now),
+			expectedObservedTarget: 0,
+		},
+		{
+			name: "single observed target",
+			reply: func() *autoscaling.WorkloadRecommendationReply {
+				r := newTestReply(now)
+				r.ObservedTargets = []*autoscaling.WorkloadRecommendationTarget{
+					{Type: "cpu", TargetValue: 0.75},
+				}
+				return r
+			}(),
+			expectedObservedTarget: 0.75,
+		},
+		{
+			name: "multiple observed targets extracts the first",
+			reply: func() *autoscaling.WorkloadRecommendationReply {
+				r := newTestReply(now)
+				r.ObservedTargets = []*autoscaling.WorkloadRecommendationTarget{
+					{Type: "recommended_stateless", TargetValue: 0.438},
+					{Type: "cpu", TargetValue: 0.223},
+					{Type: "memory", TargetValue: 0.585},
+				}
+				return r
+			}(),
+			expectedObservedTarget: 0.438,
+		},
+		{
+			name: "error reply",
+			reply: &autoscaling.WorkloadRecommendationReply{
+				Error: &autoscaling.Error{
+					Code:    proto.Int32(500),
+					Message: "internal error",
+				},
+			},
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := buildReplicaRecommendationResponse(tt.reply)
+			if tt.expectError {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.InDelta(t, tt.expectedObservedTarget, resp.ObservedTargetValue, 0.001)
+		})
+	}
+}
