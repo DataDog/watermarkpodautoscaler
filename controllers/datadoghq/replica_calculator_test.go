@@ -1946,6 +1946,124 @@ func TestReplicasWithRecommenderError(t *testing.T) {
 	tc.runTest(t)
 }
 
+// TestRecommenderNoFalseUpscaleDuringRollingUpdate verifies that the WPA does
+// not escalate replicas during a rolling update when the recommender says "hold".
+//
+// Bug scenario: During a rolling update with maxSurge=1, Status.Replicas is
+// Spec.Replicas+1 (the surge pod). The WPA sends Status.Replicas as
+// CurrentReplicas to the recommender. The recommender returns "hold at
+// currentReplicas" (metric between watermarks). Back in the WPA,
+// adjustReplicaCount compares the recommender's response (Status.Replicas)
+// against Spec.Replicas and sees an upscale. This creates a +1 feedback loop
+// on every reconciliation cycle.
+//
+// The fix: send Spec.Replicas (not Status.Replicas) as CurrentReplicas to the
+// recommender, so the recommender's "hold" response matches what
+// adjustReplicaCount uses as its baseline.
+func TestRecommenderNoFalseUpscaleDuringRollingUpdate(t *testing.T) {
+	logf.SetLogger(zap.New())
+
+	specReplicas := int32(18)
+	statusReplicas := int32(19) // rolling update surge: Status = Spec + 1
+
+	recommenderSpec := v1alpha1.RecommenderSpec{
+		URL:           "http://recommender.example.com",
+		Settings:      map[string]string{},
+		TargetType:    "cpu",
+		HighWatermark: resource.NewMilliQuantity(300, resource.DecimalSI),
+		LowWatermark:  resource.NewMilliQuantity(100, resource.DecimalSI),
+	}
+	wpa := &v1alpha1.WatermarkPodAutoscaler{
+		Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+			Recommender:                  &recommenderSpec,
+			ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
+			MinReplicas:                  v1alpha1.NewInt32(3),
+			MaxReplicas:                  100,
+		},
+	}
+	scale := makeScaleWithSurge(testDeploymentName, specReplicas, statusReplicas, map[string]string{"name": "test-pod"})
+
+	// Build a ReplicaCalculator with a mock recommender we can inspect.
+	recoMock := NewMockRecommenderClient()
+
+	// Prepare the fake k8s client with pods matching Status.Replicas (19 pods
+	// running during the rolling update).
+	tc := replicaCalcTestCase{
+		scale:     scale,
+		namespace: testNamespace,
+		wpa:       wpa,
+	}
+	fakeClient := tc.prepareTestClientSet()
+	informerFactory := informers.NewSharedInformerFactory(fakeClient, 0)
+	informer := informerFactory.Core().V1().Pods()
+	emClient := &emfake.FakeExternalMetricsClient{}
+	rClient := &metricsfake.Clientset{}
+	mClient := metrics.NewRESTMetricsClient(rClient.MetricsV1beta1(), nil, emClient)
+	replicaCalculator := NewReplicaCalculator(mClient, recoMock, informer.Lister(), "test-cluster")
+
+	stop := make(chan struct{})
+	defer close(stop)
+	informerFactory.Start(stop)
+	require.True(t, cache.WaitForNamedCacheSync("HPA", stop, informer.Informer().HasSynced))
+
+	ts := time.Now()
+	ctx := t.Context()
+
+	t.Run("sends Spec.Replicas as CurrentReplicas to recommender", func(t *testing.T) {
+		// Configure mock to return "hold at Spec.Replicas" — this is what a
+		// real recommender returns when the metric is between watermarks and
+		// it receives Spec.Replicas as CurrentReplicas.
+		recoMock.ReturnedResponse = ReplicaRecommendationResponse{
+			Replicas:           int(specReplicas),
+			ReplicasLowerBound: 10,
+			ReplicasUpperBound: 28,
+			Timestamp:          ts,
+			Details:            "Fake",
+		}
+		result, err := replicaCalculator.GetRecommenderReplicas(ctx, logf.Log, scale, wpa)
+		require.NoError(t, err)
+
+		// The fix: WPA must send Spec.Replicas (18), not Status.Replicas (19).
+		require.NotNil(t, recoMock.LastRequest, "recommender should have been called")
+		assert.Equal(t, specReplicas, recoMock.LastRequest.CurrentReplicas,
+			"CurrentReplicas sent to recommender should be Spec.Replicas, not Status.Replicas")
+		assert.Equal(t, specReplicas, recoMock.LastRequest.DesiredReplicas,
+			"DesiredReplicas should match Spec.Replicas")
+
+		// With the correct CurrentReplicas, "hold at 18" should not cause an upscale.
+		assert.Equal(t, specReplicas, result.replicaCount,
+			"replica count should stay at Spec.Replicas, not inflate to Status.Replicas")
+	})
+
+	t.Run("genuine upscale during rolling update still works", func(t *testing.T) {
+		recoMock.ReturnedResponse = ReplicaRecommendationResponse{
+			Replicas:           25,
+			ReplicasLowerBound: 20,
+			ReplicasUpperBound: 30,
+			Timestamp:          ts,
+			Details:            "Fake",
+		}
+		result, err := replicaCalculator.GetRecommenderReplicas(ctx, logf.Log, scale, wpa)
+		require.NoError(t, err)
+		assert.Equal(t, int32(25), result.replicaCount,
+			"genuine upscale should still be applied")
+	})
+
+	t.Run("genuine downscale during rolling update still works", func(t *testing.T) {
+		recoMock.ReturnedResponse = ReplicaRecommendationResponse{
+			Replicas:           12,
+			ReplicasLowerBound: 10,
+			ReplicasUpperBound: 15,
+			Timestamp:          ts,
+			Details:            "Fake",
+		}
+		result, err := replicaCalculator.GetRecommenderReplicas(ctx, logf.Log, scale, wpa)
+		require.NoError(t, err)
+		assert.Equal(t, int32(12), result.replicaCount,
+			"genuine downscale should still be applied")
+	})
+}
+
 // We have pods that are pending and not within an acceptable window.
 func TestPendingtExpiredScale(t *testing.T) {
 	logf.SetLogger(zap.New())
