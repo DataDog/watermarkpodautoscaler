@@ -235,6 +235,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 			monitorName:           instance.Name,
 			monitorNamespace:      instance.Namespace,
 			lifecycleStatus:       lifecycleControlBlockedStatus,
+			dryRunPromLabel:       strconv.FormatBool(instance.Spec.DryRun),
 		}
 		dmon := types.NamespacedName{
 			Name:      instance.Name,
@@ -370,7 +371,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	span.SetTag("current_replicas", currentReplicas)
 
 	// add additional labels to info metric
-	promLabels := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, namespacePromLabel: wpa.Namespace}
+	promLabels := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace, namespacePromLabel: wpa.Namespace, dryRunPromLabel: strconv.FormatBool(wpa.Spec.DryRun)}
 	for _, eLabel := range extraPromLabels {
 		eLabelValue := wpa.Labels[eLabel]
 		promLabels[eLabel] = eLabelValue
