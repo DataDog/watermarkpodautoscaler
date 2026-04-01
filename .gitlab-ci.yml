@@ -1,5 +1,5 @@
 ---
-image: registry.ddbuild.io/images/mirror/golang:1.24
+image: registry.ddbuild.io/images/mirror/golang:1.26.1
 variables:
   PROJECTNAME: "watermarkpodautoscaler"
   TARGET_TAG: v$CI_PIPELINE_ID-$CI_COMMIT_SHORT_SHA
