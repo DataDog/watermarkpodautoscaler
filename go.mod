@@ -2,7 +2,7 @@ module github.com/DataDog/watermarkpodautoscaler
 
 go 1.24.0
 
-toolchain go1.24.10
+toolchain go1.26.1
 
 require (
 	github.com/DataDog/agent-payload/v5 v5.0.135-0.20241016074204-82c61e7189e0
