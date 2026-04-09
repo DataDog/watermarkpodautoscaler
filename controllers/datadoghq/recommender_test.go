@@ -41,16 +41,18 @@ import (
 type RecommenderClientMock struct {
 	ReturnedResponse ReplicaRecommendationResponse
 	Error            error
+	// LastRequest captures the most recent request for assertion in tests.
+	LastRequest *ReplicaRecommendationRequest
 }
 
 func NewMockRecommenderClient() *RecommenderClientMock {
 	return &RecommenderClientMock{
-		ReplicaRecommendationResponse{2, 1, 3, time.Now(), "because", 0.5},
-		nil,
+		ReturnedResponse: ReplicaRecommendationResponse{2, 1, 3, time.Now(), "because", 0.5},
 	}
 }
 
-func (m *RecommenderClientMock) GetReplicaRecommendation(_ context.Context, _ *ReplicaRecommendationRequest) (*ReplicaRecommendationResponse, error) {
+func (m *RecommenderClientMock) GetReplicaRecommendation(_ context.Context, req *ReplicaRecommendationRequest) (*ReplicaRecommendationResponse, error) {
+	m.LastRequest = req
 	return &m.ReturnedResponse, m.Error
 }
 
