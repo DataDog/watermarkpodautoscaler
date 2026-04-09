@@ -280,7 +280,7 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(ctx context.Context, logger l
 		TargetCluster:        c.k8sClusterName,
 		Recommender:          wpa.Spec.Recommender,
 		CurrentReadyReplicas: currentReadyReplicas,
-		CurrentReplicas:      target.Status.Replicas,
+		CurrentReplicas:      target.Spec.Replicas,
 		DesiredReplicas:      target.Spec.Replicas,
 		MinReplicas:          minReplicas,
 		MaxReplicas:          wpa.Spec.MaxReplicas,
