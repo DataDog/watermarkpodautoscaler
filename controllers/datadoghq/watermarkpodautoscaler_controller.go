@@ -679,8 +679,8 @@ func perMetricBelowLowType(key string) autoscalingv2.HorizontalPodAutoscalerCond
 // on the WPA status without affecting LastConditionType / LastConditionState
 // or the prom condition gauge — those remain owned by the aggregate
 // conditions for backwards compatibility.
-func setPerMetricCondition(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, conditionType autoscalingv2.HorizontalPodAutoscalerConditionType, status corev1.ConditionStatus, reason, format string, args ...interface{}) {
-	wpa.Status.Conditions = setConditionInList(wpa.Status.Conditions, conditionType, status, reason, format, args...)
+func setPerMetricCondition(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, conditionType autoscalingv2.HorizontalPodAutoscalerConditionType, status corev1.ConditionStatus, reason, message string, args ...interface{}) {
+	wpa.Status.Conditions = setConditionInList(wpa.Status.Conditions, conditionType, status, reason, message, args...)
 }
 
 // updatePerMetricConditions records the current above/below state of a single
