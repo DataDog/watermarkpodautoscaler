@@ -7,7 +7,6 @@ package datadoghq
 
 import (
 	"os"
-	"strconv"
 	"strings"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2beta1"
@@ -35,7 +34,6 @@ const (
 	lifecycleStatus            = "lifecycle_status"
 	monitorName                = "monitor_name"
 	monitorNamespace           = "monitor_namespace"
-	dryRunPromLabel            = "dry_run"
 	clientPromLabel            = "client"
 	methodPromLabel            = "method"
 	codePromLabel              = "code"
@@ -64,7 +62,6 @@ var defaultPromLabels = []string{
 	resourceKindPromLabel,
 	targetNamePromLabel,
 	namespacePromLabel,
-	dryRunPromLabel,
 }
 
 // Labels to add to an info metric and join on (with wpaNamePromLabel) in the Datadog prometheus check
@@ -131,7 +128,6 @@ var (
 			lifecycleStatus,
 			monitorName,
 			monitorNamespace,
-			dryRunPromLabel,
 		},
 	)
 	lowwm = prometheus.NewGaugeVec(
@@ -212,7 +208,7 @@ var (
 			Name:      "labels_info",
 			Help:      "Info metric for additional labels to associate to metrics as tags",
 		},
-		append(extraPromLabels, wpaNamePromLabel, wpaNamespacePromLabel, resourceNamespacePromLabel, namespacePromLabel, dryRunPromLabel),
+		append(extraPromLabels, wpaNamePromLabel, wpaNamespacePromLabel, resourceNamespacePromLabel, namespacePromLabel),
 	)
 	requestDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -295,7 +291,12 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 		transitionCountdown.Delete(promLabelsForWpa)
 		delete(promLabelsForWpa, transitionPromLabel)
 
-		labelsInfo.DeletePartialMatch(prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace})
+		promLabelsInfo := prometheus.Labels{wpaNamePromLabel: wpa.Name, wpaNamespacePromLabel: wpa.Namespace, resourceNamespacePromLabel: wpa.Namespace}
+		for _, eLabel := range extraPromLabels {
+			eLabelValue := wpa.Labels[eLabel]
+			promLabelsInfo[eLabel] = eLabelValue
+		}
+		labelsInfo.Delete(promLabelsInfo)
 		dryRun.Delete(promLabelsForWpa)
 
 		scalingActive.Delete(promLabelsForWpa)
@@ -328,7 +329,6 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 		lifecycleStatus:       lifecycleControlBlockedStatus,
 		monitorName:           wpa.Name,
 		monitorNamespace:      wpa.Namespace,
-		dryRunPromLabel:       strconv.FormatBool(wpa.Spec.DryRun),
 	})
 }
 
@@ -352,6 +352,5 @@ func getPrometheusLabels(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) promethe
 		resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
 		targetNamePromLabel:        wpa.Spec.ScaleTargetRef.Name,
 		namespacePromLabel:         wpa.Namespace,
-		dryRunPromLabel:            strconv.FormatBool(wpa.Spec.DryRun),
 	}
 }

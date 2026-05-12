@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -2723,7 +2722,6 @@ func getPromBaseLabels(wpa *v1alpha1.WatermarkPodAutoscaler) prometheus.Labels {
 		resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
 		targetNamePromLabel:        wpa.Spec.ScaleTargetRef.Name,
 		namespacePromLabel:         wpa.Namespace,
-		dryRunPromLabel:            strconv.FormatBool(wpa.Spec.DryRun),
 	}
 }
 
