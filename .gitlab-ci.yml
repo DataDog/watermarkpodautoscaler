@@ -77,16 +77,32 @@ build_image_fips:
     RELEASE_IMAGE: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG-fips
     FIPS_ENABLED: "true"
 
+.docker_publish_job_definition:
+  image: registry.ddbuild.io/agent-delivery/dd-pkg:v0.9.0
+  variables:
+    IMG_SIGNING: "false"
+    PUBLIC_IMAGES_PUBLISH_TIMEOUT: "1800"
+  script:
+    - |
+      set -euo pipefail
+      dd-pkg version
+      args=(publish-image --timeout "${PUBLIC_IMAGES_PUBLISH_TIMEOUT}" --poll-interval 30 --signing="${IMG_SIGNING}")
+      if [[ -n "${IMG_REGISTRIES:-}" ]]; then args+=(--registries "${IMG_REGISTRIES}"); fi
+      if [[ -n "${IMG_SOURCES:-}" ]]; then args+=(--sources "${IMG_SOURCES}"); fi
+      if [[ -n "${IMG_DESTINATIONS:-}" ]]; then args+=(--destinations "${IMG_DESTINATIONS}"); fi
+      if [[ -n "${IMG_DESTINATIONS_REGEX:-}" ]]; then args+=(--regex-expression "${IMG_DESTINATIONS_REGEX}"); fi
+      if [[ -n "${IMG_DESTINATIONS_REGEX_REPL:-}" ]]; then args+=(--regex-replacement "${IMG_DESTINATIONS_REGEX_REPL}"); fi
+      if [[ -n "${IMG_TAG_REFERENCE:-}" ]]; then args+=(--tag-reference "${IMG_TAG_REFERENCE}"); fi
+      if [[ -n "${IMG_NEW_TAGS:-}" ]]; then args+=(--new-tags "${IMG_NEW_TAGS}"); fi
+      dd-pkg "${args[@]}"
+
 publish_public_main:
   stage: release
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
       when: on_success
     - when: never
-  trigger:
-    project: DataDog/public-images
-    branch: main
-    strategy: depend
+  extends: .docker_publish_job_definition
   variables:
     IMG_SOURCES: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
     IMG_DESTINATIONS: $PROJECTNAME:main
@@ -98,10 +114,7 @@ publish_public_tag:
     - if: $CI_COMMIT_TAG
       when: manual
     - when: never
-  trigger:
-    project: DataDog/public-images
-    branch: main
-    strategy: depend
+  extends: .docker_publish_job_definition
   variables:
     IMG_SOURCES: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG
     IMG_DESTINATIONS: $PROJECTNAME:$CI_COMMIT_TAG
@@ -113,10 +126,7 @@ publish_public_latest:
     - if: $CI_COMMIT_TAG
       when: manual
     - when: never
-  trigger:
-    project: DataDog/public-images
-    branch: main
-    strategy: depend
+  extends: .docker_publish_job_definition
   variables:
     IMG_SOURCES: $BUILD_DOCKER_REGISTRY/$PROJECTNAME:$CI_COMMIT_TAG
     IMG_DESTINATIONS: $PROJECTNAME:latest
