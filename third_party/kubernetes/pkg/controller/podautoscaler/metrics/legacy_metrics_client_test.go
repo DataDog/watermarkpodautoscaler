@@ -196,7 +196,7 @@ func buildPod(namespace, podName string, podLabels map[string]string, phase v1.P
 func (tc *testCase) verifyResults(t *testing.T, metrics PodMetricsInfo, timestamp time.Time, err error) {
 	if tc.desiredError != nil {
 		require.Error(t, err, "there should be an error retrieving the metrics")
-		assert.Contains(t, fmt.Sprintf("%v", err), fmt.Sprintf("%v", tc.desiredError), "the error message should be eas expected")
+		assert.Contains(t, fmt.Sprintf("%v", err), fmt.Sprintf("%v", tc.desiredError), "the error message should be as expected")
 		return
 	}
 	require.NoError(t, err, "there should be no error retrieving the metrics")
