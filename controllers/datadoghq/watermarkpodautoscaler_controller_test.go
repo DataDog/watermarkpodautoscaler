@@ -2880,7 +2880,7 @@ func assertWantPromMetrics(t *testing.T, want map[string]float64, wpa *v1alpha1.
 func printPromMetrics(t *testing.T, gaugeVals map[string]float64) {
 	var builder strings.Builder
 	for _, key := range getMetricKeys() {
-		builder.WriteString(fmt.Sprintf("\"%s\": %.1f,\n", key, gaugeVals[key]))
+		fmt.Fprintf(&builder, "\"%s\": %.1f,\n", key, gaugeVals[key])
 	}
 	t.Log("Prometheus metrics\n", builder.String())
 }

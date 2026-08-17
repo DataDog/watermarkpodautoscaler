@@ -3,13 +3,14 @@
 {
 	"name": "Go",
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
-	"image": "mcr.microsoft.com/devcontainers/go:2-1.24",
+	"image": "mcr.microsoft.com/devcontainers/go:2-1.26",
 	"features": {
-		"ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {},
 		"ghcr.io/devcontainers-extra/features/kubectx-kubens:1": {},
-		"ghcr.io/devcontainers-extra/features/kind:1": {},
-		"ghcr.io/devcontainers/features/node:1": {},
-		"ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
+		"ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {},
+        "ghcr.io/devcontainers-extra/features/kind:1": {},
+        "ghcr.io/devcontainers/features/github-cli:1": {},
+        "ghcr.io/devcontainer-community/devcontainer-features/yq:1": {},
+        "ghcr.io/clamoriniere/devcontainer-features/claude-code:1.0.6": {}
 	},
 	"mounts": [
 		"source=${localWorkspaceFolder}/.devcontainer/claude-data/,target=/home/vscode/.claude,type=bind"

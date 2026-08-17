@@ -1,8 +1,6 @@
 module github.com/DataDog/watermarkpodautoscaler/apis
 
-go 1.24.0
-
-toolchain go1.24.10
+go 1.26.5
 
 require (
 	k8s.io/api v0.33.0

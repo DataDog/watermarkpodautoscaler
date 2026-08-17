@@ -24,7 +24,7 @@ import (
 	"k8s.io/klog/v2"
 
 	autoscaling "k8s.io/api/autoscaling/v2beta2"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -67,7 +67,7 @@ type resourceMetricsClient struct {
 func (c *resourceMetricsClient) GetResourceMetric(resource v1.ResourceName, namespace string, selector labels.Selector, container string) (PodMetricsInfo, time.Time, error) {
 	metrics, err := c.client.PodMetricses(namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: selector.String()})
 	if err != nil {
-		return nil, time.Time{}, fmt.Errorf("unable to fetch metrics from resource metrics API: %v", err)
+		return nil, time.Time{}, fmt.Errorf("unable to fetch metrics from resource metrics API: %w", err)
 	}
 
 	if len(metrics.Items) == 0 {
@@ -77,7 +77,7 @@ func (c *resourceMetricsClient) GetResourceMetric(resource v1.ResourceName, name
 	if container != "" {
 		res, err = getContainerMetrics(metrics.Items, resource, container)
 		if err != nil {
-			return nil, time.Time{}, fmt.Errorf("failed to get container metrics: %v", err)
+			return nil, time.Time{}, fmt.Errorf("failed to get container metrics: %w", err)
 		}
 	} else {
 		res = getPodMetrics(metrics.Items, resource)
@@ -146,7 +146,7 @@ type customMetricsClient struct {
 func (c *customMetricsClient) GetRawMetric(metricName string, namespace string, selector labels.Selector, metricSelector labels.Selector) (PodMetricsInfo, time.Time, error) {
 	metrics, err := c.client.NamespacedMetrics(namespace).GetForObjects(schema.GroupKind{Kind: "Pod"}, selector, metricName, metricSelector)
 	if err != nil {
-		return nil, time.Time{}, fmt.Errorf("unable to fetch metrics from custom metrics API: %v", err)
+		return nil, time.Time{}, fmt.Errorf("unable to fetch metrics from custom metrics API: %w", err)
 	}
 
 	if len(metrics.Items) == 0 {
@@ -162,7 +162,7 @@ func (c *customMetricsClient) GetRawMetric(metricName string, namespace string, 
 		res[m.DescribedObject.Name] = PodMetric{
 			Timestamp: m.Timestamp.Time,
 			Window:    window,
-			Value:     int64(m.Value.MilliValue()),
+			Value:     m.Value.MilliValue(),
 		}
 
 		m.Value.MilliValue()
@@ -189,7 +189,7 @@ func (c *customMetricsClient) GetObjectMetric(metricName string, namespace strin
 	}
 
 	if err != nil {
-		return 0, time.Time{}, fmt.Errorf("unable to fetch metrics from custom metrics API: %v", err)
+		return 0, time.Time{}, fmt.Errorf("unable to fetch metrics from custom metrics API: %w", err)
 	}
 
 	return metricValue.Value.MilliValue(), metricValue.Timestamp.Time, nil
@@ -206,7 +206,7 @@ type externalMetricsClient struct {
 func (c *externalMetricsClient) GetExternalMetric(metricName, namespace string, selector labels.Selector) ([]int64, time.Time, error) {
 	metrics, err := c.client.NamespacedMetrics(namespace).List(metricName, selector)
 	if err != nil {
-		return []int64{}, time.Time{}, fmt.Errorf("unable to fetch metrics from external metrics API: %v", err)
+		return []int64{}, time.Time{}, fmt.Errorf("unable to fetch metrics from external metrics API: %w", err)
 	}
 
 	if len(metrics.Items) == 0 {
