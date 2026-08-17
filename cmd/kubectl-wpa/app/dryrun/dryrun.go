@@ -36,12 +36,12 @@ var dryrunRevertExample = `
 
 // dryrunOptions provides information required to manage WatermarkPodAutoscaler.
 type dryrunOptions struct {
+	genericclioptions.IOStreams
+
 	configFlags *genericclioptions.ConfigFlags
 	args        []string
 
 	client client.Client
-
-	genericclioptions.IOStreams
 
 	userNamespace string
 	userWPAName   string

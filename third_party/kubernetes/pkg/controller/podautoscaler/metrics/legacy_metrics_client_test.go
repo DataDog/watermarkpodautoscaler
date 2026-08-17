@@ -37,6 +37,7 @@ import (
 	metricsapi "k8s.io/metrics/pkg/apis/metrics/v1alpha1"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var fixedTimestamp = time.Date(2015, time.November, 10, 12, 30, 0, 0, time.UTC)
@@ -80,7 +81,7 @@ type testCase struct {
 	metricName     string
 }
 
-func (tc *testCase) prepareTestClient(t *testing.T) *fake.Clientset {
+func (tc *testCase) prepareTestClient() *fake.Clientset {
 	namespace := "test-namespace"
 	tc.namespace = namespace
 	podNamePrefix := "test-pod"
@@ -94,7 +95,7 @@ func (tc *testCase) prepareTestClient(t *testing.T) *fake.Clientset {
 
 	fakeClient.AddReactor("list", "pods", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 		obj := &v1.PodList{}
-		for i := 0; i < tc.replicas; i++ {
+		for i := range tc.replicas {
 			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
 			pod := buildPod(namespace, podName, podLabels, v1.PodRunning, "1024")
 			obj.Items = append(obj.Items, pod)
@@ -194,11 +195,11 @@ func buildPod(namespace, podName string, podLabels map[string]string, phase v1.P
 
 func (tc *testCase) verifyResults(t *testing.T, metrics PodMetricsInfo, timestamp time.Time, err error) {
 	if tc.desiredError != nil {
-		assert.Error(t, err, "there should be an error retrieving the metrics")
-		assert.Contains(t, fmt.Sprintf("%v", err), fmt.Sprintf("%v", tc.desiredError), "the error message should be eas expected")
+		require.Error(t, err, "there should be an error retrieving the metrics")
+		assert.Contains(t, fmt.Sprintf("%v", err), fmt.Sprintf("%v", tc.desiredError), "the error message should be as expected")
 		return
 	}
-	assert.NoError(t, err, "there should be no error retrieving the metrics")
+	require.NoError(t, err, "there should be no error retrieving the metrics")
 	assert.NotNil(t, metrics, "there should be metrics returned")
 	if len(metrics) != len(tc.desiredMetricValues) {
 		t.Errorf("Not equal:\nexpected: %v\nactual: %v", tc.desiredMetricValues, metrics)
@@ -214,11 +215,11 @@ func (tc *testCase) verifyResults(t *testing.T, metrics PodMetricsInfo, timestam
 	}
 
 	targetTimestamp := offsetTimestampBy(tc.targetTimestamp)
-	assert.True(t, targetTimestamp.Equal(timestamp), fmt.Sprintf("the timestamp should be as expected (%s) but was %s", targetTimestamp, timestamp))
+	assert.True(t, targetTimestamp.Equal(timestamp), "the timestamp should be as expected (%s) but was %s", targetTimestamp, timestamp)
 }
 
 func (tc *testCase) runTest(t *testing.T) {
-	testClient := tc.prepareTestClient(t)
+	testClient := tc.prepareTestClient()
 	metricsClient := NewHeapsterMetricsClient(testClient, DefaultHeapsterNamespace, DefaultHeapsterScheme, DefaultHeapsterService, DefaultHeapsterPort)
 	isResource := len(tc.resourceName) > 0
 	if isResource {

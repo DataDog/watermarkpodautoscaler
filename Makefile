@@ -127,7 +127,7 @@ docker-buildx-ci:
 ##@ Tools
 CONTROLLER_GEN = bin/$(PLATFORM)/controller-gen
 $(CONTROLLER_GEN): Makefile  ## Download controller-gen locally if necessary.
-	$(call go-get-tool,$@,sigs.k8s.io/controller-tools/cmd/controller-gen@v0.16.3)
+	$(call go-get-tool,$@,sigs.k8s.io/controller-tools/cmd/controller-gen@v0.16.5)
 
 KUSTOMIZE = bin/$(PLATFORM)/kustomize
 $(KUSTOMIZE): Makefile  ## Download kustomize locally if necessary.
@@ -215,7 +215,7 @@ bin/$(PLATFORM)/jq: Makefile
 	hack/install-jq.sh "bin/$(PLATFORM)" 1.7.1
 
 bin/$(PLATFORM)/golangci-lint: Makefile
-	hack/install-golangci-lint.sh -b "bin/$(PLATFORM)" v1.64.8
+	hack/install-golangci-lint.sh -b "bin/$(PLATFORM)" v2.12.2
 
 bin/$(PLATFORM)/operator-sdk: Makefile
 	hack/install-operator-sdk.sh v1.41.1

@@ -526,10 +526,10 @@ func TestTLSRecommendationWithClientCertificateMismatch(t *testing.T) {
 func TestBuildReplicaRecommendationResponse(t *testing.T) {
 	now := time.Now().Truncate(time.Second)
 	tests := []struct {
-		name                    string
-		reply                   *autoscaling.WorkloadRecommendationReply
-		expectedObservedTarget  float64
-		expectError             bool
+		name                   string
+		reply                  *autoscaling.WorkloadRecommendationReply
+		expectedObservedTarget float64
+		expectError            bool
 	}{
 		{
 			name:                   "nil observed targets",
