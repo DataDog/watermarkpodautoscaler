@@ -2322,6 +2322,8 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 		normalizedReplicas        int32
 		currentReplicas           int32
 		readyReplicas             int32
+		expectedUpscaleCapping    float64
+		expectedDownscaleCapping  float64
 	}{
 		{
 			name:                      "desiredReplicas < wpaMinReplicas < scaleDownLimit",
@@ -2332,6 +2334,8 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 			normalizedReplicas:        45,
 			readyReplicas:             50,
 			wpa:                       makeWPASpec(15, 80, 30, 10),
+			expectedUpscaleCapping:    0,
+			expectedDownscaleCapping:  1,
 		},
 		{
 			name:                      "desiredReplicas < scaleDownLimit < wpaMinReplicas ",
@@ -2342,6 +2346,8 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 			normalizedReplicas:        30,
 			readyReplicas:             50,
 			wpa:                       makeWPASpec(30, 80, 30, 70),
+			expectedUpscaleCapping:    0,
+			expectedDownscaleCapping:  1,
 		},
 		{
 			name:                      "wpaMinReplicas < desiredReplicas < scaleDownLimit",
@@ -2352,6 +2358,8 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 			normalizedReplicas:        35,
 			readyReplicas:             50,
 			wpa:                       makeWPASpec(10, 6, 30, 30),
+			expectedUpscaleCapping:    0,
+			expectedDownscaleCapping:  1,
 		},
 		{
 			name:                      "wpaMinReplicas < scaleDownLimit < desiredReplicas",
@@ -2362,6 +2370,8 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 			normalizedReplicas:        40,
 			readyReplicas:             50,
 			wpa:                       makeWPASpec(10, 80, 30, 30),
+			expectedUpscaleCapping:    0,
+			expectedDownscaleCapping:  0,
 		},
 		{
 			name:                      "wpaMaxReplicas < scaleUpLimit < desiredReplicas",
@@ -2372,6 +2382,8 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 			normalizedReplicas:        60,
 			readyReplicas:             50,
 			wpa:                       makeWPASpec(3, 60, 20, 0),
+			expectedUpscaleCapping:    1,
+			expectedDownscaleCapping:  0,
 		},
 		{
 			name:                      "wpaMaxReplicas < desiredReplicas < scaleUpLimit",
@@ -2382,6 +2394,8 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 			normalizedReplicas:        60,
 			readyReplicas:             50,
 			wpa:                       makeWPASpec(3, 60, 40, 0),
+			expectedUpscaleCapping:    0,
+			expectedDownscaleCapping:  0,
 		},
 		{
 			name:                      "desiredReplicas < wpaMaxReplicas < scaleUpLimit",
@@ -2392,6 +2406,8 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 			normalizedReplicas:        55,
 			readyReplicas:             50,
 			wpa:                       makeWPASpec(3, 60, 40, 0),
+			expectedUpscaleCapping:    0,
+			expectedDownscaleCapping:  0,
 		},
 		{
 			name:                      "desiredReplicas < readyReplicas < minimumAllowedReplicas", // minimumAllowdReplicas = 43
@@ -2402,16 +2418,72 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 			normalizedReplicas:        50,
 			readyReplicas:             40,
 			wpa:                       makeWPASpec(3, 60, 15, 15),
+			expectedUpscaleCapping:    0,
+			expectedDownscaleCapping:  1,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Seed both restricted_scaling gauges to 1 to emulate a previous
+			// reconcile that capped scaling. convertDesiredReplicasWithRules must
+			// refresh both gauges so a stale value cannot remain "stuck" (CASCL-1709).
+			restrictedScaling.With(getRestrictedScalingLabels(tt.wpa, upscaleCappingPromLabelVal)).Set(1)
+			restrictedScaling.With(getRestrictedScalingLabels(tt.wpa, downscaleCappingPromLabelVal)).Set(1)
+
 			des, cond, rea := convertDesiredReplicasWithRules(logf.Log.WithName(tt.name), tt.wpa, tt.currentReplicas, tt.desiredReplicas, *tt.wpa.Spec.MinReplicas, tt.wpa.Spec.MaxReplicas, tt.readyReplicas)
 			require.Equal(t, tt.normalizedReplicas, des)
 			require.Equal(t, tt.possibleLimitingCondition, cond)
 			require.Equal(t, tt.possibleLimitingReason, rea)
+
+			require.Equal(t, tt.expectedUpscaleCapping, getGaugeVal(t, restrictedScaling.With(getRestrictedScalingLabels(tt.wpa, upscaleCappingPromLabelVal))), "upscale_capping gauge")
+			require.Equal(t, tt.expectedDownscaleCapping, getGaugeVal(t, restrictedScaling.With(getRestrictedScalingLabels(tt.wpa, downscaleCappingPromLabelVal))), "downscale_capping gauge")
 		})
 	}
+}
+
+// TestConvertDesiredReplicasWithRulesResetsRestrictedScaling reproduces the
+// scenario described in CASCL-1709: once the upscale (or downscale) capping
+// gauge is set to 1, a subsequent reconcile that no longer caps scaling in that
+// direction must reset the gauge back to 0. Before the fix the gauge stayed
+// "stuck" at 1 until a metric-fetch error or a controller restart cleared it.
+func TestConvertDesiredReplicasWithRulesResetsRestrictedScaling(t *testing.T) {
+	logf.SetLogger(zap.New())
+
+	wpa := makeWPASpec(3, 60, 20, 20)
+	logger := logf.Log.WithName(t.Name())
+
+	upscaleLabels := getRestrictedScalingLabels(wpa, upscaleCappingPromLabelVal)
+	downscaleLabels := getRestrictedScalingLabels(wpa, downscaleCappingPromLabelVal)
+
+	// Start from a clean state.
+	restrictedScaling.With(upscaleLabels).Set(0)
+	restrictedScaling.With(downscaleLabels).Set(0)
+
+	// 1. A large desired replica count triggers upscale capping -> gauge = 1.
+	_, cond, _ := convertDesiredReplicasWithRules(logger, wpa, 50, 90, *wpa.Spec.MinReplicas, wpa.Spec.MaxReplicas, 50)
+	require.Equal(t, "ScaleUpLimit", cond)
+	require.Equal(t, float64(1), getGaugeVal(t, restrictedScaling.With(upscaleLabels)), "upscale_capping should be set when scaling is capped")
+	require.Equal(t, float64(0), getGaugeVal(t, restrictedScaling.With(downscaleLabels)))
+
+	// 2. A within-range desired replica count no longer caps upscaling. The
+	// gauge must be reset back to 0 instead of remaining stuck at 1.
+	_, cond, _ = convertDesiredReplicasWithRules(logger, wpa, 50, 55, *wpa.Spec.MinReplicas, wpa.Spec.MaxReplicas, 50)
+	require.Equal(t, "DesiredWithinRange", cond)
+	require.Equal(t, float64(0), getGaugeVal(t, restrictedScaling.With(upscaleLabels)), "upscale_capping should reset to 0 once scaling is no longer capped")
+	require.Equal(t, float64(0), getGaugeVal(t, restrictedScaling.With(downscaleLabels)))
+
+	// 3. A small desired replica count triggers downscale capping -> gauge = 1,
+	// and the upscale gauge remains 0.
+	_, cond, _ = convertDesiredReplicasWithRules(logger, wpa, 50, 10, *wpa.Spec.MinReplicas, wpa.Spec.MaxReplicas, 50)
+	require.Equal(t, "ScaleDownLimit", cond)
+	require.Equal(t, float64(1), getGaugeVal(t, restrictedScaling.With(downscaleLabels)), "downscale_capping should be set when scaling is capped")
+	require.Equal(t, float64(0), getGaugeVal(t, restrictedScaling.With(upscaleLabels)))
+
+	// 4. Back within range: the downscale gauge must reset to 0 as well.
+	_, cond, _ = convertDesiredReplicasWithRules(logger, wpa, 50, 55, *wpa.Spec.MinReplicas, wpa.Spec.MaxReplicas, 50)
+	require.Equal(t, "DesiredWithinRange", cond)
+	require.Equal(t, float64(0), getGaugeVal(t, restrictedScaling.With(downscaleLabels)), "downscale_capping should reset to 0 once scaling is no longer capped")
+	require.Equal(t, float64(0), getGaugeVal(t, restrictedScaling.With(upscaleLabels)))
 }
 
 func TestSetCondition(t *testing.T) {

@@ -952,9 +952,25 @@ func convertDesiredReplicasWithRules(logger logr.Logger, wpa *datadoghqv1alpha1.
 	var possibleLimitingCondition string
 	var possibleLimitingReason string
 
+	// Track the capping decisions so that both the downscale_capping and
+	// upscale_capping restricted_scaling gauges are refreshed on every return
+	// path. Previously these gauges were only updated on the specific branch
+	// that computed them, so a gauge set to 1 during one reconcile could stay
+	// "stuck" at 1 on subsequent reconciles that no longer capped in that
+	// direction (see CASCL-1709).
+	downscaleCapping := false
+	upscaleCapping := false
+	defer func() {
+		downscaleLabels := getPrometheusLabels(wpa)
+		downscaleLabels[reasonPromLabel] = downscaleCappingPromLabelVal
+		restrictedScaling.With(downscaleLabels).Set(boolToFloat64(downscaleCapping))
+
+		upscaleLabels := getPrometheusLabels(wpa)
+		upscaleLabels[reasonPromLabel] = upscaleCappingPromLabelVal
+		restrictedScaling.With(upscaleLabels).Set(boolToFloat64(upscaleCapping))
+	}()
+
 	scaleDownLimit := calculateScaleDownLimit(wpa, currentReplicas)
-	wpaLabels := getPrometheusLabels(wpa)
-	wpaLabels[reasonPromLabel] = "downscale_capping"
 
 	// Compute the maximum and minimum number of replicas we can have
 	switch {
@@ -962,7 +978,7 @@ func convertDesiredReplicasWithRules(logger logr.Logger, wpa *datadoghqv1alpha1.
 		minimumAllowedReplicas = 1
 	case desiredReplicas < scaleDownLimit:
 		minimumAllowedReplicas = int32(math.Max(float64(scaleDownLimit), float64(wpaMinReplicas)))
-		restrictedScaling.With(wpaLabels).Set(1)
+		downscaleCapping = true
 		possibleLimitingCondition = "ScaleDownLimit"
 		possibleLimitingReason = "the desired replica count is decreasing faster than the maximum scale rate"
 		logger.Info("Downscaling rate higher than limit set by `scaleDownLimitFactor`, capping the maximum downscale to 'minimumAllowedReplicas'", "scaleDownLimitFactor", fmt.Sprintf("%.1f", float64(wpa.Spec.ScaleDownLimitFactor.MilliValue()/1000)), "wpaMinReplicas", wpaMinReplicas, "minimumAllowedReplicas", minimumAllowedReplicas)
@@ -972,7 +988,6 @@ func convertDesiredReplicasWithRules(logger logr.Logger, wpa *datadoghqv1alpha1.
 		}
 	case desiredReplicas >= scaleDownLimit:
 		minimumAllowedReplicas = wpaMinReplicas
-		restrictedScaling.With(wpaLabels).Set(0)
 		possibleLimitingCondition = "TooFewReplicas"
 		possibleLimitingReason = "the desired replica count is below the minimum replica count"
 	}
@@ -985,14 +1000,12 @@ func convertDesiredReplicasWithRules(logger logr.Logger, wpa *datadoghqv1alpha1.
 
 	if desiredReplicas > scaleUpLimit {
 		maximumAllowedReplicas = int32(math.Min(float64(scaleUpLimit), float64(wpaMaxReplicas)))
-		wpaLabels[reasonPromLabel] = upscaleCappingPromLabelVal
-		restrictedScaling.With(wpaLabels).Set(1)
+		upscaleCapping = true
 		logger.Info("Upscaling rate higher than limit set by 'ScaleUpLimitFactor', capping the maximum upscale to 'maximumAllowedReplicas'", "scaleUpLimitFactor", fmt.Sprintf("%.1f", float64(wpa.Spec.ScaleUpLimitFactor.MilliValue()/1000)), "wpaMaxReplicas", wpaMaxReplicas, "maximumAllowedReplicas", maximumAllowedReplicas)
 		possibleLimitingCondition = "ScaleUpLimit"
 		possibleLimitingReason = "the desired replica count is increasing faster than the maximum scale rate"
 	} else {
 		maximumAllowedReplicas = wpaMaxReplicas
-		restrictedScaling.With(wpaLabels).Set(0)
 		possibleLimitingCondition = "TooManyReplicas"
 		possibleLimitingReason = "the desired replica count is above the maximum replica count"
 	}
