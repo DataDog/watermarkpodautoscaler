@@ -2435,8 +2435,8 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 			require.Equal(t, tt.possibleLimitingCondition, cond)
 			require.Equal(t, tt.possibleLimitingReason, rea)
 
-			require.Equal(t, tt.expectedUpscaleCapping, getGaugeVal(t, restrictedScaling.With(getRestrictedScalingLabels(tt.wpa, upscaleCappingPromLabelVal))), "upscale_capping gauge")
-			require.Equal(t, tt.expectedDownscaleCapping, getGaugeVal(t, restrictedScaling.With(getRestrictedScalingLabels(tt.wpa, downscaleCappingPromLabelVal))), "downscale_capping gauge")
+			require.InDelta(t, tt.expectedUpscaleCapping, getGaugeVal(t, restrictedScaling.With(getRestrictedScalingLabels(tt.wpa, upscaleCappingPromLabelVal))), 0.00001, "upscale_capping gauge")
+			require.InDelta(t, tt.expectedDownscaleCapping, getGaugeVal(t, restrictedScaling.With(getRestrictedScalingLabels(tt.wpa, downscaleCappingPromLabelVal))), 0.00001, "downscale_capping gauge")
 		})
 	}
 }
@@ -2462,28 +2462,28 @@ func TestConvertDesiredReplicasWithRulesResetsRestrictedScaling(t *testing.T) {
 	// 1. A large desired replica count triggers upscale capping -> gauge = 1.
 	_, cond, _ := convertDesiredReplicasWithRules(logger, wpa, 50, 90, *wpa.Spec.MinReplicas, wpa.Spec.MaxReplicas, 50)
 	require.Equal(t, "ScaleUpLimit", cond)
-	require.Equal(t, float64(1), getGaugeVal(t, restrictedScaling.With(upscaleLabels)), "upscale_capping should be set when scaling is capped")
-	require.Equal(t, float64(0), getGaugeVal(t, restrictedScaling.With(downscaleLabels)))
+	require.InDelta(t, float64(1), getGaugeVal(t, restrictedScaling.With(upscaleLabels)), 0.00001, "upscale_capping should be set when scaling is capped")
+	require.InDelta(t, float64(0), getGaugeVal(t, restrictedScaling.With(downscaleLabels)), 0.00001)
 
 	// 2. A within-range desired replica count no longer caps upscaling. The
 	// gauge must be reset back to 0 instead of remaining stuck at 1.
 	_, cond, _ = convertDesiredReplicasWithRules(logger, wpa, 50, 55, *wpa.Spec.MinReplicas, wpa.Spec.MaxReplicas, 50)
 	require.Equal(t, "DesiredWithinRange", cond)
-	require.Equal(t, float64(0), getGaugeVal(t, restrictedScaling.With(upscaleLabels)), "upscale_capping should reset to 0 once scaling is no longer capped")
-	require.Equal(t, float64(0), getGaugeVal(t, restrictedScaling.With(downscaleLabels)))
+	require.InDelta(t, float64(0), getGaugeVal(t, restrictedScaling.With(upscaleLabels)), 0.00001, "upscale_capping should reset to 0 once scaling is no longer capped")
+	require.InDelta(t, float64(0), getGaugeVal(t, restrictedScaling.With(downscaleLabels)), 0.00001)
 
 	// 3. A small desired replica count triggers downscale capping -> gauge = 1,
 	// and the upscale gauge remains 0.
 	_, cond, _ = convertDesiredReplicasWithRules(logger, wpa, 50, 10, *wpa.Spec.MinReplicas, wpa.Spec.MaxReplicas, 50)
 	require.Equal(t, "ScaleDownLimit", cond)
-	require.Equal(t, float64(1), getGaugeVal(t, restrictedScaling.With(downscaleLabels)), "downscale_capping should be set when scaling is capped")
-	require.Equal(t, float64(0), getGaugeVal(t, restrictedScaling.With(upscaleLabels)))
+	require.InDelta(t, float64(1), getGaugeVal(t, restrictedScaling.With(downscaleLabels)), 0.00001, "downscale_capping should be set when scaling is capped")
+	require.InDelta(t, float64(0), getGaugeVal(t, restrictedScaling.With(upscaleLabels)), 0.00001)
 
 	// 4. Back within range: the downscale gauge must reset to 0 as well.
 	_, cond, _ = convertDesiredReplicasWithRules(logger, wpa, 50, 55, *wpa.Spec.MinReplicas, wpa.Spec.MaxReplicas, 50)
 	require.Equal(t, "DesiredWithinRange", cond)
-	require.Equal(t, float64(0), getGaugeVal(t, restrictedScaling.With(downscaleLabels)), "downscale_capping should reset to 0 once scaling is no longer capped")
-	require.Equal(t, float64(0), getGaugeVal(t, restrictedScaling.With(upscaleLabels)))
+	require.InDelta(t, float64(0), getGaugeVal(t, restrictedScaling.With(downscaleLabels)), 0.00001, "downscale_capping should reset to 0 once scaling is no longer capped")
+	require.InDelta(t, float64(0), getGaugeVal(t, restrictedScaling.With(upscaleLabels)), 0.00001)
 }
 
 func TestSetCondition(t *testing.T) {
