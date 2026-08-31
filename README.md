@@ -188,9 +188,10 @@ Or in the logs of the controller:
 {"level":"info","ts":1668481092517.446,"logger":"controllers.WatermarkPodAutoscaler","msg":"Will not scale: value has not been out of bounds for long enough","watermarkpodautoscaler":"datadog/example-watermarkpodautoscaler","wpa_name":"example-watermarkpodautoscaler","wpa_namespace":"datadog","time_left":3209}
 ```
 
-**Note:** If you are using multiple metrics with this feature, the above/below condition is considered using the `OR` of the metrics.
+**Note:** When multiple metrics are configured, the above/below condition defaults to the `OR` of the metrics. The behavior is configurable via `multiMetricsDelayMode`:
 
-For example, suppose you have a 60 second `upscaleDelay` with two metrics, M1 and M2. If M1 stays above its high watermark for 40 seconds `[t0; t40]`, and the M2 one goes above its high watermark for 30 seconds, overlapping with M1 during its last 10 seconds, `[t30; t60]`, this validates the `upscaleDelay` condition and allows for an upscaling event.
+- `aggregate` (default): the delay is satisfied as soon as **at least one** metric has been out of bounds for the configured duration, even if different metrics contribute to the window. For example, with a 60 second `upscaleDelay` and two metrics M1 and M2: if M1 stays above its high watermark for 40 seconds `[t0; t40]` and M2 goes above its high watermark for 30 seconds overlapping with M1 during its last 10 seconds `[t30; t60]`, this validates the `upscaleDelay` condition and allows for an upscaling event.
+- `per-metric`: the delay is satisfied only when **the same single metric** stays out of bounds continuously for the full configured duration. In the example above, neither M1 (40s) nor M2 (30s) was individually out of bounds for the full 60 seconds, so no scaling event would be allowed. With a single configured metric the behavior is identical to `aggregate`.
 
 * **Precedence**
 <a name="precedence"></a>

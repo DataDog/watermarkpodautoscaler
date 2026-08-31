@@ -51,6 +51,9 @@ func DefaultWatermarkPodAutoscaler(wpa *WatermarkPodAutoscaler) *WatermarkPodAut
 	if wpa.Spec.UpscaleForbiddenWindowSeconds == 0 {
 		defaultWPA.Spec.UpscaleForbiddenWindowSeconds = defaultUpscaleForbiddenWindowSeconds
 	}
+	if wpa.Spec.MultiMetricsDelayMode == "" {
+		defaultWPA.Spec.MultiMetricsDelayMode = MultiMetricsDelayModeAggregate
+	}
 	return defaultWPA
 }
 
@@ -80,6 +83,9 @@ func IsDefaultWatermarkPodAutoscaler(wpa *WatermarkPodAutoscaler) bool {
 	if wpa.Spec.UpscaleForbiddenWindowSeconds == 0 {
 		return false
 	}
+	if wpa.Spec.MultiMetricsDelayMode == "" {
+		return false
+	}
 	return true
 }
 
@@ -106,6 +112,11 @@ func CheckWPAValidity(wpa *WatermarkPodAutoscaler) error {
 	}
 	if wpa.Spec.Recommender != nil && wpa.Spec.Metrics != nil && len(wpa.Spec.Metrics) > 0 {
 		return fmt.Errorf("recommender and metrics can't be set at the same time, please choose one")
+	}
+	switch wpa.Spec.MultiMetricsDelayMode {
+	case "", MultiMetricsDelayModeAggregate, MultiMetricsDelayModePerMetric:
+	default:
+		return fmt.Errorf("invalid multiMetricsDelayMode %q, must be one of %q or %q", wpa.Spec.MultiMetricsDelayMode, MultiMetricsDelayModeAggregate, MultiMetricsDelayModePerMetric)
 	}
 	return checkWPAMetricsValidity(wpa)
 }

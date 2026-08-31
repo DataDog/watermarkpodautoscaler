@@ -62,6 +62,25 @@ var (
 	ConvergeDownwards ConvergeTowardsWatermarkType = "lowwatermark"
 )
 
+// MultiMetricsDelayMode controls how upscaleDelayAboveWatermarkSeconds and
+// downscaleDelayBelowWatermarkSeconds are evaluated when the spec contains
+// more than one metric.
+type MultiMetricsDelayMode string
+
+const (
+	// MultiMetricsDelayModeAggregate (default) maintains the historical behavior:
+	// the delay timer starts when at least one metric is out of bounds and
+	// resets only once every metric is back within its watermarks. This is the
+	// "OR" behavior — overlapping out-of-bounds windows from different metrics
+	// can satisfy the delay together.
+	MultiMetricsDelayModeAggregate MultiMetricsDelayMode = "aggregate"
+	// MultiMetricsDelayModePerMetric requires that the same single metric
+	// stays out of bounds continuously for the configured delay before
+	// allowing a scaling event. With a single metric the behavior is
+	// equivalent to aggregate.
+	MultiMetricsDelayModePerMetric MultiMetricsDelayMode = "per-metric"
+)
+
 // WatermarkPodAutoscalerSpec defines the desired state of WatermarkPodAutoscaler
 // +k8s:openapi-gen=true
 type WatermarkPodAutoscalerSpec struct {
@@ -87,6 +106,18 @@ type WatermarkPodAutoscalerSpec struct {
 
 	// +kubebuilder:validation:Minimum=0
 	DownscaleDelayBelowWatermarkSeconds int32 `json:"downscaleDelayBelowWatermarkSeconds,omitempty"`
+
+	// MultiMetricsDelayMode controls how upscaleDelayAboveWatermarkSeconds and
+	// downscaleDelayBelowWatermarkSeconds are evaluated when the spec contains
+	// more than one metric. With "aggregate" (default) the delay is satisfied
+	// as soon as at least one metric has been out of bounds for the configured
+	// duration, even if different metrics contribute to the window. With
+	// "per-metric" the delay is satisfied only when the same metric stays out
+	// of bounds for the full duration. Behavior is equivalent for a single
+	// metric.
+	// +optional
+	// +kubebuilder:validation:Enum=aggregate;per-metric
+	MultiMetricsDelayMode MultiMetricsDelayMode `json:"multiMetricsDelayMode,omitempty"`
 
 	// Number of replicas to scale by at a time. When set, replicas added or removed must be a multiple of this parameter.
 	// Allows for special scaling patterns, for instance when an application requires a certain number of pods in multiple

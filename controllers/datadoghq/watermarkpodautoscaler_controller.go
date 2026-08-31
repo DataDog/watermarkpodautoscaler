@@ -588,21 +588,27 @@ func shouldScale(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscal
 
 	logger.Info("Cooldown status", "backoffUp", backoffUp, "backoffDown", backoffDown, "desiredReplicas", desiredReplicas, "currentReplicas", currentReplicas)
 
-	hasBeenAbove, err := getCondition(&wpa.Status, datadoghqv1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark)
-	if err != nil {
-		logger.V(2).Info("Could not retrieve condition about the time above Watermark, blocking potential scaling event", "error", err)
-		hasBeenAbove.Status = corev1.ConditionFalse
-	}
 	if desiredReplicas > currentReplicas {
+		if usePerMetricDelay(wpa) {
+			return canScaleAfterDelayPerMetric(logger, backoffUp, wpa, perMetricAboveHighType, wpa.Spec.UpscaleDelayAboveWatermarkSeconds, isStable)
+		}
+		hasBeenAbove, err := getCondition(&wpa.Status, datadoghqv1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark)
+		if err != nil {
+			logger.V(2).Info("Could not retrieve condition about the time above Watermark, blocking potential scaling event", "error", err)
+			hasBeenAbove.Status = corev1.ConditionFalse
+		}
 		return canScaleAfterDelay(logger, backoffUp, hasBeenAbove, wpa.Spec.UpscaleDelayAboveWatermarkSeconds, isStable)
 	}
 
-	hasBeenBelow, err := getCondition(&wpa.Status, datadoghqv1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark)
-	if err != nil {
-		logger.V(2).Info("Could not retrieve condition about the time above Watermark, blocking potential scaling event", "error", err)
-		hasBeenBelow.Status = corev1.ConditionFalse
-	}
 	if desiredReplicas < currentReplicas {
+		if usePerMetricDelay(wpa) {
+			return canScaleAfterDelayPerMetric(logger, backoffDown, wpa, perMetricBelowLowType, wpa.Spec.DownscaleDelayBelowWatermarkSeconds, isStable)
+		}
+		hasBeenBelow, err := getCondition(&wpa.Status, datadoghqv1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark)
+		if err != nil {
+			logger.V(2).Info("Could not retrieve condition about the time below Watermark, blocking potential scaling event", "error", err)
+			hasBeenBelow.Status = corev1.ConditionFalse
+		}
 		return canScaleAfterDelay(logger, backoffDown, hasBeenBelow, wpa.Spec.DownscaleDelayBelowWatermarkSeconds, isStable)
 	}
 	logger.Info("Will not scale: number of replicas has not changed")
@@ -624,6 +630,120 @@ func canScaleAfterDelay(logger logr.Logger, isBackoff bool, wasOutOfBounds autos
 		return false
 	}
 	return !isBackoff
+}
+
+// usePerMetricDelay returns true when the spec asks for per-metric delay
+// evaluation and there is more than one metric to compare. With a single
+// metric the per-metric and aggregate behaviors are equivalent, so we keep
+// the aggregate path to avoid any behavioral change for that case.
+func usePerMetricDelay(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) bool {
+	return wpa.Spec.MultiMetricsDelayMode == datadoghqv1alpha1.MultiMetricsDelayModePerMetric && len(wpa.Spec.Metrics) > 1
+}
+
+// metricConditionKey returns a stable identifier for a metric used to suffix
+// the per-metric AboveHighWatermark / BelowLowWatermark condition types.
+func metricConditionKey(metricSpec datadoghqv1alpha1.MetricSpec) string {
+	switch metricSpec.Type {
+	case datadoghqv1alpha1.ExternalMetricSourceType:
+		if metricSpec.External == nil {
+			return ""
+		}
+		var labels map[string]string
+		if metricSpec.External.MetricSelector != nil {
+			labels = metricSpec.External.MetricSelector.MatchLabels
+		}
+		return fmt.Sprintf("%s{%v}", metricSpec.External.MetricName, labels)
+	case datadoghqv1alpha1.ResourceMetricSourceType:
+		if metricSpec.Resource == nil {
+			return ""
+		}
+		var labels map[string]string
+		if metricSpec.Resource.MetricSelector != nil {
+			labels = metricSpec.Resource.MetricSelector.MatchLabels
+		}
+		return fmt.Sprintf("%s{%v}", metricSpec.Resource.Name, labels)
+	}
+	return ""
+}
+
+func perMetricAboveHighType(key string) autoscalingv2.HorizontalPodAutoscalerConditionType {
+	return autoscalingv2.HorizontalPodAutoscalerConditionType(string(datadoghqv1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark) + "/" + key)
+}
+
+func perMetricBelowLowType(key string) autoscalingv2.HorizontalPodAutoscalerConditionType {
+	return autoscalingv2.HorizontalPodAutoscalerConditionType(string(datadoghqv1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark) + "/" + key)
+}
+
+// setPerMetricCondition adds or updates a per-metric out-of-bounds condition
+// on the WPA status without affecting LastConditionType / LastConditionState
+// or the prom condition gauge — those remain owned by the aggregate
+// conditions for backwards compatibility.
+func setPerMetricCondition(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, conditionType autoscalingv2.HorizontalPodAutoscalerConditionType, status corev1.ConditionStatus, reason, message string, args ...interface{}) {
+	wpa.Status.Conditions = setConditionInList(wpa.Status.Conditions, conditionType, status, reason, message, args...)
+}
+
+// updatePerMetricConditions records the current above/below state of a single
+// metric on the WPA status. Only invoked when per-metric delay mode is
+// enabled — otherwise we avoid adding extra conditions to the status.
+func updatePerMetricConditions(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, metricSpec datadoghqv1alpha1.MetricSpec, metricName string, pos metricPosition) {
+	if wpa.Spec.MultiMetricsDelayMode != datadoghqv1alpha1.MultiMetricsDelayModePerMetric {
+		return
+	}
+	key := metricConditionKey(metricSpec)
+	if key == "" {
+		return
+	}
+	aboveStatus := corev1.ConditionFalse
+	if pos.isAbove {
+		aboveStatus = corev1.ConditionTrue
+	}
+	belowStatus := corev1.ConditionFalse
+	if pos.isBelow {
+		belowStatus = corev1.ConditionTrue
+	}
+	setPerMetricCondition(wpa, perMetricAboveHighType(key), aboveStatus, aboveHighWatermarkReason, "%s for metric %s", aboveHighWatermarkAllowedMessage, metricName)
+	setPerMetricCondition(wpa, perMetricBelowLowType(key), belowStatus, belowLowWatermarkReason, "%s for metric %s", belowLowWatermarkAllowedMessage, metricName)
+}
+
+// canScaleAfterDelayPerMetric is the per-metric variant of canScaleAfterDelay.
+// It allows scaling iff at least one of the configured metrics has had its
+// per-metric out-of-bounds condition continuously True for at least
+// decisionDelay seconds. The same metric must satisfy the full window;
+// overlapping windows from different metrics do not combine.
+func canScaleAfterDelayPerMetric(logger logr.Logger, isBackoff bool, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, perMetricType func(string) autoscalingv2.HorizontalPodAutoscalerConditionType, decisionDelay int32, isStable bool) bool {
+	if decisionDelay == 0 || isStable {
+		return !isBackoff
+	}
+
+	now := metav1.Now()
+	bestRemaining := decisionDelay
+	closestKey := ""
+	hasOOBMetric := false
+	for _, metricSpec := range wpa.Spec.Metrics {
+		key := metricConditionKey(metricSpec)
+		if key == "" {
+			continue
+		}
+		cond, err := getCondition(&wpa.Status, perMetricType(key))
+		if err != nil || cond.Status != corev1.ConditionTrue {
+			continue
+		}
+		hasOOBMetric = true
+		remaining := decisionDelay - int32(now.Sub(cond.LastTransitionTime.Time).Seconds())
+		if remaining <= 0 {
+			return !isBackoff
+		}
+		if closestKey == "" || remaining < bestRemaining {
+			bestRemaining = remaining
+			closestKey = key
+		}
+	}
+	if !hasOOBMetric {
+		logger.Info("Will not scale: no metric is currently out of bounds")
+		return false
+	}
+	logger.Info("Will not scale: no single metric has been out of bounds for long enough", "time_left", bestRemaining, "closest_metric", closestKey)
+	return false
 }
 
 // setCurrentReplicasInStatus sets the current replica count in the status of the HPA.
@@ -734,10 +854,14 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(ctx context
 				utilizationProposal = replicaCalculation.utilization
 				timestampProposal = replicaCalculation.timestamp
 				readyReplicasProposal = replicaCalculation.readyReplicas
-				// If multiple metrics are used, we keep track of whether at least one of them is outside of the bounds.
-				// This is later used for the delayScaling feature, which only supports `OR` for now.
+				// Aggregate ("OR") tracking — used by the default
+				// MultiMetricsDelayMode=aggregate path.
 				isAbove = isAbove || replicaCalculation.pos.isAbove
 				isBelow = isBelow || replicaCalculation.pos.isBelow
+				// Per-metric tracking — when MultiMetricsDelayMode=per-metric,
+				// each metric's out-of-bounds duration is tracked
+				// independently via its own condition.
+				updatePerMetricConditions(wpa, metricSpec, metricNameProposal, replicaCalculation.pos)
 
 				lowwm.With(wpaLabels).Set(float64(metricSpec.External.LowWatermark.MilliValue()))
 				lowwmV2.With(wpaLabels).Set(float64(metricSpec.External.LowWatermark.MilliValue()))
@@ -775,10 +899,13 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(ctx context
 				utilizationProposal = replicaCalculation.utilization
 				timestampProposal = replicaCalculation.timestamp
 				readyReplicasProposal = replicaCalculation.readyReplicas
-				// If multiple metrics are used, we keep track of whether at least one of them is outside of the bounds.
-				// This is later used for the delayScaling feature, which only supports `OR` for now.
+				// Aggregate ("OR") tracking — used by the default
+				// MultiMetricsDelayMode=aggregate path.
 				isAbove = isAbove || replicaCalculation.pos.isAbove
 				isBelow = isBelow || replicaCalculation.pos.isBelow
+				// Per-metric tracking — see equivalent block in the External
+				// branch above.
+				updatePerMetricConditions(wpa, metricSpec, metricNameProposal, replicaCalculation.pos)
 
 				lowwm.With(wpaLabels).Set(float64(metricSpec.Resource.LowWatermark.MilliValue()))
 				lowwmV2.With(wpaLabels).Set(float64(metricSpec.Resource.LowWatermark.MilliValue()))

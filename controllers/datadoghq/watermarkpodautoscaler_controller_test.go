@@ -2191,6 +2191,80 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 			},
 			shoudScale: false,
 		},
+		{
+			// per-metric mode: M1 below low for 40s and M2 below low for 30s with no
+			// overlap window long enough on either single metric. With aggregate
+			// (default) mode this would scale; with per-metric it must not.
+			name: "per-metric: overlapping per-metric windows do not satisfy delay (downscale)",
+			args: args{
+				currentReplicas: 8,
+				desiredReplicas: 6,
+				timestamp:       time.Unix(1232599, 0),
+				wpa: makePerMetricDelayWPA(t, perMetricDelayWPAOpts{
+					mode: v1alpha1.MultiMetricsDelayModePerMetric,
+					downscaleDelay: 60,
+					m1Below: 40 * time.Second,
+					m2Below: 30 * time.Second,
+				}),
+			},
+			shoudScale: false,
+		},
+		{
+			// per-metric mode: M1 has been below low for 90s (≥ 60s delay) on its own.
+			// Even though M2 has only been below for 30s, M1 alone satisfies the delay.
+			name: "per-metric: a single metric out of bounds for full delay allows scaling (downscale)",
+			args: args{
+				currentReplicas: 8,
+				desiredReplicas: 6,
+				timestamp:       time.Unix(1232599, 0),
+				wpa: makePerMetricDelayWPA(t, perMetricDelayWPAOpts{
+					mode: v1alpha1.MultiMetricsDelayModePerMetric,
+					downscaleDelay: 60,
+					m1Below: 90 * time.Second,
+					m2Below: 30 * time.Second,
+				}),
+			},
+			shoudScale: true,
+		},
+		{
+			// per-metric mode with a single configured metric must behave exactly
+			// like the aggregate path: the aggregate AboveHighWatermark condition
+			// satisfied for ≥ delay seconds is enough to scale.
+			name: "per-metric: single metric falls back to aggregate behavior (upscale)",
+			args: args{
+				currentReplicas: 6,
+				desiredReplicas: 8,
+				timestamp:       time.Unix(1232599, 0),
+				wpa: test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+					Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+						UpscaleForbiddenWindowSeconds:     60,
+						DownscaleForbiddenWindowSeconds:   60,
+						UpscaleDelayAboveWatermarkSeconds: 60,
+						MultiMetricsDelayMode:             v1alpha1.MultiMetricsDelayModePerMetric,
+						Metrics: []v1alpha1.MetricSpec{
+							{
+								Type: v1alpha1.ExternalMetricSourceType,
+								External: &v1alpha1.ExternalMetricSource{
+									MetricName:     "m1",
+									MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"k": "v"}},
+								},
+							},
+						},
+					},
+					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
+						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
+						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+							{
+								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
+								Status:             corev1.ConditionTrue,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-90 * time.Second)},
+							},
+						},
+					},
+				}),
+			},
+			shoudScale: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2200,6 +2274,72 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 			}
 		})
 	}
+}
+
+type perMetricDelayWPAOpts struct {
+	mode           v1alpha1.MultiMetricsDelayMode
+	upscaleDelay   int32
+	downscaleDelay int32
+	// Below low watermark durations for the two test metrics. Zero means the
+	// metric is not currently below the low watermark.
+	m1Below time.Duration
+	m2Below time.Duration
+	// Above high watermark durations.
+	m1Above time.Duration
+	m2Above time.Duration
+}
+
+// makePerMetricDelayWPA builds a WPA with two external metrics configured for
+// the per-metric delay tests. Per-metric conditions are pre-populated on the
+// status so the test can simulate "this metric has been out of bounds for X
+// seconds" without needing to drive the reconcile loop.
+func makePerMetricDelayWPA(t *testing.T, opts perMetricDelayWPAOpts) *v1alpha1.WatermarkPodAutoscaler {
+	t.Helper()
+	m1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ExternalMetricSourceType,
+		External: &v1alpha1.ExternalMetricSource{
+			MetricName:     "m1",
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"k": "v1"}},
+		},
+	}
+	m2 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ExternalMetricSourceType,
+		External: &v1alpha1.ExternalMetricSource{
+			MetricName:     "m2",
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"k": "v2"}},
+		},
+	}
+	now := time.Now()
+	var conds []v2beta1.HorizontalPodAutoscalerCondition
+	addCond := func(metric v1alpha1.MetricSpec, builder func(string) v2beta1.HorizontalPodAutoscalerConditionType, dur time.Duration) {
+		if dur <= 0 {
+			return
+		}
+		conds = append(conds, v2beta1.HorizontalPodAutoscalerCondition{
+			Type:               builder(metricConditionKey(metric)),
+			Status:             corev1.ConditionTrue,
+			LastTransitionTime: metav1.Time{Time: now.Add(-dur)},
+		})
+	}
+	addCond(m1, perMetricBelowLowType, opts.m1Below)
+	addCond(m2, perMetricBelowLowType, opts.m2Below)
+	addCond(m1, perMetricAboveHighType, opts.m1Above)
+	addCond(m2, perMetricAboveHighType, opts.m2Above)
+
+	return test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+		Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+			UpscaleForbiddenWindowSeconds:       60,
+			DownscaleForbiddenWindowSeconds:     60,
+			UpscaleDelayAboveWatermarkSeconds:   opts.upscaleDelay,
+			DownscaleDelayBelowWatermarkSeconds: opts.downscaleDelay,
+			MultiMetricsDelayMode:               opts.mode,
+			Metrics:                             []v1alpha1.MetricSpec{m1, m2},
+		},
+		Status: &v1alpha1.WatermarkPodAutoscalerStatus{
+			LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
+			Conditions:    conds,
+		},
+	})
 }
 
 func TestCalculateScaleUpLimit(t *testing.T) {
