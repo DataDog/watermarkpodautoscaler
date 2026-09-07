@@ -3,7 +3,6 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
 // Copyright 2016-2019 Datadog, Inc.
 
-// Package app contains kubectl root command plugin logic.
 package app
 
 import (
@@ -15,8 +14,9 @@ import (
 
 // WatermarkPodAutoscalerOptions provides information required to manage WatermarkPodAutoscaler.
 type WatermarkPodAutoscalerOptions struct {
-	configFlags *genericclioptions.ConfigFlags
 	genericclioptions.IOStreams
+
+	configFlags *genericclioptions.ConfigFlags
 }
 
 // NewWatermarkPodAutoscalerOptions provides an instance of WatermarkPodAutoscalerOptions with default values.

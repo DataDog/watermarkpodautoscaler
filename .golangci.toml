@@ -1,99 +1,101 @@
-[run]
-  deadline = "5m"
-  skip-files = []
-
-[linters-settings]
-
-  [linters-settings.govet]
-    enable = [
-      "shadow"
-    ]
-
-  [linters-settings.gocyclo]
-    min-complexity = 12.0
-
-  [linters-settings.maligned]
-    suggest-new = true
-
-  [linters-settings.goconst]
-    min-len = 3.0
-    min-occurrences = 3.0
-
-  [linters-settings.misspell]
-    locale = "US"
-
-  [linters-settings.errcheck]
-    exclude-functions = [
-      "fmt.Fprint",
-      "fmt.Fprintf"
-    ]
+version = '2'
 
 [linters]
-  enable-all = true
-  disable = [
-    "exhaustruct",
-    "loggercheck",
-    "nonamedreturns",
-    "revive",
-    "lll",
-    "gosec",
-    "dupl",
-    "gocyclo",
-    "gochecknoinits",
-    "gochecknoglobals",
-    "funlen",
-    "gocognit",
-    "cyclop",
-    "wrapcheck",
-    "forcetypeassert",
-    "err113",
-    "testpackage",
-    "wastedassign",
-    "thelper",
-    "paralleltest",
-    "nestif",
-    "exhaustive",
-    "gci",
-    "wsl",
-    "godox",
-    "godot",
-    "nlreturn",
-    "varnamelen",
-    "tagliatelle",
-    "containedctx",
-    "contextcheck",
-    "nilnil",
-    "ireturn",
-    "maintidx",
-    "gocritic",
-    "errchkjson",
-    "gofumpt",
-    "gomoddirectives",
-    "prealloc",
-    "rowserrcheck",
-    "sqlclosecheck",
-    "depguard",
-    "perfsprint",
-    "mnd",
-    "tenv",
-  ]
+default = 'all'
+disable = [
+  'containedctx',
+  'contextcheck',
+  'cyclop',
+  'depguard',
+  'dupl',
+  'err113',
+  'errchkjson',
+  'exhaustive',
+  'exhaustruct',
+  'forcetypeassert',
+  'funcorder',
+  'funlen',
+  'gochecknoglobals',
+  'gochecknoinits',
+  'gocognit',
+  'gocritic',
+  'gocyclo',
+  'goconst',
+  'godot',
+  'godox',
+  'gomoddirectives',
+  'gomodguard',
+  'gosec',
+  'ireturn',
+  'lll',
+  'loggercheck',
+  'maintidx',
+  'mnd',
+  'modernize',
+  'nestif',
+  'nilnil',
+  'nlreturn',
+  'noinlineerr',
+  'nonamedreturns',
+  'paralleltest',
+  'perfsprint',
+  'prealloc',
+  'revive',
+  'rowserrcheck',
+  'sqlclosecheck',
+  'tagliatelle',
+  'testpackage',
+  'thelper',
+  'varnamelen',
+  'wastedassign',
+  'wrapcheck',
+  'wsl',
+  'wsl_v5'
+]
+
+[linters.settings]
+[linters.settings.errcheck]
+exclude-functions = [
+  'fmt.Fprint',
+  'fmt.Fprintf'
+]
+
+[linters.settings.goconst]
+min-len = 3
+min-occurrences = 3
+
+[linters.settings.gocyclo]
+min-complexity = 12
+
+[linters.settings.govet]
+enable = [
+  'shadow'
+]
+
+[linters.settings.misspell]
+locale = 'US'
+
+[linters.exclusions]
+generated = 'lax'
+paths = [
+  'third_party$',
+  'builtin$',
+  'examples$'
+]
 
 [issues]
-  exclude-use-default = false
-  max-per-linter = 0
-  max-same-issues = 0
-  exclude = []
+max-same-issues = 0
 
-  # Exclude the following lint error:
-  # /home/runner/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.11.2/pkg/manager/manager.go:54:2:
-  # Start redeclared (typecheck)
-  [[issues.exclude-rules]]
-    linters = ["typecheck"]
-    text = "Start redeclared"
+[formatters]
+enable = [
+  'gofmt',
+  'goimports'
+]
 
-  # Exclude the following lint error:
-  # /home/runner/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.11.2/pkg/manager/manager.go:87:2:
-  # other declaration of Start (typecheck)
-  [[issues.exclude-rules]]
-    linters = ["typecheck"]
-    text = "other declaration of Start"
+[formatters.exclusions]
+generated = 'lax'
+paths = [
+  'third_party$',
+  'builtin$',
+  'examples$'
+]

@@ -71,7 +71,7 @@ func (h *HeapsterMetricsClient) GetResourceMetric(resource v1.ResourceName, name
 		ProxyGet(h.heapsterScheme, h.heapsterService, h.heapsterPort, metricPath, params).
 		DoRaw(context.TODO())
 	if err != nil {
-		return nil, time.Time{}, fmt.Errorf("failed to get pod resource metrics: %v", err)
+		return nil, time.Time{}, fmt.Errorf("failed to get pod resource metrics: %w", err)
 	}
 
 	klog.V(8).Infof("Heapster metrics result: %s", string(resultRaw))
@@ -79,7 +79,7 @@ func (h *HeapsterMetricsClient) GetResourceMetric(resource v1.ResourceName, name
 	metrics := metricsapi.PodMetricsList{}
 	err = json.Unmarshal(resultRaw, &metrics)
 	if err != nil {
-		return nil, time.Time{}, fmt.Errorf("failed to unmarshal heapster response: %v", err)
+		return nil, time.Time{}, fmt.Errorf("failed to unmarshal heapster response: %w", err)
 	}
 
 	if len(metrics.Items) == 0 {
@@ -93,7 +93,7 @@ func (h *HeapsterMetricsClient) GetResourceMetric(resource v1.ResourceName, name
 		missing := len(m.Containers) == 0
 		for _, c := range m.Containers {
 			if container == "" || container == c.Name {
-				resValue, found := c.Usage[v1.ResourceName(resource)]
+				resValue, found := c.Usage[resource]
 				if !found {
 					missing = true
 					klog.V(2).Infof("missing resource metric %v for container %s in pod %s/%s", resource, c.Name, namespace, m.Name)
@@ -107,7 +107,7 @@ func (h *HeapsterMetricsClient) GetResourceMetric(resource v1.ResourceName, name
 			res[m.Name] = PodMetric{
 				Timestamp: m.Timestamp.Time,
 				Window:    m.Window.Duration,
-				Value:     int64(podSum),
+				Value:     podSum,
 			}
 		}
 	}
@@ -120,7 +120,7 @@ func (h *HeapsterMetricsClient) GetResourceMetric(resource v1.ResourceName, name
 func (h *HeapsterMetricsClient) GetRawMetric(metricName string, namespace string, selector labels.Selector, metricSelector labels.Selector) (PodMetricsInfo, time.Time, error) {
 	podList, err := h.podsGetter.Pods(namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: selector.String()})
 	if err != nil {
-		return nil, time.Time{}, fmt.Errorf("failed to get pod list while fetching metrics: %v", err)
+		return nil, time.Time{}, fmt.Errorf("failed to get pod list while fetching metrics: %w", err)
 	}
 
 	if len(podList.Items) == 0 {
@@ -144,13 +144,13 @@ func (h *HeapsterMetricsClient) GetRawMetric(metricName string, namespace string
 		ProxyGet(h.heapsterScheme, h.heapsterService, h.heapsterPort, metricPath, map[string]string{"start": startTime.Format(time.RFC3339)}).
 		DoRaw(context.TODO())
 	if err != nil {
-		return nil, time.Time{}, fmt.Errorf("failed to get pod metrics: %v", err)
+		return nil, time.Time{}, fmt.Errorf("failed to get pod metrics: %w", err)
 	}
 
 	var metrics heapster.MetricResultList
 	err = json.Unmarshal(resultRaw, &metrics)
 	if err != nil {
-		return nil, time.Time{}, fmt.Errorf("failed to unmarshal heapster response: %v", err)
+		return nil, time.Time{}, fmt.Errorf("failed to unmarshal heapster response: %w", err)
 	}
 
 	klog.V(4).Infof("Heapster metrics result: %s", string(resultRaw))
@@ -170,7 +170,7 @@ func (h *HeapsterMetricsClient) GetRawMetric(metricName string, namespace string
 			res[podNames[i]] = PodMetric{
 				Timestamp: podTimestamp,
 				Window:    heapsterDefaultMetricWindow,
-				Value:     int64(val),
+				Value:     val,
 			}
 
 			if timestamp == nil || podTimestamp.Before(*timestamp) {

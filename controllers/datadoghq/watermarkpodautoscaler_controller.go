@@ -202,7 +202,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		return reconcile.Result{Requeue: true}, nil
 	}
 	if err = datadoghqv1alpha1.CheckWPAValidity(instance); err != nil {
-		log.Info("Got an invalid WPA spec", "Instance", request.NamespacedName.String(), "error", err)
+		log.Info("Got an invalid WPA spec", "Instance", request.String(), "error", err)
 		// If the WPA spec is incorrect (most likely, in "metrics" section) stop processing it
 		// When the spec is updated, the wpa will be re-added to the reconcile queue
 		r.eventRecorder.Event(instance, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedSpecCheck, err.Error())
@@ -1122,11 +1122,11 @@ func initializePodInformer(clientConfig *rest.Config, stop chan struct{}) lister
 
 // GetLogAttrsFromWpa returns a slice of all key/value pairs specified in the WPA log attributes annotation json.
 func GetLogAttrsFromWpa(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) ([]interface{}, error) {
-	if wpa.ObjectMeta.Annotations == nil {
+	if wpa.Annotations == nil {
 		return nil, nil
 	}
 
-	customAttrsStr, found := wpa.ObjectMeta.Annotations[logAttributesAnnotationKey]
+	customAttrsStr, found := wpa.Annotations[logAttributesAnnotationKey]
 	if !found {
 		return nil, nil
 	}

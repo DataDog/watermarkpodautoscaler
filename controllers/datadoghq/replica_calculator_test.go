@@ -3010,7 +3010,7 @@ func TestGroupPods(t *testing.T) {
 			readyPods, ignoredPods := groupPods(logf.Log.WithName(tc.name), tc.pods, tc.targetName, tc.metrics, tc.resource, time.Duration(readinessDelay)*time.Second, false)
 			readyPodCount := len(readyPods)
 			assert.Equal(t, tc.expectReadyPodCount, readyPodCount, "%s got readyPodCount %d, expected %d", tc.name, readyPodCount, tc.expectReadyPodCount)
-			assert.EqualValues(t, tc.expectIgnoredPods, ignoredPods, "%s got unreadyPods %v, expected %v", tc.name, ignoredPods, tc.expectIgnoredPods)
+			assert.Equal(t, tc.expectIgnoredPods, ignoredPods, "%s got unreadyPods %v, expected %v", tc.name, ignoredPods, tc.expectIgnoredPods)
 		})
 	}
 }
@@ -3343,7 +3343,7 @@ func TestGetPodCondition(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			index, podCondition := getPodCondition(tc.status, tc.conditionType)
 			assert.Equal(t, index, tc.expectIndex, "%s got index %d, expected %d", tc.name, index, tc.expectIndex)
-			assert.EqualValues(t, podCondition, tc.expectPodCondition, "%s got podCondition %v, expected %v", tc.name, podCondition, tc.expectPodCondition)
+			assert.Equal(t, podCondition, tc.expectPodCondition, "%s got podCondition %v, expected %v", tc.name, podCondition, tc.expectPodCondition)
 		})
 	}
 }
