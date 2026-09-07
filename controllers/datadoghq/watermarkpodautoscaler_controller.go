@@ -949,12 +949,21 @@ func normalizeDesiredReplicas(logger logr.Logger, wpa *datadoghqv1alpha1.Waterma
 func convertDesiredReplicasWithRules(logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, desiredReplicas, wpaMinReplicas, wpaMaxReplicas int32, readyReplicas int32) (int32, string, string) {
 	var minimumAllowedReplicas int32
 	var maximumAllowedReplicas int32
+	var normalizedReplicas int32
 	var possibleLimitingCondition string
 	var possibleLimitingReason string
 
+	// Track the capping decisions so that both the downscale_capping and
+	// upscale_capping restricted_scaling gauges are refreshed on every
+	// reconcile. Previously these gauges were only updated on the specific
+	// branch that computed them, so a gauge set to 1 during one reconcile could
+	// stay "stuck" at 1 on subsequent reconciles that no longer capped in that
+	// direction (see CASCL-1709). The function funnels every path through a
+	// single exit so both gauges are always refreshed before returning.
+	downscaleCapping := false
+	upscaleCapping := false
+
 	scaleDownLimit := calculateScaleDownLimit(wpa, currentReplicas)
-	wpaLabels := getPrometheusLabels(wpa)
-	wpaLabels[reasonPromLabel] = "downscale_capping"
 
 	// Compute the maximum and minimum number of replicas we can have
 	switch {
@@ -962,7 +971,7 @@ func convertDesiredReplicasWithRules(logger logr.Logger, wpa *datadoghqv1alpha1.
 		minimumAllowedReplicas = 1
 	case desiredReplicas < scaleDownLimit:
 		minimumAllowedReplicas = int32(math.Max(float64(scaleDownLimit), float64(wpaMinReplicas)))
-		restrictedScaling.With(wpaLabels).Set(1)
+		downscaleCapping = true
 		possibleLimitingCondition = "ScaleDownLimit"
 		possibleLimitingReason = "the desired replica count is decreasing faster than the maximum scale rate"
 		logger.Info("Downscaling rate higher than limit set by `scaleDownLimitFactor`, capping the maximum downscale to 'minimumAllowedReplicas'", "scaleDownLimitFactor", fmt.Sprintf("%.1f", float64(wpa.Spec.ScaleDownLimitFactor.MilliValue()/1000)), "wpaMinReplicas", wpaMinReplicas, "minimumAllowedReplicas", minimumAllowedReplicas)
@@ -972,41 +981,49 @@ func convertDesiredReplicasWithRules(logger logr.Logger, wpa *datadoghqv1alpha1.
 		}
 	case desiredReplicas >= scaleDownLimit:
 		minimumAllowedReplicas = wpaMinReplicas
-		restrictedScaling.With(wpaLabels).Set(0)
 		possibleLimitingCondition = "TooFewReplicas"
 		possibleLimitingReason = "the desired replica count is below the minimum replica count"
 	}
 
 	if desiredReplicas < minimumAllowedReplicas {
-		return minimumAllowedReplicas, possibleLimitingCondition, possibleLimitingReason
-	}
-
-	scaleUpLimit := calculateScaleUpLimit(wpa, currentReplicas)
-
-	if desiredReplicas > scaleUpLimit {
-		maximumAllowedReplicas = int32(math.Min(float64(scaleUpLimit), float64(wpaMaxReplicas)))
-		wpaLabels[reasonPromLabel] = upscaleCappingPromLabelVal
-		restrictedScaling.With(wpaLabels).Set(1)
-		logger.Info("Upscaling rate higher than limit set by 'ScaleUpLimitFactor', capping the maximum upscale to 'maximumAllowedReplicas'", "scaleUpLimitFactor", fmt.Sprintf("%.1f", float64(wpa.Spec.ScaleUpLimitFactor.MilliValue()/1000)), "wpaMaxReplicas", wpaMaxReplicas, "maximumAllowedReplicas", maximumAllowedReplicas)
-		possibleLimitingCondition = "ScaleUpLimit"
-		possibleLimitingReason = "the desired replica count is increasing faster than the maximum scale rate"
+		normalizedReplicas = minimumAllowedReplicas
 	} else {
-		maximumAllowedReplicas = wpaMaxReplicas
-		restrictedScaling.With(wpaLabels).Set(0)
-		possibleLimitingCondition = "TooManyReplicas"
-		possibleLimitingReason = "the desired replica count is above the maximum replica count"
+		scaleUpLimit := calculateScaleUpLimit(wpa, currentReplicas)
+
+		if desiredReplicas > scaleUpLimit {
+			maximumAllowedReplicas = int32(math.Min(float64(scaleUpLimit), float64(wpaMaxReplicas)))
+			upscaleCapping = true
+			logger.Info("Upscaling rate higher than limit set by 'ScaleUpLimitFactor', capping the maximum upscale to 'maximumAllowedReplicas'", "scaleUpLimitFactor", fmt.Sprintf("%.1f", float64(wpa.Spec.ScaleUpLimitFactor.MilliValue()/1000)), "wpaMaxReplicas", wpaMaxReplicas, "maximumAllowedReplicas", maximumAllowedReplicas)
+			possibleLimitingCondition = "ScaleUpLimit"
+			possibleLimitingReason = "the desired replica count is increasing faster than the maximum scale rate"
+		} else {
+			maximumAllowedReplicas = wpaMaxReplicas
+			possibleLimitingCondition = "TooManyReplicas"
+			possibleLimitingReason = "the desired replica count is above the maximum replica count"
+		}
+
+		// make sure the desiredReplicas is between the allowed boundaries.
+		if desiredReplicas > maximumAllowedReplicas {
+			logger.Info("Returning replicas, condition and reason", "replicas", maximumAllowedReplicas, "condition", possibleLimitingCondition, reasonPromLabel, possibleLimitingReason)
+			normalizedReplicas = maximumAllowedReplicas
+		} else {
+			possibleLimitingCondition = "DesiredWithinRange"
+			possibleLimitingReason = desiredCountAcceptable
+			normalizedReplicas = desiredReplicas
+		}
 	}
 
-	// make sure the desiredReplicas is between the allowed boundaries.
-	if desiredReplicas > maximumAllowedReplicas {
-		logger.Info("Returning replicas, condition and reason", "replicas", maximumAllowedReplicas, "condition", possibleLimitingCondition, reasonPromLabel, possibleLimitingReason)
-		return maximumAllowedReplicas, possibleLimitingCondition, possibleLimitingReason
-	}
+	// Refresh both restricted_scaling gauges before returning so a stale value
+	// cannot remain "stuck" across reconciles (see CASCL-1709).
+	downscaleLabels := getPrometheusLabels(wpa)
+	downscaleLabels[reasonPromLabel] = downscaleCappingPromLabelVal
+	restrictedScaling.With(downscaleLabels).Set(boolToFloat64(downscaleCapping))
 
-	possibleLimitingCondition = "DesiredWithinRange"
-	possibleLimitingReason = desiredCountAcceptable
+	upscaleLabels := getPrometheusLabels(wpa)
+	upscaleLabels[reasonPromLabel] = upscaleCappingPromLabelVal
+	restrictedScaling.With(upscaleLabels).Set(boolToFloat64(upscaleCapping))
 
-	return desiredReplicas, possibleLimitingCondition, possibleLimitingReason
+	return normalizedReplicas, possibleLimitingCondition, possibleLimitingReason
 }
 
 // Scaleup limit is used to maximize the upscaling rate.
