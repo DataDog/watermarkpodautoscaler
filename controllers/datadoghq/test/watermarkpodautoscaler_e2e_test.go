@@ -23,6 +23,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/discovery"
 	apiregistrationv1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 
 	dynclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -245,6 +246,14 @@ var _ = Describe("WatermarkPodAutoscaler Controller", func() {
 			Expect(createWrapper(ctx, metricConfigMap)).Should(Succeed())
 			info("metricConfigMap created: %s/%s", namespace, configMapName)
 
+			// DIAGNOSTIC: build a discovery client so we can log, on every poll below, what
+			// kube-apiserver's own aggregated discovery currently reports as being served under
+			// external.metrics.k8s.io/v1beta1. This tells us whether "metric_name" is missing from
+			// the API server's cached resource list for that group/version (a discovery-cache
+			// staleness issue) versus some other failure mode entirely.
+			discoveryClient, discErr := discovery.NewDiscoveryClientForConfig(cfg)
+			Expect(discErr).Should(Succeed())
+
 			// The APIService reporting Available (waited for in objectsBeforeEachFunc) doesn't mean
 			// the front-door apiserver's own discovery/routing cache for it has caught up yet, so the
 			// controller's first couple of reconciles can still see "the server could not find the
@@ -260,6 +269,19 @@ var _ = Describe("WatermarkPodAutoscaler Controller", func() {
 					fmt.Fprint(GinkgoWriter, err)
 					return false
 				}
+
+				// DIAGNOSTIC: log what the aggregated discovery for external.metrics.k8s.io/v1beta1
+				// currently reports, so a failure here shows whether "metric_name" ever appears.
+				if resList, err := discoveryClient.ServerResourcesForGroupVersion("external.metrics.k8s.io/v1beta1"); err != nil {
+					warn("discovery for external.metrics.k8s.io/v1beta1 failed: %v", err)
+				} else {
+					names := make([]string, 0, len(resList.APIResources))
+					for _, r := range resList.APIResources {
+						names = append(names, r.Name)
+					}
+					info("discovery for external.metrics.k8s.io/v1beta1 reports resources: %v", names)
+				}
+
 				for _, condition := range wpa.Status.Conditions {
 					if condition.Type == autoscalingv2.ScalingActive && condition.Status == corev1.ConditionTrue {
 						return true
