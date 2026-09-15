@@ -18,11 +18,12 @@ spec:
       serviceAccountName: custom-metrics-apiserver
       containers:
       - name: custom-metrics-apiserver
-        image: docker.io/cedriclamoriniere/fake-custom-metrics-server:latest
+        image: docker.io/cedriclamoriniere/fake-custom-metrics-server:1.36.4-v1
         imagePullPolicy: IfNotPresent
         args:
         - /adapter
         - --secure-port=6443
+        - --cert-dir=/var/run/serving-cert
         - --logtostderr=true
         - --v=10
         ports:
@@ -33,10 +34,10 @@ spec:
         volumeMounts:
         - mountPath: /tmp
           name: temp-vol
-        - mountPath: /apiserver.local.config
-          name: local-certs
+        - mountPath: /var/run/serving-cert
+          name: volume-serving-cert
       volumes:
       - name: temp-vol
         emptyDir: {}
-      - name: local-certs
+      - name: volume-serving-cert
         emptyDir: {}
