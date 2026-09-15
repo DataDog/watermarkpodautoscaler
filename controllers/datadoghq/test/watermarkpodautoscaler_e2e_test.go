@@ -41,10 +41,10 @@ const (
 	timeout  = 20 * time.Second
 	interval = 2 * time.Second
 
-	// apiServiceAvailableTimeout gives the aggregation layer more time than `timeout` to mark the
-	// fake external metrics APIService as Available, since that can lag behind the backing
-	// Deployment being Available.
-	apiServiceAvailableTimeout = 60 * time.Second
+	// metricsAPIReadyTimeout gives the aggregation layer more time than `timeout` for the fake
+	// external metrics APIService to become Available and routable, since both can lag well
+	// behind the backing Deployment being Available.
+	metricsAPIReadyTimeout = 60 * time.Second
 
 	Reset  = "\033[0m"
 	Red    = "\033[31m"
@@ -134,7 +134,7 @@ func objectsBeforeEachFunc() {
 			}
 		}
 		return false
-	}, apiServiceAvailableTimeout, interval).Should(BeTrue())
+	}, metricsAPIReadyTimeout, interval).Should(BeTrue())
 }
 
 func cleanUpAfter() {
@@ -245,6 +245,10 @@ var _ = Describe("WatermarkPodAutoscaler Controller", func() {
 			Expect(createWrapper(ctx, metricConfigMap)).Should(Succeed())
 			info("metricConfigMap created: %s/%s", namespace, configMapName)
 
+			// The APIService reporting Available (waited for in objectsBeforeEachFunc) doesn't mean
+			// the front-door apiserver's own discovery/routing cache for it has caught up yet, so the
+			// controller's first couple of reconciles can still see "the server could not find the
+			// requested resource" here. Give this its own longer timeout rather than the shared one.
 			Eventually(func() bool {
 				wpa := &datadoghqv1alpha1.WatermarkPodAutoscaler{}
 				objKey := dynclient.ObjectKey{
@@ -262,7 +266,7 @@ var _ = Describe("WatermarkPodAutoscaler Controller", func() {
 					}
 				}
 				return false
-			}, timeout, interval).Should(BeTrue())
+			}, metricsAPIReadyTimeout, interval).Should(BeTrue())
 
 			Eventually(func() bool {
 				wpa := &datadoghqv1alpha1.WatermarkPodAutoscaler{}
