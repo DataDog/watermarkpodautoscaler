@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/kubernetes"
 	apiregistrationv1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 
 	dynclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -246,13 +247,16 @@ var _ = Describe("WatermarkPodAutoscaler Controller", func() {
 			Expect(createWrapper(ctx, metricConfigMap)).Should(Succeed())
 			info("metricConfigMap created: %s/%s", namespace, configMapName)
 
-			// DIAGNOSTIC: build a discovery client so we can log, on every poll below, what
-			// kube-apiserver's own aggregated discovery currently reports as being served under
-			// external.metrics.k8s.io/v1beta1. This tells us whether "metric_name" is missing from
-			// the API server's cached resource list for that group/version (a discovery-cache
-			// staleness issue) versus some other failure mode entirely.
+			// DIAGNOSTIC: build a discovery client and a typed clientset so we can log, on every
+			// poll below, what kube-apiserver's own aggregated discovery currently reports for
+			// external.metrics.k8s.io/v1beta1, the live APIService status, and the fake
+			// metrics-server pod's own status/logs. Together these should tell us whether the
+			// backend pod is actually healthy and serving, or whether this is purely an
+			// apiserver-side aggregation/discovery problem.
 			discoveryClient, discErr := discovery.NewDiscoveryClientForConfig(cfg)
 			Expect(discErr).Should(Succeed())
+			clientset, clientsetErr := kubernetes.NewForConfig(cfg)
+			Expect(clientsetErr).Should(Succeed())
 
 			// The APIService reporting Available (waited for in objectsBeforeEachFunc) doesn't mean
 			// the front-door apiserver's own discovery/routing cache for it has caught up yet, so the
@@ -280,6 +284,33 @@ var _ = Describe("WatermarkPodAutoscaler Controller", func() {
 						names = append(names, r.Name)
 					}
 					info("discovery for external.metrics.k8s.io/v1beta1 reports resources: %v", names)
+				}
+
+				// DIAGNOSTIC: log the live APIService status (not just the one-time check in
+				// objectsBeforeEachFunc), to catch flapping between Available and not.
+				liveAPIService := &apiregistrationv1.APIService{}
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: "v1beta1.external.metrics.k8s.io"}, liveAPIService); err != nil {
+					warn("failed to get live APIService status: %v", err)
+				} else {
+					info("live APIService v1beta1.external.metrics.k8s.io conditions: %+v", liveAPIService.Status.Conditions)
+				}
+
+				// DIAGNOSTIC: log the fake metrics-server pod's own status and recent logs, to
+				// check whether the backend itself is healthy and actually serving.
+				podList, podErr := clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=custom-metrics-apiserver"})
+				if podErr != nil {
+					warn("failed to list custom-metrics-apiserver pods: %v", podErr)
+				} else {
+					for _, pod := range podList.Items {
+						info("custom-metrics-apiserver pod %s phase=%s containerStatuses=%+v", pod.Name, pod.Status.Phase, pod.Status.ContainerStatuses)
+						tailLines := int64(40)
+						logBytes, logErr := clientset.CoreV1().Pods(namespace).GetLogs(pod.Name, &corev1.PodLogOptions{TailLines: &tailLines}).DoRaw(ctx)
+						if logErr != nil {
+							warn("failed to get logs for pod %s: %v", pod.Name, logErr)
+						} else {
+							info("custom-metrics-apiserver pod %s logs:\n%s", pod.Name, string(logBytes))
+						}
+					}
 				}
 
 				for _, condition := range wpa.Status.Conditions {
