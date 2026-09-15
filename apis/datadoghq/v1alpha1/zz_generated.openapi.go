@@ -19,9 +19,12 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 	return map[string]common.OpenAPIDefinition{
 		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.CrossVersionObjectReference":  schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_CrossVersionObjectReference(ref),
 		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.ExternalMetricSource":         schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_ExternalMetricSource(ref),
+		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.ExternalMetricStatus":         schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_ExternalMetricStatus(ref),
 		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.MetricSpec":                   schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_MetricSpec(ref),
+		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.MetricStatus":                 schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_MetricStatus(ref),
 		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.RecommenderSpec":              schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_RecommenderSpec(ref),
 		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.ResourceMetricSource":         schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_ResourceMetricSource(ref),
+		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.ResourceMetricStatus":         schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_ResourceMetricStatus(ref),
 		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.TLSConfig":                    schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_TLSConfig(ref),
 		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.WatermarkPodAutoscaler":       schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscaler(ref),
 		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.WatermarkPodAutoscalerSpec":   schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscalerSpec(ref),
@@ -106,6 +109,48 @@ func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_ExternalMetricSource(
 	}
 }
 
+func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_ExternalMetricStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ExternalMetricStatus indicates the current value of a global metric not associated with any Kubernetes object.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"metricName": {
+						SchemaProps: spec.SchemaProps{
+							Description: "metricName is the name of a metric used for autoscaling in metric system.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metricSelector": {
+						SchemaProps: spec.SchemaProps{
+							Description: "metricSelector is used to identify a specific time series within a given metric.",
+							Ref:         ref("k8s.io/apimachinery/pkg/apis/meta/v1.LabelSelector"),
+						},
+					},
+					"currentValue": {
+						SchemaProps: spec.SchemaProps{
+							Description: "currentValue is the current value of the metric (as a quantity)",
+							Ref:         ref("k8s.io/apimachinery/pkg/api/resource.Quantity"),
+						},
+					},
+					"currentAverageValue": {
+						SchemaProps: spec.SchemaProps{
+							Description: "currentAverageValue is the current value of metric averaged over autoscaled pods.",
+							Ref:         ref("k8s.io/apimachinery/pkg/api/resource.Quantity"),
+						},
+					},
+				},
+				Required: []string{"metricName", "currentValue"},
+			},
+		},
+		Dependencies: []string{
+			"k8s.io/apimachinery/pkg/api/resource.Quantity", "k8s.io/apimachinery/pkg/apis/meta/v1.LabelSelector"},
+	}
+}
+
 func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_MetricSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -139,6 +184,42 @@ func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_MetricSpec(ref common
 		},
 		Dependencies: []string{
 			"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.ExternalMetricSource", "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.ResourceMetricSource"},
+	}
+}
+
+func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_MetricStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "MetricStatus describes the last-read state of a single metric.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"type": {
+						SchemaProps: spec.SchemaProps{
+							Description: "type is the type of metric source this status was read from.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"resource": {
+						SchemaProps: spec.SchemaProps{
+							Description: "resource refers to a resource metric known to Kubernetes describing each pod in the current scale target (e.g. CPU or memory).",
+							Ref:         ref("github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.ResourceMetricStatus"),
+						},
+					},
+					"external": {
+						SchemaProps: spec.SchemaProps{
+							Description: "external refers to a global metric that is not associated with any Kubernetes object.",
+							Ref:         ref("github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.ExternalMetricStatus"),
+						},
+					},
+				},
+				Required: []string{"type"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.ExternalMetricStatus", "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.ResourceMetricStatus"},
 	}
 }
 
@@ -243,6 +324,43 @@ func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_ResourceMetricSource(
 		},
 		Dependencies: []string{
 			"k8s.io/apimachinery/pkg/api/resource.Quantity", "k8s.io/apimachinery/pkg/apis/meta/v1.LabelSelector"},
+	}
+}
+
+func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_ResourceMetricStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ResourceMetricStatus indicates the current value of a resource metric known to Kubernetes, as specified in requests and limits, describing each pod in the current scale target.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Description: "name is the name of the resource in question.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"currentAverageUtilization": {
+						SchemaProps: spec.SchemaProps{
+							Description: "currentAverageUtilization is the current value of the average of the resource metric across all relevant pods, represented as a percentage of the requested value of the resource for the pods.",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+					"currentAverageValue": {
+						SchemaProps: spec.SchemaProps{
+							Description: "currentAverageValue is the current value of the average of the resource metric across all relevant pods, as a raw value.",
+							Ref:         ref("k8s.io/apimachinery/pkg/api/resource.Quantity"),
+						},
+					},
+				},
+				Required: []string{"name", "currentAverageValue"},
+			},
+		},
+		Dependencies: []string{
+			"k8s.io/apimachinery/pkg/api/resource.Quantity"},
 	}
 }
 
@@ -556,7 +674,7 @@ func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscale
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("k8s.io/api/autoscaling/v2beta1.MetricStatus"),
+										Ref:     ref("github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.MetricStatus"),
 									},
 								},
 							},
@@ -574,7 +692,7 @@ func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscale
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("k8s.io/api/autoscaling/v2beta1.HorizontalPodAutoscalerCondition"),
+										Ref:     ref("k8s.io/api/autoscaling/v2.HorizontalPodAutoscalerCondition"),
 									},
 								},
 							},
@@ -599,6 +717,6 @@ func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscale
 			},
 		},
 		Dependencies: []string{
-			"k8s.io/api/autoscaling/v2beta1.HorizontalPodAutoscalerCondition", "k8s.io/api/autoscaling/v2beta1.MetricStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.Time"},
+			"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.MetricStatus", "k8s.io/api/autoscaling/v2.HorizontalPodAutoscalerCondition", "k8s.io/apimachinery/pkg/apis/meta/v1.Time"},
 	}
 }

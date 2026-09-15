@@ -20,7 +20,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
-	autoscalingv2 "k8s.io/api/autoscaling/v2beta1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -475,7 +475,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 		currentScale.Spec.Replicas = desiredReplicas
 		_, err = r.scaleClient.Scales(wpa.Namespace).Update(ctx, targetGR, currentScale, metav1.UpdateOptions{})
 		if err != nil {
-			r.eventRecorder.Eventf(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedScale, fmt.Sprintf("New size: %d; reason: %s; error: %v", desiredReplicas, rescaleReason, err.Error()))
+			r.eventRecorder.Eventf(wpa, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedScale, "New size: %d; reason: %s; error: %v", desiredReplicas, rescaleReason, err.Error())
 			setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ConditionReasonFailedScale, "the WPA controller was unable to update the target scale: %v", err)
 			r.setCurrentReplicasInStatus(wpa, currentReplicas)
 			if err := r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa); err != nil {
@@ -486,7 +486,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 			return nil
 		}
 		setCondition(wpa, autoscalingv2.AbleToScale, corev1.ConditionTrue, datadoghqv1alpha1.ConditionReasonSuccessfulScale, "the WPA controller was able to update the target scale to %d", desiredReplicas)
-		r.eventRecorder.Eventf(wpa, corev1.EventTypeNormal, datadoghqv1alpha1.ReasonScaling, fmt.Sprintf("New size: %d; reason: %s", desiredReplicas, rescaleReason))
+		r.eventRecorder.Eventf(wpa, corev1.EventTypeNormal, datadoghqv1alpha1.ReasonScaling, "New size: %d; reason: %s", desiredReplicas, rescaleReason)
 
 		logger.Info("Successful rescale", "currentReplicas", currentReplicas, "desiredReplicas", desiredReplicas, "rescaleReason", rescaleReason)
 		if specReplicas < desiredReplicas {
@@ -498,7 +498,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 		if r.Options.SkipNotScalingEvents {
 			setCondition(wpa, autoscalingv2.ScalingActive, corev1.ConditionTrue, datadoghqv1alpha1.ConditionReasonNotScaling, "the WPA was able to successfully calculate a replica count and decided not to scale %s to %d (last scale time was %v )", reference, desiredReplicas, wpa.Status.LastScaleTime)
 		} else {
-			r.eventRecorder.Eventf(wpa, corev1.EventTypeNormal, datadoghqv1alpha1.ConditionReasonNotScaling, fmt.Sprintf("Decided not to scale %s to %d (last scale time was %v )", reference, desiredReplicas, wpa.Status.LastScaleTime))
+			r.eventRecorder.Eventf(wpa, corev1.EventTypeNormal, datadoghqv1alpha1.ConditionReasonNotScaling, "Decided not to scale %s to %d (last scale time was %v )", reference, desiredReplicas, wpa.Status.LastScaleTime)
 		}
 
 		desiredReplicas = specReplicas
@@ -646,7 +646,7 @@ func (r *WatermarkPodAutoscalerReconciler) updateWPAStatus(ctx context.Context, 
 
 // setStatus recreates the status of the given WPA, updating the current and
 // desired replicas, as well as the metric statuses
-func setStatus(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, desiredReplicas int32, metricStatuses []autoscalingv2.MetricStatus, rescale bool) {
+func setStatus(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, desiredReplicas int32, metricStatuses []datadoghqv1alpha1.MetricStatus, rescale bool) {
 	wpa.Status.CurrentReplicas = currentReplicas
 	wpa.Status.DesiredReplicas = desiredReplicas
 	wpa.Status.CurrentMetrics = metricStatuses
@@ -658,7 +658,7 @@ func setStatus(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, currentReplicas, d
 	}
 }
 
-func (r *WatermarkPodAutoscalerReconciler) computeReplicas(ctx context.Context, logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, readyReplicas int32, stableRegime bool, err error) {
+func (r *WatermarkPodAutoscalerReconciler) computeReplicas(ctx context.Context, logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []datadoghqv1alpha1.MetricStatus, timestamp time.Time, readyReplicas int32, stableRegime bool, err error) {
 	wpaLabels := getPrometheusLabels(wpa)
 	minReplicas := float64(0)
 	if wpa.Spec.MinReplicas != nil {
@@ -702,8 +702,8 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicas(ctx context.Context, 
 	return replicas, metric, statuses, timestamp, readyReplicas, stableRegime, err
 }
 
-func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(ctx context.Context, logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, readyReplicas int32, isAbove, isBelow bool, err error) {
-	statuses = make([]autoscalingv2.MetricStatus, len(wpa.Spec.Metrics))
+func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(ctx context.Context, logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []datadoghqv1alpha1.MetricStatus, timestamp time.Time, readyReplicas int32, isAbove, isBelow bool, err error) {
+	statuses = make([]datadoghqv1alpha1.MetricStatus, len(wpa.Spec.Metrics))
 
 	for i, metricSpec := range wpa.Spec.Metrics {
 		if metricSpec.External == nil && metricSpec.Resource == nil {
@@ -745,9 +745,9 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(ctx context
 				highwmV2.With(wpaLabels).Set(float64(metricSpec.External.HighWatermark.MilliValue()))
 				replicaProposal.With(wpaLabels).Set(float64(replicaCountProposal))
 
-				statuses[i] = autoscalingv2.MetricStatus{
-					Type: autoscalingv2.ExternalMetricSourceType,
-					External: &autoscalingv2.ExternalMetricStatus{
+				statuses[i] = datadoghqv1alpha1.MetricStatus{
+					Type: datadoghqv1alpha1.ExternalMetricSourceType,
+					External: &datadoghqv1alpha1.ExternalMetricStatus{
 						MetricSelector: metricSpec.External.MetricSelector,
 						MetricName:     metricSpec.External.MetricName,
 						CurrentValue:   *resource.NewMilliQuantity(utilizationProposal, resource.DecimalSI),
@@ -786,9 +786,9 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(ctx context
 				highwmV2.With(wpaLabels).Set(float64(metricSpec.Resource.HighWatermark.MilliValue()))
 				replicaProposal.With(wpaLabels).Set(float64(replicaCountProposal))
 
-				statuses[i] = autoscalingv2.MetricStatus{
-					Type: autoscalingv2.ResourceMetricSourceType,
-					Resource: &autoscalingv2.ResourceMetricStatus{
+				statuses[i] = datadoghqv1alpha1.MetricStatus{
+					Type: datadoghqv1alpha1.ResourceMetricSourceType,
+					Resource: &datadoghqv1alpha1.ResourceMetricStatus{
 						Name:                metricSpec.Resource.Name,
 						CurrentAverageValue: *resource.NewMilliQuantity(utilizationProposal, resource.DecimalSI),
 					},
@@ -815,14 +815,14 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasForMetrics(ctx context
 	return replicas, metric, statuses, timestamp, readyReplicas, isAbove, isBelow, nil
 }
 
-func (r *WatermarkPodAutoscalerReconciler) computeReplicasWithRecommender(ctx context.Context, logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, readyReplicas int32, isAbove, isBelow bool, reason string, err error) {
+func (r *WatermarkPodAutoscalerReconciler) computeReplicasWithRecommender(ctx context.Context, logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale) (replicas int32, metric string, statuses []datadoghqv1alpha1.MetricStatus, timestamp time.Time, readyReplicas int32, isAbove, isBelow bool, reason string, err error) {
 	var recommenderSpec = wpa.Spec.Recommender
 
 	if recommenderSpec == nil {
 		return 0, "", nil, time.Time{}, 0, false, false, "", fmt.Errorf("recommender spec is nil")
 	}
 
-	statuses = make([]autoscalingv2.MetricStatus, 0)
+	statuses = make([]datadoghqv1alpha1.MetricStatus, 0)
 	recommenderName := metricNameForRecommender(&wpa.Spec)
 	wpaLabelsWithMetricName := getPrometheusLabels(wpa)
 	wpaLabelsWithMetricName[metricNamePromLabel] = recommenderName
@@ -841,10 +841,10 @@ func (r *WatermarkPodAutoscalerReconciler) computeReplicasWithRecommender(ctx co
 	highwmV2.With(wpaLabelsWithMetricName).Set(float64(recommenderSpec.HighWatermark.MilliValue()))
 	replicaProposal.With(wpaLabelsWithMetricName).Set(float64(replicaCalculation.replicaCount))
 
-	status := autoscalingv2.MetricStatus{
-		Type: autoscalingv2.ResourceMetricSourceType,
+	status := datadoghqv1alpha1.MetricStatus{
+		Type: datadoghqv1alpha1.ResourceMetricSourceType,
 		// This is not exactly an external metric, but this will be used to display the recommendation in the CLI.
-		External: &autoscalingv2.ExternalMetricStatus{
+		External: &datadoghqv1alpha1.ExternalMetricStatus{
 			MetricSelector: &metav1.LabelSelector{},
 			MetricName:     recommenderName,
 			CurrentValue:   *resource.NewMilliQuantity(replicaCalculation.utilization, resource.DecimalSI),
@@ -1096,7 +1096,7 @@ func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, wo
 	r.replicaCalc = replicaCalc
 	r.scaleClient = scaleClient
 	r.restMapper = restMapper
-	r.eventRecorder = mgr.GetEventRecorderFor("wpa_controller")
+	r.eventRecorder = mgr.GetEventRecorderFor("wpa_controller") //nolint:staticcheck // migrating to the new events API is a separate concern from this k8s.io/api bump
 	r.syncPeriod = defaultSyncPeriod
 
 	return nil

@@ -21,7 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
-	"k8s.io/api/autoscaling/v2beta1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/meta/testrestmapper"
@@ -180,9 +180,9 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 					return err
 				}
 
-				cond := &v2beta1.HorizontalPodAutoscalerCondition{
+				cond := &autoscalingv2.HorizontalPodAutoscalerCondition{
 					Reason: "FailedSpecCheck",
-					Type:   v2beta1.AbleToScale,
+					Type:   autoscalingv2.AbleToScale,
 				}
 				if wpa.Status.Conditions[0].Reason != cond.Reason || wpa.Status.Conditions[0].Type != cond.Type {
 					return fmt.Errorf("Unexpected Condition for incorrectly configured WPA")
@@ -227,9 +227,9 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 					return err
 				}
 
-				cond := &v2beta1.HorizontalPodAutoscalerCondition{
+				cond := &autoscalingv2.HorizontalPodAutoscalerCondition{
 					Reason: "FailedSpecCheck",
-					Type:   v2beta1.AbleToScale,
+					Type:   autoscalingv2.AbleToScale,
 				}
 				log.Info(fmt.Sprintf("cond is %v", wpa.Status.Conditions))
 				if wpa.Status.Conditions[0].Reason != cond.Reason || wpa.Status.Conditions[0].Type != cond.Type {
@@ -285,7 +285,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				cond := &v2beta1.HorizontalPodAutoscalerCondition{
+				cond := &autoscalingv2.HorizontalPodAutoscalerCondition{
 					Message: "Invalid WPA specification: low WaterMark of External metric deadbeef{map[label:value]} has to be strictly inferior to the High Watermark",
 				}
 				if wpa.Status.Conditions[0].Message != cond.Message {
@@ -327,7 +327,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				cond := &v2beta1.HorizontalPodAutoscalerCondition{
+				cond := &autoscalingv2.HorizontalPodAutoscalerCondition{
 					Message: fmt.Sprintf("monitor %s/%s not found, blocking the WPA from proceeding", testingNamespace, testingWPAName),
 				}
 				if wpa.Status.Conditions[0].Message != cond.Message {
@@ -379,7 +379,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				cond := &v2beta1.HorizontalPodAutoscalerCondition{
+				cond := &autoscalingv2.HorizontalPodAutoscalerCondition{
 					Message: fmt.Sprintf("monitor %s/%s is in a OK state, allowing the WPA from proceeding", testingNamespace, testingWPAName),
 				}
 				assert.Len(t, wpa.Status.Conditions, 7)
@@ -565,7 +565,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				if wpa.Status.DesiredReplicas != desired {
 					return fmt.Errorf("incorrect amount of desired replicas. Expected %d - has %d", desired, wpa.Status.DesiredReplicas)
 				}
-				if wpa.Status.Conditions[1].Type == v2beta1.ScalingActive && wpa.Status.Conditions[1].Status != "False" {
+				if wpa.Status.Conditions[1].Type == autoscalingv2.ScalingActive && wpa.Status.Conditions[1].Status != "False" {
 					return fmt.Errorf("scaling should be disabled")
 				}
 				return nil
@@ -724,7 +724,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 					Labels: map[string]string{"foo-key": "bar-value"},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Now().Add(-30 * time.Second)},
-						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+						Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
 							{
 								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
 								Status:             corev1.ConditionTrue,
@@ -779,12 +779,12 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 						if c.Message != fmt.Sprintf("the WPA controller was able to update the target scale to %d", wpa.Status.DesiredReplicas) {
 							return fmt.Errorf("scaling should occur as we are above the MaxReplicas")
 						}
-					case v2beta1.AbleToScale:
+					case autoscalingv2.AbleToScale:
 						if string(c.Status) != "True" {
 							// TODO we need more granularity on this condition to reflect that we are in not allowed to downscale.
 							return fmt.Errorf("should be able to scale")
 						}
-					case v2beta1.ScalingLimited:
+					case autoscalingv2.ScalingLimited:
 						if c.Message != "the desired replica count is increasing faster than the maximum scale rate" {
 							return fmt.Errorf("scaling incorrectly throttled")
 						}
@@ -835,7 +835,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 					Labels: map[string]string{"foo-key": "bar-value"},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Now().Add(-90 * time.Second)},
-						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+						Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
 							{
 								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
 								Status:             corev1.ConditionFalse,
@@ -887,12 +887,12 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				}
 				for _, c := range wpa.Status.Conditions {
 					switch c.Type {
-					case v2beta1.AbleToScale:
+					case autoscalingv2.AbleToScale:
 						if c.Status != corev1.ConditionTrue {
 							// TODO we need more granularity on this condition to reflect that we are in not allowed to downscale.
 							return fmt.Errorf("should be able to scale")
 						}
-					case v2beta1.ScalingLimited:
+					case autoscalingv2.ScalingLimited:
 						if c.Message != "the desired replica count is decreasing faster than the maximum scale rate" {
 							return fmt.Errorf("scaling incorrectly throttled")
 						}
@@ -943,7 +943,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 					Labels: map[string]string{"foo-key": "bar-value"},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Now().Add(-45 * time.Second)},
-						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+						Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
 							{
 								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
 								Status:             corev1.ConditionTrue,
@@ -1006,7 +1006,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				t.Logf("%#v", wpa.Status.Conditions)
 				for _, c := range wpa.Status.Conditions {
 					switch c.Type {
-					case v2beta1.AbleToScale:
+					case autoscalingv2.AbleToScale:
 						if c.Status != corev1.ConditionTrue {
 							// TODO we need more granularity on this condition to reflect that we are in not allowed to downscale.
 							return fmt.Errorf("should be able to scale")
@@ -1014,7 +1014,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 						if c.Message != "the WPA controller was able to update the target scale to 5" {
 							return fmt.Errorf("did not scale as expected")
 						}
-					case v2beta1.ScalingLimited:
+					case autoscalingv2.ScalingLimited:
 						if c.Message != desiredCountAcceptable {
 							return fmt.Errorf("scaling incorrectly throttled")
 						}
@@ -1059,7 +1059,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 					Labels: map[string]string{"foo-key": "bar-value"},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Now().Add(-45 * time.Second)},
-						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+						Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
 							{
 								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
 								Status:             corev1.ConditionFalse,
@@ -1114,7 +1114,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				t.Logf("%#v", wpa.Status.Conditions)
 				for _, c := range wpa.Status.Conditions {
 					switch c.Type {
-					case v2beta1.AbleToScale:
+					case autoscalingv2.AbleToScale:
 						if c.Status != corev1.ConditionTrue {
 							// TODO we need more granularity on this condition to reflect that we are in not allowed to downscale.
 							return fmt.Errorf("should be able to scale")
@@ -1122,7 +1122,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 						if c.Message != "the WPA controller was able to update the target scale to 4" {
 							return fmt.Errorf("did not scale as expected")
 						}
-					case v2beta1.ScalingLimited:
+					case autoscalingv2.ScalingLimited:
 						if c.Message != desiredCountAcceptable {
 							return fmt.Errorf("scaling incorrectly throttled")
 						}
@@ -1169,7 +1169,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 					Labels: map[string]string{"foo-key": "bar-value"},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Now().Add(-45 * time.Second)},
-						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+						Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
 							{
 								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
 								Status:             corev1.ConditionFalse,
@@ -1224,7 +1224,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				t.Logf("%#v", wpa.Status.Conditions)
 				for _, c := range wpa.Status.Conditions {
 					switch c.Type {
-					case v2beta1.AbleToScale:
+					case autoscalingv2.AbleToScale:
 						if c.Status != corev1.ConditionFalse {
 							// TODO we need more granularity on this condition to reflect that we are in not allowed to downscale.
 							return fmt.Errorf("shouldn't be able to scale")
@@ -1232,7 +1232,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 						if c.Message != "the time since the previous scale is still within both the downscale and upscale forbidden windows" {
 							return fmt.Errorf("did not block scaling as expected")
 						}
-					case v2beta1.ScalingLimited:
+					case autoscalingv2.ScalingLimited:
 						if c.Message != desiredCountAcceptable {
 							return fmt.Errorf("scaling incorrectly throttled")
 						}
@@ -1279,7 +1279,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 					Labels: map[string]string{"foo-key": "bar-value"},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Now().Add(-90 * time.Second)},
-						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+						Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
 							{
 								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
 								Status:             corev1.ConditionFalse, // last evaluated metric is not out of bounds
@@ -1343,7 +1343,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 				t.Logf("%#v", wpa.Status.Conditions)
 				for _, c := range wpa.Status.Conditions {
 					switch c.Type {
-					case v2beta1.AbleToScale:
+					case autoscalingv2.AbleToScale:
 						if c.Status != corev1.ConditionTrue {
 							// TODO we need more granularity on this condition to reflect that we are in not allowed to downscale.
 							return fmt.Errorf("should be able to scale")
@@ -1359,7 +1359,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 						if c.Status != corev1.ConditionFalse {
 							return fmt.Errorf("scaling incorrectly blocked")
 						}
-					case v2beta1.ScalingLimited:
+					case autoscalingv2.ScalingLimited:
 						if c.Message != desiredCountAcceptable {
 							return fmt.Errorf("scaling incorrectly throttled")
 						}
@@ -1475,7 +1475,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 					Labels: map[string]string{"foo-key": "bar-value"},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Now().Add(-120 * time.Second)},
-						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+						Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
 							{
 								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
 								Status:             corev1.ConditionFalse,
@@ -2034,7 +2034,7 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
-						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+						Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
 							{
 								Type:               v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark,
 								Status:             corev1.ConditionTrue,
@@ -2058,7 +2058,7 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
-						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+						Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
 							{
 								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
 								Status:             corev1.ConditionTrue,
@@ -2102,7 +2102,7 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
-						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+						Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
 							{
 								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
 								Status:             corev1.ConditionTrue,
@@ -2127,7 +2127,7 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
-						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+						Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
 							{
 								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
 								Status:             corev1.ConditionTrue,
@@ -2153,7 +2153,7 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
-						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+						Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
 							{
 								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
 								Status:             corev1.ConditionFalse,
@@ -2179,7 +2179,7 @@ func TestReconcileWatermarkPodAutoscaler_shouldScale(t *testing.T) {
 					},
 					Status: &v1alpha1.WatermarkPodAutoscalerStatus{
 						LastScaleTime: &metav1.Time{Time: time.Unix(1232000, 0)},
-						Conditions: []v2beta1.HorizontalPodAutoscalerCondition{
+						Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
 							{
 								Type:               v1alpha1.WatermarkPodAutoscalerStatusAboveHighWatermark,
 								Status:             corev1.ConditionTrue,
@@ -2417,28 +2417,28 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 func TestSetCondition(t *testing.T) {
 	tests := []struct {
 		name              string
-		currentConditions []v2beta1.HorizontalPodAutoscalerCondition
-		newConditionType  v2beta1.HorizontalPodAutoscalerConditionType
-		expectedOrder     []v2beta1.HorizontalPodAutoscalerConditionType
+		currentConditions []autoscalingv2.HorizontalPodAutoscalerCondition
+		newConditionType  autoscalingv2.HorizontalPodAutoscalerConditionType
+		expectedOrder     []autoscalingv2.HorizontalPodAutoscalerConditionType
 	}{
 		{
 			name: "add condition with new type",
-			currentConditions: []v2beta1.HorizontalPodAutoscalerCondition{
+			currentConditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
 				{
-					Type:               v2beta1.ScalingLimited,
+					Type:               autoscalingv2.ScalingLimited,
 					Status:             corev1.ConditionFalse,
 					LastTransitionTime: metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
 				},
 			},
-			newConditionType: v2beta1.ScalingActive,
+			newConditionType: autoscalingv2.ScalingActive,
 			// The result should be sorted (most recent first)
-			expectedOrder: []v2beta1.HorizontalPodAutoscalerConditionType{v2beta1.ScalingActive, v2beta1.ScalingLimited},
+			expectedOrder: []autoscalingv2.HorizontalPodAutoscalerConditionType{autoscalingv2.ScalingActive, autoscalingv2.ScalingLimited},
 		},
 		{
 			name: "add condition with existing type",
-			currentConditions: []v2beta1.HorizontalPodAutoscalerCondition{
+			currentConditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
 				{
-					Type:               v2beta1.ScalingLimited,
+					Type:               autoscalingv2.ScalingLimited,
 					Status:             corev1.ConditionFalse,
 					LastTransitionTime: metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
 				},
@@ -2451,7 +2451,7 @@ func TestSetCondition(t *testing.T) {
 			newConditionType: v1alpha1.WatermarkPodAutoscalerStatusDryRunCondition,
 			// The LastTransitionTime of dryRun should be the most recent one
 			// now. That's why it should appear first in the resulting array.
-			expectedOrder: []v2beta1.HorizontalPodAutoscalerConditionType{v1alpha1.WatermarkPodAutoscalerStatusDryRunCondition, v2beta1.ScalingLimited},
+			expectedOrder: []autoscalingv2.HorizontalPodAutoscalerConditionType{v1alpha1.WatermarkPodAutoscalerStatusDryRunCondition, autoscalingv2.ScalingLimited},
 		},
 	}
 
@@ -2462,7 +2462,7 @@ func TestSetCondition(t *testing.T) {
 
 			setCondition(wpa, tt.newConditionType, corev1.ConditionTrue, "", "")
 
-			var resultSortedTypes []v2beta1.HorizontalPodAutoscalerConditionType
+			var resultSortedTypes []autoscalingv2.HorizontalPodAutoscalerConditionType
 			for _, condition := range wpa.Status.Conditions {
 				resultSortedTypes = append(resultSortedTypes, condition.Type)
 			}
@@ -2476,15 +2476,15 @@ func TestGetCondition(t *testing.T) {
 	now := time.Now()
 	tests := []struct {
 		name              string
-		currentConditions []v2beta1.HorizontalPodAutoscalerCondition
-		conditionType     v2beta1.HorizontalPodAutoscalerConditionType
+		currentConditions []autoscalingv2.HorizontalPodAutoscalerCondition
+		conditionType     autoscalingv2.HorizontalPodAutoscalerConditionType
 		expectState       corev1.ConditionStatus
 		expectedTime      metav1.Time
 		err               error
 	}{
 		{
 			name: "has been below watermark for 37 minutes",
-			currentConditions: []v2beta1.HorizontalPodAutoscalerCondition{
+			currentConditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
 				{
 					Type:               v1alpha1.WatermarkPodAutoscalerStatusBelowLowWatermark,
 					Status:             corev1.ConditionTrue,

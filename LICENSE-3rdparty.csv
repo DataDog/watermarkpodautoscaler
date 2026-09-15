@@ -38,9 +38,7 @@ core,github.com/go-openapi/jsonreference,Apache-2.0
 core,github.com/go-openapi/swag,Apache-2.0
 core,github.com/gogo/protobuf,BSD-3-Clause
 core,github.com/golang/protobuf/proto,BSD-3-Clause
-core,github.com/google/btree,Apache-2.0
 core,github.com/google/gnostic-models,Apache-2.0
-core,github.com/google/go-cmp/cmp,BSD-3-Clause
 core,github.com/google/pprof/profile,Apache-2.0
 core,github.com/google/uuid,BSD-3-Clause
 core,github.com/hashicorp/go-secure-stdlib/parseutil,MPL-2.0
@@ -57,6 +55,7 @@ core,github.com/outcaste-io/ristretto,Apache-2.0
 core,github.com/outcaste-io/ristretto/z,MIT
 core,github.com/philhofer/fwd,MIT
 core,github.com/pkg/errors,BSD-2-Clause
+core,github.com/pmezard/go-difflib/difflib,BSD-3-Clause
 core,github.com/prometheus/client_golang/internal/github.com/golang/gddo/httputil,BSD-3-Clause
 core,github.com/prometheus/client_golang/prometheus,Apache-2.0
 core,github.com/prometheus/client_model/go,Apache-2.0
@@ -84,6 +83,8 @@ core,go.opentelemetry.io/otel/trace,Apache-2.0
 core,go.uber.org/atomic,MIT
 core,go.uber.org/multierr,MIT
 core,go.uber.org/zap,MIT
+core,go.yaml.in/yaml/v2,Apache-2.0
+core,go.yaml.in/yaml/v3,MIT
 core,golang.org/x/mod/semver,BSD-3-Clause
 core,golang.org/x/net,BSD-3-Clause
 core,golang.org/x/oauth2,BSD-3-Clause
@@ -117,9 +118,9 @@ core,k8s.io/kube-openapi/pkg/validation/spec,Apache-2.0
 core,k8s.io/metrics/pkg,Apache-2.0
 core,k8s.io/utils,Apache-2.0
 core,k8s.io/utils/internal/third_party/forked/golang,BSD-3-Clause
+core,k8s.io/utils/third_party/forked/golang/btree,Apache-2.0
 core,sigs.k8s.io/controller-runtime,Apache-2.0
 core,sigs.k8s.io/json,Apache-2.0
 core,sigs.k8s.io/randfill,Apache-2.0
-core,sigs.k8s.io/structured-merge-diff/v4,Apache-2.0
+core,sigs.k8s.io/structured-merge-diff/v6,Apache-2.0
 core,sigs.k8s.io/yaml,Apache-2.0
-core,sigs.k8s.io/yaml/goyaml.v2,Apache-2.0
