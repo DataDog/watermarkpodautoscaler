@@ -23,6 +23,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	apiregistrationv1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 
 	dynclient "sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -39,6 +40,11 @@ import (
 const (
 	timeout  = 20 * time.Second
 	interval = 2 * time.Second
+
+	// apiServiceAvailableTimeout gives the aggregation layer more time than `timeout` to mark the
+	// fake external metrics APIService as Available, since that can lag behind the backing
+	// Deployment being Available.
+	apiServiceAvailableTimeout = 60 * time.Second
 
 	Reset  = "\033[0m"
 	Red    = "\033[31m"
@@ -110,6 +116,25 @@ func objectsBeforeEachFunc() {
 		info("found the metrics server", metricsServer.Status)
 		return metricsServer.Status.AvailableReplicas != 0
 	}, timeout, interval).Should(BeTrue())
+
+	// The Deployment being Available doesn't mean the aggregation layer has finished wiring the
+	// external metrics APIService to it yet - querying external.metrics.k8s.io too early returns
+	// "the server could not find the requested resource". Wait for the APIService itself to report
+	// Available before letting the test proceed.
+	Eventually(func() bool {
+		apiService := &apiregistrationv1.APIService{}
+		err = k8sClient.Get(ctx, types.NamespacedName{Name: "v1beta1.external.metrics.k8s.io"}, apiService)
+		if err != nil {
+			fmt.Fprint(GinkgoWriter, err)
+			return false
+		}
+		for _, cond := range apiService.Status.Conditions {
+			if cond.Type == apiregistrationv1.Available && cond.Status == apiregistrationv1.ConditionTrue {
+				return true
+			}
+		}
+		return false
+	}, apiServiceAvailableTimeout, interval).Should(BeTrue())
 }
 
 func cleanUpAfter() {
