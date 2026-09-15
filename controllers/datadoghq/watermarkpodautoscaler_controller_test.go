@@ -34,7 +34,7 @@ import (
 	"k8s.io/client-go/scale"
 	fakescale "k8s.io/client-go/scale/fake"
 	testcore "k8s.io/client-go/testing"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -57,8 +57,7 @@ var (
 )
 
 func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
-	eventBroadcaster := record.NewBroadcaster()
-	eventRecorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "TestReconcileWatermarkPodAutoscaler"})
+	eventRecorder := events.NewFakeRecorder(100)
 
 	logf.SetLogger(zap.New())
 	log := logf.Log.WithName("TestReconcileWatermarkPodAutoscaler_Reconcile")
@@ -70,7 +69,7 @@ func TestReconcileWatermarkPodAutoscaler_Reconcile(t *testing.T) {
 		scaleclient   scale.ScalesGetter
 		scheme        *runtime.Scheme
 		restmapper    apimeta.RESTMapper
-		eventRecorder record.EventRecorder
+		eventRecorder events.EventRecorder
 	}
 	type args struct {
 		request            reconcile.Request
@@ -508,8 +507,7 @@ func addGetReactorWithSurge(s *fakescale.FakeScaleClient, specReplicas, statusRe
 }
 
 func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
-	eventBroadcaster := record.NewBroadcaster()
-	eventRecorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "TestReconcileWatermarkPodAutoscaler"})
+	eventRecorder := events.NewFakeRecorder(100)
 
 	logf.SetLogger(zap.New())
 	s := scheme.Scheme
@@ -521,7 +519,7 @@ func TestReconcileWatermarkPodAutoscaler_reconcileWPA(t *testing.T) {
 		scaleclient   scale.ScalesGetter
 		restmapper    apimeta.RESTMapper
 		scheme        *runtime.Scheme
-		eventRecorder record.EventRecorder
+		eventRecorder events.EventRecorder
 	}
 	type args struct {
 		wpa                   *v1alpha1.WatermarkPodAutoscaler
@@ -1598,13 +1596,12 @@ func getReplicas(v int32) *int32 {
 }
 
 func TestReconcileWatermarkPodAutoscaler_computeReplicas(t *testing.T) {
-	eventBroadcaster := record.NewBroadcaster()
-	eventRecorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "TestReconcileWatermarkPodAutoscaler"})
+	eventRecorder := events.NewFakeRecorder(100)
 
 	logf.SetLogger(zap.New())
 
 	type fields struct {
-		eventRecorder record.EventRecorder
+		eventRecorder events.EventRecorder
 	}
 	type args struct {
 		wpa          *v1alpha1.WatermarkPodAutoscaler

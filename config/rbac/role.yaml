@@ -22,13 +22,6 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - events
-  verbs:
-  - create
-  - patch
-- apiGroups:
-  - ""
-  resources:
   - pods
   verbs:
   - get
@@ -84,3 +77,10 @@ rules:
   - watermarkpodautoscalers/status
   verbs:
   - '*'
+- apiGroups:
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
