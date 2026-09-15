@@ -88,6 +88,32 @@ var (
 	alreadyExistingObjsMu sync.Mutex
 )
 
+// logCustomMetricsServerPodStatus is a diagnostic helper: it logs the fake metrics-server pod's
+// phase/container statuses and its last 40 log lines, to check whether the backend itself is
+// actually healthy and running, independent of what the Deployment/APIService objects report.
+func logCustomMetricsServerPodStatus(namespace string) {
+	clientset, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		warn("failed to build clientset for pod diagnostics: %v", err)
+		return
+	}
+	podList, err := clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=custom-metrics-apiserver"})
+	if err != nil {
+		warn("failed to list custom-metrics-apiserver pods: %v", err)
+		return
+	}
+	for _, pod := range podList.Items {
+		info("custom-metrics-apiserver pod %s phase=%s containerStatuses=%+v", pod.Name, pod.Status.Phase, pod.Status.ContainerStatuses)
+		tailLines := int64(40)
+		logBytes, logErr := clientset.CoreV1().Pods(namespace).GetLogs(pod.Name, &corev1.PodLogOptions{TailLines: &tailLines}).DoRaw(ctx)
+		if logErr != nil {
+			warn("failed to get logs for pod %s: %v", pod.Name, logErr)
+		} else {
+			info("custom-metrics-apiserver pod %s logs:\n%s", pod.Name, string(logBytes))
+		}
+	}
+}
+
 func objectsBeforeEachFunc() {
 	objs, err := metricsserver.InitMetricsServerFiles(GinkgoWriter, "../../../test/e2e/metricsserver/deploy", namespace)
 	Expect(err).Should(Succeed())
@@ -116,8 +142,13 @@ func objectsBeforeEachFunc() {
 			return false
 		}
 		info("found the metrics server", metricsServer.Status)
+		// DIAGNOSTIC: if the Deployment isn't Available yet, log the pod's own status/logs so we
+		// can tell an image pull/crash problem apart from a plain slow startup.
+		if metricsServer.Status.AvailableReplicas == 0 {
+			logCustomMetricsServerPodStatus(namespace)
+		}
 		return metricsServer.Status.AvailableReplicas != 0
-	}, timeout, interval).Should(BeTrue())
+	}, metricsAPIReadyTimeout, interval).Should(BeTrue())
 
 	// The Deployment being Available doesn't mean the aggregation layer has finished wiring the
 	// external metrics APIService to it yet - querying external.metrics.k8s.io too early returns
@@ -247,16 +278,14 @@ var _ = Describe("WatermarkPodAutoscaler Controller", func() {
 			Expect(createWrapper(ctx, metricConfigMap)).Should(Succeed())
 			info("metricConfigMap created: %s/%s", namespace, configMapName)
 
-			// DIAGNOSTIC: build a discovery client and a typed clientset so we can log, on every
-			// poll below, what kube-apiserver's own aggregated discovery currently reports for
-			// external.metrics.k8s.io/v1beta1, the live APIService status, and the fake
+			// DIAGNOSTIC: build a discovery client so we can log, on every poll below, what
+			// kube-apiserver's own aggregated discovery currently reports for
+			// external.metrics.k8s.io/v1beta1, alongside the live APIService status and the fake
 			// metrics-server pod's own status/logs. Together these should tell us whether the
 			// backend pod is actually healthy and serving, or whether this is purely an
 			// apiserver-side aggregation/discovery problem.
 			discoveryClient, discErr := discovery.NewDiscoveryClientForConfig(cfg)
 			Expect(discErr).Should(Succeed())
-			clientset, clientsetErr := kubernetes.NewForConfig(cfg)
-			Expect(clientsetErr).Should(Succeed())
 
 			// The APIService reporting Available (waited for in objectsBeforeEachFunc) doesn't mean
 			// the front-door apiserver's own discovery/routing cache for it has caught up yet, so the
@@ -297,21 +326,7 @@ var _ = Describe("WatermarkPodAutoscaler Controller", func() {
 
 				// DIAGNOSTIC: log the fake metrics-server pod's own status and recent logs, to
 				// check whether the backend itself is healthy and actually serving.
-				podList, podErr := clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: "app=custom-metrics-apiserver"})
-				if podErr != nil {
-					warn("failed to list custom-metrics-apiserver pods: %v", podErr)
-				} else {
-					for _, pod := range podList.Items {
-						info("custom-metrics-apiserver pod %s phase=%s containerStatuses=%+v", pod.Name, pod.Status.Phase, pod.Status.ContainerStatuses)
-						tailLines := int64(40)
-						logBytes, logErr := clientset.CoreV1().Pods(namespace).GetLogs(pod.Name, &corev1.PodLogOptions{TailLines: &tailLines}).DoRaw(ctx)
-						if logErr != nil {
-							warn("failed to get logs for pod %s: %v", pod.Name, logErr)
-						} else {
-							info("custom-metrics-apiserver pod %s logs:\n%s", pod.Name, string(logBytes))
-						}
-					}
-				}
+				logCustomMetricsServerPodStatus(namespace)
 
 				for _, condition := range wpa.Status.Conditions {
 					if condition.Type == autoscalingv2.ScalingActive && condition.Status == corev1.ConditionTrue {
