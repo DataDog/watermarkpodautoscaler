@@ -23,6 +23,12 @@ FIPS_ENABLED?=false
 
 CRD_OPTIONS ?= "crd"
 
+# Explicit source trees for controller-gen, rather than "./...". controller-gen's
+# own module-boundary walk doesn't honor Go's convention of skipping directories
+# starting with "." or "_", so a stray checkout under .claude/ (e.g. a leftover
+# git worktree) makes it fail with "does not contain modules listed in go.work".
+CONTROLLER_GEN_PATHS := paths="./apis/..." paths="./cmd/..." paths="./controllers/..." paths="./pkg/..." paths="./test/..." paths="./third_party/..." paths="."
+
 # Default bundle image tag
 BUNDLE_IMG ?= controller-bundle:$(VERSION)
 # Options for 'bundle-build'
@@ -96,8 +102,8 @@ undeploy: $(KUSTOMIZE) ## Undeploy controller from the K8s cluster specified in 
 manifests: generate-manifests patch-crds
 
 generate-manifests: $(CONTROLLER_GEN)
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager webhook paths="./..." output:crd:artifacts:config=config/crd/bases/v1
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager webhook paths="./..." output:crd:artifacts:config=config/crd/bases/v1beta1
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager webhook $(CONTROLLER_GEN_PATHS) output:crd:artifacts:config=config/crd/bases/v1
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager webhook $(CONTROLLER_GEN_PATHS) output:crd:artifacts:config=config/crd/bases/v1beta1
 
 # Run go fmt against code
 fmt:
@@ -109,7 +115,7 @@ vet:
 
 # Generate code
 generate: $(CONTROLLER_GEN) generate-openapi
-	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" $(CONTROLLER_GEN_PATHS)
 
 # Build the docker image
 docker-build: generate docker-build-ci
