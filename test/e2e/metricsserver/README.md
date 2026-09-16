@@ -35,25 +35,82 @@ request 404'd, because the adapter's own callback to `SubjectAccessReview` for a
 caller failed. Rebuilding from a current revision of the upstream adapter fixes that class of
 problem, since it picks up a modern, compatible `k8s.io/apiserver` delegated-auth client.
 
+### The image must be multi-arch
+
+CI (GitHub Actions) runs `kind` on `linux/amd64` runners, but local dev machines are frequently
+`linux/arm64` (Apple Silicon). **The image must support both.** A single-arch image doesn't fail
+in a version-specific way - it fails identically on *every* Kubernetes version in the e2e matrix,
+because the container simply can't be exec'd on a node whose architecture doesn't match the
+binary ("exec format error"), well before anything Kubernetes-specific comes into play. If a
+future e2e run shows every matrix entry failing the exact same way at the very first
+Deployment-availability wait (see `objectsBeforeEachFunc` in
+`controllers/datadoghq/test/watermarkpodautoscaler_e2e_test.go`), check the image's architecture
+support first, before suspecting a Kubernetes compatibility regression.
+
 ## How to update the image
 
-1. Clone `kubernetes-sigs/custom-metrics-apiserver` and check out the revision you want to build
-   the adapter from.
-2. Build and push an image containing the `test-adapter` binary as its entrypoint (the upstream
-   repo doesn't always ship a ready-made `Dockerfile` for it, in which case a minimal one that
-   `go build`s `./test-adapter` and copies the binary into a base image is enough), e.g.:
-   ```shell
-   git clone https://github.com/kubernetes-sigs/custom-metrics-apiserver
-   cd custom-metrics-apiserver
-   docker build -t docker.io/cedriclamoriniere/fake-custom-metrics-server:<new-tag> .
-   docker push docker.io/cedriclamoriniere/fake-custom-metrics-server:<new-tag>
+The upstream `Makefile`'s `test-adapter-container` target only builds for a single arch
+(`ARCH?=amd64`) via plain `docker build`, and there's no built-in multi-arch target. Since
+`build-test-adapter` cross-compiles with `CGO_ENABLED=0` (no C dependencies) and the adapter's
+`Dockerfile` only has `COPY`/`ENTRYPOINT` (no `RUN`), you can build a real multi-platform image
+directly with `docker buildx`, without QEMU emulation and without publishing separate
+`-amd64`/`-arm64` tags:
+
+1. In your `kubernetes-sigs/custom-metrics-apiserver` checkout, add
+   `test-adapter-deploy/Dockerfile.multiarch`:
+   ```dockerfile
+   FROM scratch
+   ARG TARGETARCH
+   COPY ${TARGETARCH}/adapter /adapter
+   ENTRYPOINT ["/adapter"]
    ```
-3. Update the image tag in `deploy/07_custom-metrics-apiserver_dep.yaml` to match.
-4. Diff `deploy/*.yaml` against `test-adapter-deploy/testing-adapter.yaml` from the *same*
+2. Add this target to its `Makefile`:
+   ```makefile
+   ARCHES ?= amd64 arm64
+
+   empty :=
+   space := $(empty) $(empty)
+   comma := ,
+   PLATFORMS := linux/$(subst $(space),$(comma)linux/,$(ARCHES))
+
+   .PHONY: test-adapter-container-multiarch
+   test-adapter-container-multiarch:
+   	rm -rf $(OUT_DIR)/multiarch
+   	mkdir -p $(OUT_DIR)/multiarch
+   	cp test-adapter-deploy/Dockerfile.multiarch $(OUT_DIR)/multiarch/Dockerfile
+   	for arch in $(ARCHES); do \
+   		$(MAKE) build-test-adapter ARCH=$$arch; \
+   		mkdir -p $(OUT_DIR)/multiarch/$$arch; \
+   		cp $(OUT_DIR)/$$arch/test-adapter $(OUT_DIR)/multiarch/$$arch/adapter; \
+   	done
+   	docker buildx build \
+   		--platform $(PLATFORMS) \
+   		-t $(REGISTRY)/$(IMAGE):$(VERSION) \
+   		--push \
+   		$(OUT_DIR)/multiarch
+   ```
+   (`PLATFORMS` is computed with Make's own `subst`, not `paste`/`tr` - those differ enough
+   between BSD/macOS and GNU/Linux that shelling out to them from the recipe isn't portable.)
+3. Build and push:
+   ```shell
+   docker buildx create --use   # one-time, skip if you already have a buildx builder
+   docker login
+   make test-adapter-container-multiarch \
+     REGISTRY=docker.io/cedriclamoriniere \
+     IMAGE=fake-custom-metrics-server \
+     VERSION=<new-tag>
+   ```
+   This publishes a single tag - `docker.io/cedriclamoriniere/fake-custom-metrics-server:<new-tag>`
+   - backed by a real multi-platform manifest; there's no separate `docker manifest create` step
+   (that path doesn't compose with Docker Desktop's default provenance-attestation builds, which
+   already wrap even a single-arch `docker build` in a manifest list) and no per-arch tags to keep
+   track of.
+4. Update the image tag in `deploy/07_custom-metrics-apiserver_dep.yaml` to match.
+5. Diff `deploy/*.yaml` against `test-adapter-deploy/testing-adapter.yaml` from the *same*
    upstream revision you built from - args, volume mounts, and RBAC have drifted before (a
    stray, nonexistent `v1beta2.external.metrics.k8s.io` `APIService`; a missing `--cert-dir`
    flag and volume mount pointing at the wrong path for the serving certificate).
-5. Run the e2e suite (`make e2e`, against a real or `kind` cluster) end-to-end to confirm the
+6. Run the e2e suite (`make e2e`, against a real or `kind` cluster) end-to-end to confirm the
    new image actually serves `external.metrics.k8s.io/v1beta1` correctly. A `Running`/`Ready`
    pod and an `Available` `APIService` are not sufficient signals on their own - both were true
    for the old image while it 404'd on every real request.

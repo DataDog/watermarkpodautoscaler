@@ -24,7 +24,6 @@ spec:
         - /adapter
         - --secure-port=6443
         - --cert-dir=/var/run/serving-cert
-        - --logtostderr=true
         - --v=10
         ports:
         - containerPort: 6443
