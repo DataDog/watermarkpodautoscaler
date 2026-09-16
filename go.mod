@@ -2,17 +2,11 @@ module github.com/DataDog/watermarkpodautoscaler
 
 go 1.26.5
 
-// go.work already points this at local disk for normal builds, but go.mod needs its own replace
-// too: anything that resolves modules without the workspace (go mod tidy's graph walk, `go install`,
-// external consumers) otherwise falls back to the require line's pinned pseudo-version below, which
-// can go stale - it did, pointing at a version from before autoscaling/v2beta1 was migrated off.
-replace github.com/DataDog/watermarkpodautoscaler/apis => ./apis
-
 require (
 	github.com/DataDog/agent-payload/v5 v5.0.135-0.20241016074204-82c61e7189e0
 	github.com/DataDog/dd-trace-go/contrib/net/http/v2 v2.0.0-rc.3
 	github.com/DataDog/dd-trace-go/v2 v2.0.0-rc.3
-	github.com/DataDog/watermarkpodautoscaler/apis v0.0.0-20250908194611-f887ec99e8f9
+	github.com/DataDog/watermarkpodautoscaler/apis v0.0.0-20260915193337-0cde585f54eb
 	github.com/go-logr/logr v1.4.3
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.39.0

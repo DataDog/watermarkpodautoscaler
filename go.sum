@@ -38,6 +38,8 @@ github.com/DataDog/opentelemetry-mapping-go/pkg/otlp/attributes v0.20.0 h1:fKv05
 github.com/DataDog/opentelemetry-mapping-go/pkg/otlp/attributes v0.20.0/go.mod h1:dvIWN9pA2zWNTw5rhDWZgzZnhcfpH++d+8d1SWW6xkY=
 github.com/DataDog/sketches-go v1.4.6 h1:acd5fb+QdUzGrosfNLwrIhqyrbMORpvBy7mE+vHlT3I=
 github.com/DataDog/sketches-go v1.4.6/go.mod h1:7Y8GN8Jf66DLyDhc94zuWA3uHEt/7ttt8jHOBWWrSOg=
+github.com/DataDog/watermarkpodautoscaler/apis v0.0.0-20260915193337-0cde585f54eb h1:0voSadH1sCoVTOVRzSK/92z0N6i/O9DrVbargkOpBWY=
+github.com/DataDog/watermarkpodautoscaler/apis v0.0.0-20260915193337-0cde585f54eb/go.mod h1:pDE+gEOK/ThAxDkJOFscKKZCqFHd7jd9baBZTYq9Fag=
 github.com/Masterminds/semver/v3 v3.4.0 h1:Zog+i5UMtVoCU8oKka5P7i9q9HgrJeGzI9SA1Xbatp0=
 github.com/Masterminds/semver/v3 v3.4.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/Microsoft/go-winio v0.5.0/go.mod h1:JPGBdM1cNvN/6ISo+n8V5iA4v8pBzdOpzfwIujj1a84=
