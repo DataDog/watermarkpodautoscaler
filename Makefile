@@ -23,6 +23,14 @@ FIPS_ENABLED?=false
 
 CRD_OPTIONS ?= "crd"
 
+# Explicit source trees for controller-gen, rather than "./...". controller-gen's
+# own module-boundary walk doesn't honor Go's convention of skipping directories
+# starting with "." or "_", so a stray checkout under .claude/ (e.g. a leftover
+# git worktree) makes it fail with "does not contain modules listed in go.work".
+# test/e2e/metricsserver/adapter is its own Go module (separate k8s.io/api version, not part of
+# go.work), so it's named explicitly rather than via a "./test/..." pattern that would recurse into it.
+CONTROLLER_GEN_PATHS := paths="./apis/..." paths="./cmd/..." paths="./controllers/..." paths="./pkg/..." paths="./test/e2e/metricsserver" paths="./test/e2e/utils" paths="./third_party/..." paths="."
+
 # Default bundle image tag
 BUNDLE_IMG ?= controller-bundle:$(VERSION)
 # Options for 'bundle-build'
@@ -54,9 +62,57 @@ test: manager manifests verify-license
 
 e2e: manager manifests verify-license goe2e
 
-# Runs e2e tests (expects a configured cluster)
-goe2e:
+# Runs e2e tests (expects a configured cluster). Rebuilds the fake metrics-server adapter image
+# for the host arch and loads it into the kind cluster first, so the deployment in
+# test/e2e/metricsserver/deploy always runs the current adapter source, not a stale image.
+goe2e: fake-metrics-adapter-image-kind-load
 	KUBEBUILDER_ASSETS="$(ROOT)/bin/$(PLATFORM)/" go test --tags=e2e ./controllers/datadoghq/test
+
+# Build and push the multi-arch fake custom/external metrics adapter image used by the e2e tests.
+# See test/e2e/metricsserver/README.md for when/why to rebuild this image.
+FAKE_METRICS_ADAPTER_DIR := test/e2e/metricsserver/adapter
+FAKE_METRICS_ADAPTER_ARCHES ?= amd64 arm64
+FAKE_SERVER_IMG_NAME ?= gcr.io/datadoghq/watermarkpodautoscaler-fake-server
+FAKE_METRICS_ADAPTER_VERSION ?= $(shell date +%Y%m%d%H%M%S)
+FAKE_METRICS_ADAPTER_LOCAL_TAG ?= local
+KIND_CLUSTER_NAME ?= $(shell sed -n 's/^name: //p' test/cluster-kind.yaml)
+empty :=
+space := $(empty) $(empty)
+comma := ,
+FAKE_METRICS_ADAPTER_PLATFORMS := linux/$(subst $(space),$(comma)linux/,$(FAKE_METRICS_ADAPTER_ARCHES))
+FAKE_METRICS_ADAPTER_HOST_ARCH := $(shell go env GOARCH)
+FAKE_METRICS_ADAPTER_LOCAL_IMG := $(FAKE_SERVER_IMG_NAME):$(FAKE_METRICS_ADAPTER_LOCAL_TAG)
+
+.PHONY: fake-metrics-adapter-image
+fake-metrics-adapter-image:
+	rm -rf $(FAKE_METRICS_ADAPTER_DIR)/_output
+	mkdir -p $(FAKE_METRICS_ADAPTER_DIR)/_output
+	for arch in $(FAKE_METRICS_ADAPTER_ARCHES); do \
+		mkdir -p $(FAKE_METRICS_ADAPTER_DIR)/_output/$$arch; \
+		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch GOWORK=off go -C $(FAKE_METRICS_ADAPTER_DIR) build -o _output/$$arch/adapter .; \
+	done
+	docker buildx build \
+		--platform $(FAKE_METRICS_ADAPTER_PLATFORMS) \
+		-f $(FAKE_METRICS_ADAPTER_DIR)/Dockerfile.multiarch \
+		-t $(FAKE_SERVER_IMG_NAME):$(FAKE_METRICS_ADAPTER_VERSION) \
+		--push \
+		$(FAKE_METRICS_ADAPTER_DIR)/_output
+
+# Build a single-arch (host) image for local e2e runs and load it straight into the kind cluster -
+# no registry push needed. deploy/07_custom-metrics-apiserver_dep.yaml pins this same
+# FAKE_SERVER_IMG_NAME:local tag with imagePullPolicy Never, so the kind-loaded image is what runs.
+.PHONY: fake-metrics-adapter-image-kind-load
+fake-metrics-adapter-image-kind-load:
+	rm -rf $(FAKE_METRICS_ADAPTER_DIR)/_output
+	mkdir -p $(FAKE_METRICS_ADAPTER_DIR)/_output/$(FAKE_METRICS_ADAPTER_HOST_ARCH)
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(FAKE_METRICS_ADAPTER_HOST_ARCH) GOWORK=off go -C $(FAKE_METRICS_ADAPTER_DIR) build -o _output/$(FAKE_METRICS_ADAPTER_HOST_ARCH)/adapter .
+	docker buildx build \
+		--platform linux/$(FAKE_METRICS_ADAPTER_HOST_ARCH) \
+		-f $(FAKE_METRICS_ADAPTER_DIR)/Dockerfile.multiarch \
+		-t $(FAKE_METRICS_ADAPTER_LOCAL_IMG) \
+		--load \
+		$(FAKE_METRICS_ADAPTER_DIR)/_output
+	kind load docker-image $(FAKE_METRICS_ADAPTER_LOCAL_IMG) --name $(KIND_CLUSTER_NAME)
 
 # Build manager binary
 .PHONY: manager
@@ -96,8 +152,8 @@ undeploy: $(KUSTOMIZE) ## Undeploy controller from the K8s cluster specified in 
 manifests: generate-manifests patch-crds
 
 generate-manifests: $(CONTROLLER_GEN)
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager webhook paths="./..." output:crd:artifacts:config=config/crd/bases/v1
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager webhook paths="./..." output:crd:artifacts:config=config/crd/bases/v1beta1
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager webhook $(CONTROLLER_GEN_PATHS) output:crd:artifacts:config=config/crd/bases/v1
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager webhook $(CONTROLLER_GEN_PATHS) output:crd:artifacts:config=config/crd/bases/v1beta1
 
 # Run go fmt against code
 fmt:
@@ -109,7 +165,7 @@ vet:
 
 # Generate code
 generate: $(CONTROLLER_GEN) generate-openapi
-	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" $(CONTROLLER_GEN_PATHS)
 
 # Build the docker image
 docker-build: generate docker-build-ci
@@ -127,7 +183,7 @@ docker-buildx-ci:
 ##@ Tools
 CONTROLLER_GEN = bin/$(PLATFORM)/controller-gen
 $(CONTROLLER_GEN): Makefile  ## Download controller-gen locally if necessary.
-	$(call go-get-tool,$@,sigs.k8s.io/controller-tools/cmd/controller-gen@v0.16.3)
+	$(call go-get-tool,$@,sigs.k8s.io/controller-tools/cmd/controller-gen@v0.16.5)
 
 KUSTOMIZE = bin/$(PLATFORM)/kustomize
 $(KUSTOMIZE): Makefile  ## Download kustomize locally if necessary.
@@ -215,7 +271,7 @@ bin/$(PLATFORM)/jq: Makefile
 	hack/install-jq.sh "bin/$(PLATFORM)" 1.7.1
 
 bin/$(PLATFORM)/golangci-lint: Makefile
-	hack/install-golangci-lint.sh -b "bin/$(PLATFORM)" v1.64.8
+	hack/install-golangci-lint.sh -b "bin/$(PLATFORM)" v2.12.2
 
 bin/$(PLATFORM)/operator-sdk: Makefile
 	hack/install-operator-sdk.sh v1.41.1

@@ -1,0 +1,434 @@
+/*
+Copyright 2017 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+// Package provider is vendored from sigs.k8s.io/custom-metrics-apiserver's test-adapter sample
+// provider, with one addition: GetExternalMetric also serves metrics sourced from a ConfigMap
+// named fake-custom-metrics-server (see refreshConfigMapMetrics below), so the WPA e2e tests can
+// inject external metric values through the Kubernetes API instead of the adapter's own
+// authenticated /write-metrics HTTP route, which isn't reachable through the aggregation layer.
+package provider
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"sync"
+	"time"
+
+	"github.com/emicklei/go-restful/v3"
+	apierr "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/klog/v2"
+	"k8s.io/metrics/pkg/apis/custom_metrics"
+	"k8s.io/metrics/pkg/apis/external_metrics"
+
+	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
+	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider/defaults"
+	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider/helpers"
+)
+
+// configMapMetricsName is the name of the ConfigMap that, when present in a namespace,
+// is polled to source fake external metric values for that namespace. This lets callers
+// which can't reach the adapter's authenticated /write-metrics HTTP route (e.g. through the
+// aggregation layer) inject external metrics simply by creating a ConfigMap.
+const configMapMetricsName = "fake-custom-metrics-server"
+
+// configMapPollInterval is how often ConfigMaps named configMapMetricsName are re-read.
+const configMapPollInterval = 2 * time.Second
+
+var configMapGVR = schema.GroupVersionResource{Version: "v1", Resource: "configmaps"}
+
+// configMapFakeMetric mirrors the JSON shape callers encode into a ConfigMap data value to
+// describe one fake external metric (one metric name maps to a JSON array of these).
+type configMapFakeMetric struct {
+	Value        string            `json:"value"`
+	MetricName   string            `json:"metricName"`
+	MetricLabels map[string]string `json:"metricLabels"`
+}
+
+// CustomMetricResource wraps provider.CustomMetricInfo in a struct which stores the Name and Namespace of the resource
+// So that we can accurately store and retrieve the metric as if this were an actual metrics server.
+type CustomMetricResource struct {
+	provider.CustomMetricInfo
+	types.NamespacedName
+}
+
+// externalMetric provides examples for metrics which would otherwise be reported from an external source
+// TODO (damemi): add dynamic external metrics instead of just hardcoded examples
+type externalMetric struct {
+	info   provider.ExternalMetricInfo
+	labels map[string]string
+	value  external_metrics.ExternalMetricValue
+}
+
+var (
+	testingExternalMetrics = []externalMetric{
+		{
+			info: provider.ExternalMetricInfo{
+				Metric: "my-external-metric",
+			},
+			labels: map[string]string{"foo": "bar"},
+			value: external_metrics.ExternalMetricValue{
+				MetricName: "my-external-metric",
+				MetricLabels: map[string]string{
+					"foo": "bar",
+				},
+				Value: *resource.NewQuantity(42, resource.DecimalSI),
+			},
+		},
+		{
+			info: provider.ExternalMetricInfo{
+				Metric: "my-external-metric",
+			},
+			labels: map[string]string{"foo": "baz"},
+			value: external_metrics.ExternalMetricValue{
+				MetricName: "my-external-metric",
+				MetricLabels: map[string]string{
+					"foo": "baz",
+				},
+				Value: *resource.NewQuantity(43, resource.DecimalSI),
+			},
+		},
+		{
+			info: provider.ExternalMetricInfo{
+				Metric: "other-external-metric",
+			},
+			labels: map[string]string{},
+			value: external_metrics.ExternalMetricValue{
+				MetricName:   "other-external-metric",
+				MetricLabels: map[string]string{},
+				Value:        *resource.NewQuantity(44, resource.DecimalSI),
+			},
+		},
+	}
+)
+
+type metricValue struct {
+	labels    labels.Set
+	value     resource.Quantity
+	timestamp metav1.Time
+}
+
+var _ provider.MetricsProvider = &testingProvider{}
+
+// testingProvider is a sample implementation of provider.MetricsProvider which stores a map of fake metrics
+type testingProvider struct {
+	defaults.DefaultCustomMetricsProvider
+	defaults.DefaultExternalMetricsProvider
+	client dynamic.Interface
+	mapper apimeta.RESTMapper
+
+	valuesLock      sync.RWMutex
+	values          map[CustomMetricResource]metricValue
+	externalMetrics []externalMetric
+
+	// configMapExternalMetrics holds external metrics sourced from ConfigMaps named
+	// configMapMetricsName, keyed by the namespace the ConfigMap was found in. Populated by
+	// pollConfigMapMetrics; guarded by valuesLock like the rest of this provider's state.
+	configMapExternalMetrics map[string][]externalMetric
+}
+
+// NewFakeProvider returns an instance of testingProvider, along with its restful.WebService that opens endpoints to post new fake metrics
+func NewFakeProvider(client dynamic.Interface, mapper apimeta.RESTMapper) (provider.MetricsProvider, *restful.WebService) {
+	provider := &testingProvider{
+		client:                   client,
+		mapper:                   mapper,
+		values:                   make(map[CustomMetricResource]metricValue),
+		externalMetrics:          testingExternalMetrics,
+		configMapExternalMetrics: make(map[string][]externalMetric),
+	}
+	go provider.pollConfigMapMetrics(context.Background())
+	return provider, provider.webService()
+}
+
+// pollConfigMapMetrics periodically lists ConfigMaps named configMapMetricsName across all
+// namespaces and refreshes configMapExternalMetrics from their contents, so external metrics
+// can be injected by simply creating/updating such a ConfigMap rather than needing to reach the
+// adapter's authenticated /write-metrics HTTP route (which only the aggregation layer, not a
+// plain namespaced-service proxy, can authenticate to).
+func (p *testingProvider) pollConfigMapMetrics(ctx context.Context) {
+	ticker := time.NewTicker(configMapPollInterval)
+	defer ticker.Stop()
+	for {
+		p.refreshConfigMapMetrics(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func (p *testingProvider) refreshConfigMapMetrics(ctx context.Context) {
+	list, err := p.client.Resource(configMapGVR).Namespace("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		klog.Errorf("unable to list ConfigMaps for fake external metrics: %v", err)
+		return
+	}
+
+	byNamespace := make(map[string][]externalMetric)
+	for i := range list.Items {
+		cm := &list.Items[i]
+		if cm.GetName() != configMapMetricsName {
+			continue
+		}
+
+		data, found, err := unstructured.NestedStringMap(cm.Object, "data")
+		if err != nil || !found {
+			continue
+		}
+
+		namespace := cm.GetNamespace()
+		for metricName, encoded := range data {
+			var fakeMetrics []configMapFakeMetric
+			if err := json.Unmarshal([]byte(encoded), &fakeMetrics); err != nil {
+				klog.Errorf("unable to decode fake metrics for %s/%s key %q: %v", namespace, configMapMetricsName, metricName, err)
+				continue
+			}
+			for _, fm := range fakeMetrics {
+				quantity, err := resource.ParseQuantity(fm.Value)
+				if err != nil {
+					klog.Errorf("unable to parse fake metric value %q for %s/%s key %q: %v", fm.Value, namespace, configMapMetricsName, metricName, err)
+					continue
+				}
+				byNamespace[namespace] = append(byNamespace[namespace], externalMetric{
+					info:   provider.ExternalMetricInfo{Metric: fm.MetricName},
+					labels: fm.MetricLabels,
+					value: external_metrics.ExternalMetricValue{
+						MetricName:   fm.MetricName,
+						MetricLabels: fm.MetricLabels,
+						Value:        quantity,
+					},
+				})
+			}
+		}
+	}
+
+	p.valuesLock.Lock()
+	p.configMapExternalMetrics = byNamespace
+	p.valuesLock.Unlock()
+}
+
+// webService creates a restful.WebService with routes set up for receiving fake metrics
+// These writing routes have been set up to be identical to the format of routes which metrics are read from.
+// There are 3 metric types available: namespaced, root-scoped, and namespaces.
+// (Note: Namespaces, we're assuming, are themselves namespaced resources, but for consistency with how metrics are retreived they have a separate route)
+func (p *testingProvider) webService() *restful.WebService {
+	ws := new(restful.WebService)
+
+	ws.Path("/write-metrics")
+
+	// Namespaced resources
+	ws.Route(ws.POST("/namespaces/{namespace}/{resourceType}/{name}/{metric}").To(p.updateMetric).
+		Param(ws.BodyParameter("value", "value to set metric").DataType("integer").DefaultValue("0")))
+
+	// Root-scoped resources
+	ws.Route(ws.POST("/{resourceType}/{name}/{metric}").To(p.updateMetric).
+		Param(ws.BodyParameter("value", "value to set metric").DataType("integer").DefaultValue("0")))
+
+	// Namespaces, where {resourceType} == "namespaces" to match API
+	ws.Route(ws.POST("/{resourceType}/{name}/metrics/{metric}").To(p.updateMetric).
+		Param(ws.BodyParameter("value", "value to set metric").DataType("integer").DefaultValue("0")))
+	return ws
+}
+
+// updateMetric writes the metric provided by a restful request and stores it in memory
+func (p *testingProvider) updateMetric(request *restful.Request, response *restful.Response) {
+	p.valuesLock.Lock()
+	defer p.valuesLock.Unlock()
+
+	namespace := request.PathParameter("namespace")
+	resourceType := request.PathParameter("resourceType")
+	namespaced := len(namespace) > 0 || resourceType == "namespaces"
+
+	name := request.PathParameter("name")
+	metricName := request.PathParameter("metric")
+
+	value := new(resource.Quantity)
+	err := request.ReadEntity(value)
+	if err != nil {
+		if err := response.WriteErrorString(http.StatusBadRequest, err.Error()); err != nil {
+			klog.Errorf("Error writing error: %s", err)
+		}
+		return
+	}
+
+	groupResource := schema.ParseGroupResource(resourceType)
+
+	metricLabels := labels.Set{}
+	sel := request.QueryParameter("labels")
+	if len(sel) > 0 {
+		metricLabels, err = labels.ConvertSelectorToLabelsMap(sel)
+		if err != nil {
+			if err := response.WriteErrorString(http.StatusBadRequest, err.Error()); err != nil {
+				klog.Errorf("Error writing error: %s", err)
+			}
+			return
+		}
+	}
+
+	info := provider.CustomMetricInfo{
+		GroupResource: groupResource,
+		Metric:        metricName,
+		Namespaced:    namespaced,
+	}
+
+	info, _, err = info.Normalized(p.mapper)
+	if err != nil {
+		klog.Errorf("Error normalizing info: %s", err)
+	}
+	namespacedName := types.NamespacedName{
+		Name:      name,
+		Namespace: namespace,
+	}
+
+	metricInfo := CustomMetricResource{
+		CustomMetricInfo: info,
+		NamespacedName:   namespacedName,
+	}
+	p.values[metricInfo] = metricValue{
+		labels:    metricLabels,
+		value:     *value,
+		timestamp: metav1.Now(),
+	}
+}
+
+// valueFor is a helper function to get just the value of a specific metric
+func (p *testingProvider) valueFor(info provider.CustomMetricInfo, name types.NamespacedName, metricSelector labels.Selector) (metricValue, error) {
+	info, _, err := info.Normalized(p.mapper)
+	if err != nil {
+		return metricValue{}, err
+	}
+	metricInfo := CustomMetricResource{
+		CustomMetricInfo: info,
+		NamespacedName:   name,
+	}
+
+	value, found := p.values[metricInfo]
+	if !found {
+		return metricValue{}, provider.NewMetricNotFoundForError(info.GroupResource, info.Metric, name.Name)
+	}
+
+	if !metricSelector.Matches(value.labels) {
+		return metricValue{}, provider.NewMetricNotFoundForSelectorError(info.GroupResource, info.Metric, name.Name, metricSelector)
+	}
+
+	return value, nil
+}
+
+// metricFor is a helper function which formats a value, metric, and object info into a MetricValue which can be returned by the metrics API
+func (p *testingProvider) metricFor(value metricValue, name types.NamespacedName, _ labels.Selector, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValue, error) {
+	objRef, err := helpers.ReferenceFor(p.mapper, name, info)
+	if err != nil {
+		return nil, err
+	}
+
+	metric := &custom_metrics.MetricValue{
+		DescribedObject: objRef,
+		Metric: custom_metrics.MetricIdentifier{
+			Name: info.Metric,
+		},
+		Timestamp: value.timestamp,
+		Value:     value.value,
+	}
+
+	if len(metricSelector.String()) > 0 {
+		sel, err := metav1.ParseToLabelSelector(metricSelector.String())
+		if err != nil {
+			return nil, err
+		}
+		metric.Metric.Selector = sel
+	}
+
+	return metric, nil
+}
+
+// metricsFor is a wrapper used by GetMetricBySelector to format several metrics which match a resource selector
+func (p *testingProvider) metricsFor(namespace string, selector labels.Selector, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValueList, error) {
+	names, err := helpers.ListObjectNames(p.mapper, p.client, namespace, selector, info)
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]custom_metrics.MetricValue, 0, len(names))
+	for _, name := range names {
+		namespacedName := types.NamespacedName{Name: name, Namespace: namespace}
+		value, err := p.valueFor(info, namespacedName, metricSelector)
+		if err != nil {
+			if apierr.IsNotFound(err) {
+				continue
+			}
+			return nil, err
+		}
+
+		metric, err := p.metricFor(value, namespacedName, selector, info, metricSelector)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, *metric)
+	}
+
+	return &custom_metrics.MetricValueList{
+		Items: res,
+	}, nil
+}
+
+func (p *testingProvider) GetMetricByName(_ context.Context, name types.NamespacedName, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValue, error) {
+	p.valuesLock.RLock()
+	defer p.valuesLock.RUnlock()
+
+	value, err := p.valueFor(info, name, metricSelector)
+	if err != nil {
+		return nil, err
+	}
+	return p.metricFor(value, name, labels.Everything(), info, metricSelector)
+}
+
+func (p *testingProvider) GetMetricBySelector(_ context.Context, namespace string, selector labels.Selector, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValueList, error) {
+	p.valuesLock.RLock()
+	defer p.valuesLock.RUnlock()
+
+	return p.metricsFor(namespace, selector, info, metricSelector)
+}
+
+func (p *testingProvider) GetExternalMetric(_ context.Context, namespace string, metricSelector labels.Selector, info provider.ExternalMetricInfo) (*external_metrics.ExternalMetricValueList, error) {
+	p.valuesLock.RLock()
+	defer p.valuesLock.RUnlock()
+
+	matchingMetrics := []external_metrics.ExternalMetricValue{}
+	candidates := p.externalMetrics
+	if nsMetrics, ok := p.configMapExternalMetrics[namespace]; ok {
+		candidates = append(candidates, nsMetrics...)
+	}
+	for _, metric := range candidates {
+		if metric.info.Metric == info.Metric &&
+			metricSelector.Matches(labels.Set(metric.labels)) {
+			metricValue := metric.value
+			metricValue.Timestamp = metav1.Now()
+			matchingMetrics = append(matchingMetrics, metricValue)
+		}
+	}
+	return &external_metrics.ExternalMetricValueList{
+		Items: matchingMetrics,
+	}, nil
+}

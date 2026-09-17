@@ -18,12 +18,12 @@ spec:
       serviceAccountName: custom-metrics-apiserver
       containers:
       - name: custom-metrics-apiserver
-        image: docker.io/cedriclamoriniere/fake-custom-metrics-server:latest
-        imagePullPolicy: IfNotPresent
+        image: gcr.io/datadoghq/watermarkpodautoscaler-fake-server:local
+        imagePullPolicy: Never
         args:
         - /adapter
         - --secure-port=6443
-        - --logtostderr=true
+        - --cert-dir=/var/run/serving-cert
         - --v=10
         ports:
         - containerPort: 6443
@@ -33,10 +33,10 @@ spec:
         volumeMounts:
         - mountPath: /tmp
           name: temp-vol
-        - mountPath: /apiserver.local.config
-          name: local-certs
+        - mountPath: /var/run/serving-cert
+          name: volume-serving-cert
       volumes:
       - name: temp-vol
         emptyDir: {}
-      - name: local-certs
+      - name: volume-serving-cert
         emptyDir: {}

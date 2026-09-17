@@ -3,6 +3,7 @@ vendor
 # Temporary Build Files
 build/_output
 build/_test
+test/e2e/metricsserver/adapter/_output
 controllers/__debug_bin
 errors
 cmd/kubectl-wpa/kubectl-wpa
@@ -93,3 +94,5 @@ tags
 # Exclude claude-data folder except readme.txt
 .devcontainer/claude-data/*
 !.devcontainer/claude-data/readme.txt
+
+/.claude/worktrees

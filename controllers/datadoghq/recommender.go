@@ -296,9 +296,10 @@ func buildReplicaRecommendationResponse(reply *autoscaling.WorkloadRecommendatio
 		Timestamp:          reply.GetTimestamp().AsTime(),
 		Details:            reply.GetReason(),
 	}
-	// We expect a single target (since we support a single targets in the request)
-	// If we have it we can extract the observed target value
-	if reply.GetObservedTargets() != nil && len(reply.GetObservedTargets()) == 1 {
+	// Extract the observed target value from the first observed target.
+	// The recommender may return multiple observed targets (e.g., cpu, memory, recommended_stateless),
+	// but we only need the first one to report the observed value for our single requested target.
+	if len(reply.GetObservedTargets()) > 0 {
 		ret.ObservedTargetValue = reply.GetObservedTargets()[0].GetTargetValue()
 	}
 	return ret, nil

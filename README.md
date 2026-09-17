@@ -60,6 +60,8 @@ The WPA controller will use `math.Floor` if the value is under the lower waterma
 
 ### Deployment
 
+**Requirements**: Kubernetes >= 1.19 (the controller records Kubernetes Events using the `events.k8s.io/v1` API, which graduated to GA in 1.19).
+
 To use the Watermark Pod Autoscaler, deploy it in your Kubernetes cluster:
 
 1. Download the [Watermark Pod Autoscaler project zip file](https://github.com/DataDog/watermarkpodautoscaler/archive/main.zip). Source code can be found at [`DataDog/watermarkpodautoscaler`](https://github.com/DataDog/watermarkpodautoscaler).

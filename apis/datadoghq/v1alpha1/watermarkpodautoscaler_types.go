@@ -6,7 +6,7 @@
 package v1alpha1
 
 import (
-	autoscalingv2 "k8s.io/api/autoscaling/v2beta1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -286,7 +286,7 @@ type WatermarkPodAutoscalerStatus struct {
 	DesiredReplicas    int32        `json:"desiredReplicas"`
 	// +optional
 	// +listType=atomic
-	CurrentMetrics []autoscalingv2.MetricStatus `json:"currentMetrics,omitempty"`
+	CurrentMetrics []MetricStatus `json:"currentMetrics,omitempty"`
 	// +optional
 	// +listType=atomic
 	Conditions []autoscalingv2.HorizontalPodAutoscalerCondition `json:"conditions,omitempty"`
@@ -297,6 +297,52 @@ type WatermarkPodAutoscalerStatus struct {
 	LastConditionType string `json:"lastConditionType,omitempty"`
 	// LastConditionType correspond to the last condition state (True,False) updated in the WPA status during the WPA reconcile state.
 	LastConditionState string `json:"lastConditionState,omitempty"`
+}
+
+// MetricStatus describes the last-read state of a single metric.
+// +k8s:openapi-gen=true
+type MetricStatus struct {
+	// type is the type of metric source this status was read from.
+	Type MetricSourceType `json:"type"`
+	// resource refers to a resource metric known to Kubernetes describing each pod in the
+	// current scale target (e.g. CPU or memory).
+	// +optional
+	Resource *ResourceMetricStatus `json:"resource,omitempty"`
+	// external refers to a global metric that is not associated with any Kubernetes object.
+	// +optional
+	External *ExternalMetricStatus `json:"external,omitempty"`
+}
+
+// ExternalMetricStatus indicates the current value of a global metric not associated with any
+// Kubernetes object.
+// +k8s:openapi-gen=true
+type ExternalMetricStatus struct {
+	// metricName is the name of a metric used for autoscaling in metric system.
+	MetricName string `json:"metricName"`
+	// metricSelector is used to identify a specific time series within a given metric.
+	// +optional
+	MetricSelector *metav1.LabelSelector `json:"metricSelector,omitempty"`
+	// currentValue is the current value of the metric (as a quantity)
+	CurrentValue resource.Quantity `json:"currentValue"`
+	// currentAverageValue is the current value of metric averaged over autoscaled pods.
+	// +optional
+	CurrentAverageValue *resource.Quantity `json:"currentAverageValue,omitempty"`
+}
+
+// ResourceMetricStatus indicates the current value of a resource metric known to Kubernetes, as
+// specified in requests and limits, describing each pod in the current scale target.
+// +k8s:openapi-gen=true
+type ResourceMetricStatus struct {
+	// name is the name of the resource in question.
+	Name v1.ResourceName `json:"name"`
+	// currentAverageUtilization is the current value of the average of the resource metric
+	// across all relevant pods, represented as a percentage of the requested value of the
+	// resource for the pods.
+	// +optional
+	CurrentAverageUtilization *int32 `json:"currentAverageUtilization,omitempty"`
+	// currentAverageValue is the current value of the average of the resource metric across
+	// all relevant pods, as a raw value.
+	CurrentAverageValue resource.Quantity `json:"currentAverageValue"`
 }
 
 // WatermarkPodAutoscalerStatusDryRunCondition ConditionType used when the WPA is in dry run mode
