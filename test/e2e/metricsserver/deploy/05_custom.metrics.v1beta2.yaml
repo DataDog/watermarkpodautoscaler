@@ -9,4 +9,4 @@ spec:
   version: v1beta2
   insecureSkipTLSVerify: true
   groupPriorityMinimum: 100
-  versionPriority: 100
+  versionPriority: 200

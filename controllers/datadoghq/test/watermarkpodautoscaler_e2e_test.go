@@ -15,7 +15,7 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
-	autoscalingv2 "k8s.io/api/autoscaling/v2beta1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -23,6 +23,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/discovery"
+	apiregistrationv1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 
 	dynclient "sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -39,6 +41,11 @@ import (
 const (
 	timeout  = 20 * time.Second
 	interval = 2 * time.Second
+
+	// metricsAPIReadyTimeout gives the aggregation layer more time than `timeout` for the fake
+	// external metrics APIService to become Available and routable, since both can lag well
+	// behind the backing Deployment being Available.
+	metricsAPIReadyTimeout = 60 * time.Second
 
 	Reset  = "\033[0m"
 	Red    = "\033[31m"
@@ -109,7 +116,23 @@ func objectsBeforeEachFunc() {
 		}
 		info("found the metrics server", metricsServer.Status)
 		return metricsServer.Status.AvailableReplicas != 0
-	}, timeout, interval).Should(BeTrue())
+	}, metricsAPIReadyTimeout, interval).Should(BeTrue())
+
+	// Deployment Available doesn't mean the APIService is wired up yet; wait for it too.
+	Eventually(func() bool {
+		apiService := &apiregistrationv1.APIService{}
+		err = k8sClient.Get(ctx, types.NamespacedName{Name: "v1beta1.external.metrics.k8s.io"}, apiService)
+		if err != nil {
+			fmt.Fprint(GinkgoWriter, err)
+			return false
+		}
+		for _, cond := range apiService.Status.Conditions {
+			if cond.Type == apiregistrationv1.Available && cond.Status == apiregistrationv1.ConditionTrue {
+				return true
+			}
+		}
+		return false
+	}, metricsAPIReadyTimeout, interval).Should(BeTrue())
 }
 
 func cleanUpAfter() {
@@ -220,6 +243,12 @@ var _ = Describe("WatermarkPodAutoscaler Controller", func() {
 			Expect(createWrapper(ctx, metricConfigMap)).Should(Succeed())
 			info("metricConfigMap created: %s/%s", namespace, configMapName)
 
+			// Discovery client to check aggregated discovery for external.metrics.k8s.io/v1beta1 below.
+			discoveryClient, discErr := discovery.NewDiscoveryClientForConfig(cfg)
+			Expect(discErr).Should(Succeed())
+
+			// APIService Available doesn't mean the apiserver's discovery/routing cache caught up yet,
+			// so reconciles can still see "the server could not find the requested resource" here.
 			Eventually(func() bool {
 				wpa := &datadoghqv1alpha1.WatermarkPodAutoscaler{}
 				objKey := dynclient.ObjectKey{
@@ -231,13 +260,32 @@ var _ = Describe("WatermarkPodAutoscaler Controller", func() {
 					fmt.Fprint(GinkgoWriter, err)
 					return false
 				}
+
+				// Log discovery state for external.metrics.k8s.io/v1beta1 to help diagnose failures.
+				if resList, err := discoveryClient.ServerResourcesForGroupVersion("external.metrics.k8s.io/v1beta1"); err != nil {
+					warn("discovery for external.metrics.k8s.io/v1beta1 failed: %v", err)
+				} else {
+					names := make([]string, 0, len(resList.APIResources))
+					for _, r := range resList.APIResources {
+						names = append(names, r.Name)
+					}
+					info("discovery for external.metrics.k8s.io/v1beta1 reports resources: %v", names)
+				}
+
+				liveAPIService := &apiregistrationv1.APIService{}
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: "v1beta1.external.metrics.k8s.io"}, liveAPIService); err != nil {
+					warn("failed to get live APIService status: %v", err)
+				} else {
+					info("live APIService v1beta1.external.metrics.k8s.io conditions: %+v", liveAPIService.Status.Conditions)
+				}
+
 				for _, condition := range wpa.Status.Conditions {
 					if condition.Type == autoscalingv2.ScalingActive && condition.Status == corev1.ConditionTrue {
 						return true
 					}
 				}
 				return false
-			}, timeout, interval).Should(BeTrue())
+			}, metricsAPIReadyTimeout, interval).Should(BeTrue())
 
 			Eventually(func() bool {
 				wpa := &datadoghqv1alpha1.WatermarkPodAutoscaler{}

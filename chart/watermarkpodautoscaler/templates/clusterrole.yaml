@@ -24,8 +24,19 @@ rules:
   verbs:
   - 'update'
   - 'get'
+# Both the "" and events.k8s.io events rules below are kept so this chart works
+# with either an old WPA controller (posts core/v1 events) or a new one (posts
+# events.k8s.io/v1 events via client-go's events API). Do not drop the "" rule
+# until old controller versions are no longer supported.
 - apiGroups:
   - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - events.k8s.io
   resources:
   - events
   verbs:
