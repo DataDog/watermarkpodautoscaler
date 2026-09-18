@@ -23,28 +23,28 @@ jobs:
       actions: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
         with:
           fetch-depth: 0
       - name: gcc install
         run: sudo apt-get update; sudo apt install gcc-aarch64-linux-gnu
       - name: Get tag
-        uses: little-core-labs/get-git-tag@v3.0.2
+        uses: little-core-labs/get-git-tag@2c292ff564c1a61b989e29f0410d131317f89b03 # v3.0.2
         id: tag
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: Get Latest Release
         id: latest_version
-        uses: pozetroninc/github-action-get-latest-release@master
+        uses: pozetroninc/github-action-get-latest-release@53d33d213ee71c72360e3c829caf7cee94ec21e2 # master
         with:
           owner: ${{ github.repository_owner }}
           repo: watermarkpodautoscaler
           excludes: prerelease, draft
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v3
+        uses: goreleaser/goreleaser-action@b508e2e3ef3b19d4e4146d4f8fb3ba9db644a757 # v3.2.0
         with:
           version: "2.4.1"
           args: release --skip=publish --config .goreleaser-for-linux.yaml
@@ -67,25 +67,25 @@ jobs:
       # actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
       actions: write
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
         with:
           fetch-depth: 0
       - name: Get tag
-        uses: little-core-labs/get-git-tag@v3.0.2
+        uses: little-core-labs/get-git-tag@2c292ff564c1a61b989e29f0410d131317f89b03 # v3.0.2
         id: tag
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: Get Latest Release
         id: latest_version
-        uses: pozetroninc/github-action-get-latest-release@master
+        uses: pozetroninc/github-action-get-latest-release@53d33d213ee71c72360e3c829caf7cee94ec21e2 # master
         with:
           owner: ${{ github.repository_owner }}
           repo: watermarkpodautoscaler
           excludes: prerelease, draft
       - name: Build
-        uses: goreleaser/goreleaser-action@v3
+        uses: goreleaser/goreleaser-action@b508e2e3ef3b19d4e4146d4f8fb3ba9db644a757 # v3.2.0
         with:
           args: release --skip=publish --config .goreleaser-for-darwin.yaml
         env:
@@ -106,26 +106,26 @@ jobs:
       # actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
       actions: write
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
         with:
           fetch-depth: 0
       - name: Get tag
-        uses: little-core-labs/get-git-tag@v3.0.2
+        uses: little-core-labs/get-git-tag@2c292ff564c1a61b989e29f0410d131317f89b03 # v3.0.2
         id: tag
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: Get Latest Release
         id: latest_version
-        uses: pozetroninc/github-action-get-latest-release@master
+        uses: pozetroninc/github-action-get-latest-release@53d33d213ee71c72360e3c829caf7cee94ec21e2 # master
         with:
           owner: ${{ github.repository_owner }}
           token: ${{ secrets.GITHUB_TOKEN }}
           repo: watermarkpodautoscaler
           excludes: prerelease, draft
       - name: Build
-        uses: goreleaser/goreleaser-action@v3
+        uses: goreleaser/goreleaser-action@b508e2e3ef3b19d4e4146d4f8fb3ba9db644a757 # v3.2.0
         with:
           args: release --skip=publish --config .goreleaser-for-windows.yaml
         env:
@@ -147,11 +147,11 @@ jobs:
       contents: write
       # actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
       actions: read
-      # rajatjindal/krew-release-bot@v0.0.43
+      # rajatjindal/krew-release-bot@92da038bbf995803124a8e50ebd438b2f37bbbb0 # v0.0.43
       pull-requests: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
         with:
           fetch-depth: 0
       - name: Make directories
@@ -175,7 +175,7 @@ jobs:
           name: kubectl-wpa-windows
           path: ./tmp-build/windows
       - name: Get tag
-        uses: little-core-labs/get-git-tag@v3.0.2
+        uses: little-core-labs/get-git-tag@2c292ff564c1a61b989e29f0410d131317f89b03 # v3.0.2
         id: tag
       - name: Prepare ./dist folder
         run: |
@@ -190,7 +190,7 @@ jobs:
       - name: Generate Plugin manifest
         run: ./hack/release/generate-plugin-manifest.sh ${{steps.tag.outputs.tag}}
       - name: Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1.0.0
         with:
           body_path: dist/CHANGELOG.md
           prerelease: ${{ contains(github.ref, '-rc.') }}
@@ -203,7 +203,7 @@ jobs:
           COMMIT_TAG: ${{steps.tag.outputs.tag}}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Update new plugin version in krew-index
-        uses: rajatjindal/krew-release-bot@v0.0.43
+        uses: rajatjindal/krew-release-bot@92da038bbf995803124a8e50ebd438b2f37bbbb0 # v0.0.43
         continue-on-error: true
         with:
           krew_template_file: dist/wpa-plugin.yaml
