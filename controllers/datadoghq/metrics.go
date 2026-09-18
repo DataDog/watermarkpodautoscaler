@@ -354,3 +354,12 @@ func getPrometheusLabels(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) promethe
 		namespacePromLabel:         wpa.Namespace,
 	}
 }
+
+// boolToFloat64 converts a boolean to the 1/0 float64 representation used by
+// Prometheus gauges.
+func boolToFloat64(b bool) float64 {
+	if b {
+		return 1
+	}
+	return 0
+}
