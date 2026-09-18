@@ -953,13 +953,6 @@ func convertDesiredReplicasWithRules(logger logr.Logger, wpa *datadoghqv1alpha1.
 	var possibleLimitingCondition string
 	var possibleLimitingReason string
 
-	// Track the capping decisions so that both the downscale_capping and
-	// upscale_capping restricted_scaling gauges are refreshed on every
-	// reconcile. Previously these gauges were only updated on the specific
-	// branch that computed them, so a gauge set to 1 during one reconcile could
-	// stay "stuck" at 1 on subsequent reconciles that no longer capped in that
-	// direction (see CASCL-1709). The function funnels every path through a
-	// single exit so both gauges are always refreshed before returning.
 	downscaleCapping := false
 	upscaleCapping := false
 
