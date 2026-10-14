@@ -79,7 +79,14 @@ const (
 	// This is a temporary workaround. The long-term fix is to walk the OwnerReference chain from pod to top-level
 	// controller (similar to the Kubernetes VPA controller_fetcher):
 	// https://github.com/kubernetes/autoscaler/blob/46bb45f204cef0114d9eca40294df467940ec55b/vertical-pod-autoscaler/pkg/target/controller_fetcher/controller_fetcher.go
-	skipOwnerCheckAnnotationKey   = "wpa.datadoghq.com/skip-owner-check"
+	skipOwnerCheckAnnotationKey = "wpa.datadoghq.com/skip-owner-check"
+
+	// scaleOnZeroReadyReplicasAnnotationKey lets the WPA compute replica recommendations even when
+	// none of the target's pods is ready (or no pod matches the selector), using the spec replica
+	// count as the computation base. Opt-in: without it, the WPA never scales a target with zero
+	// ready replicas.
+	scaleOnZeroReadyReplicasAnnotationKey = "wpa.datadoghq.com/scale-on-zero-ready-replicas"
+
 	monitorStatusErrorDuration    = time.Minute
 	lifecycleControlBlockedStatus = "blocked"
 	defaultRequeueDelay           = time.Second
