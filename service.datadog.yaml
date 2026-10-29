@@ -42,7 +42,6 @@ extensions:
         - name: "nightly-build"
           branch: "main"
           build_only: true
-          ci_pipeline: "//fake_placeholder:fake_placeholder"
           schedule: "30 23 * * SUN-THU"
           options:
             disable_failure_notifications: true
