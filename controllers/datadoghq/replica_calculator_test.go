@@ -1105,6 +1105,97 @@ func TestFastFailGetExternalMetricReplicas(t *testing.T) {
 	tc.runTest(t)
 }
 
+// TestReplicaCalcExternalZeroReadyReplicasNoAnnotation ensures that by default, the WPA refuses to
+// autoscale when none of the target pods is ready.
+// TestReplicaCalcExternalZeroReadyReplicas ensures that with the `scale-on-zero-ready-replicas`
+// annotation, the WPA still computes a recommendation when no pod is ready or no pod matches the
+// selector, using the target spec replica count as the computation base. Without the annotation,
+// the recommendation is skipped.
+func TestReplicaCalcExternalZeroReadyReplicas(t *testing.T) {
+	logf.SetLogger(zap.New())
+	now := metav1.Now()
+
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ExternalMetricSourceType,
+		External: &v1alpha1.ExternalMetricSource{
+			MetricName:     "deadbeef",
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"foo": "bar"}},
+			HighWatermark:  resource.NewMilliQuantity(4000, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(2000, resource.DecimalSI),
+		},
+	}
+	unreadyPods := []corev1.PodCondition{
+		{Status: corev1.ConditionFalse, LastTransitionTime: now},
+		{Status: corev1.ConditionFalse, LastTransitionTime: now},
+		{Status: corev1.ConditionFalse, LastTransitionTime: now},
+	}
+	threeRunningPods := []corev1.PodPhase{corev1.PodRunning, corev1.PodRunning, corev1.PodRunning}
+
+	tests := []struct {
+		name             string
+		annotation       string
+		scale            *autoscalingv1.Scale
+		podCondition     []corev1.PodCondition
+		podPhase         []corev1.PodPhase
+		expectedReplicas int32
+		expectedError    error
+	}{
+		{
+			name:          "no annotation, all pods unready",
+			scale:         makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+			podCondition:  unreadyPods,
+			podPhase:      threeRunningPods,
+			expectedError: fmt.Errorf("none is ready. Skipping recommendation"),
+		},
+		{
+			// ceil(3 (spec replicas) * 8600 / 4000) = 7
+			name:             "annotation, all pods unready",
+			annotation:       "true",
+			scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+			podCondition:     unreadyPods,
+			podPhase:         threeRunningPods,
+			expectedReplicas: 7,
+		},
+		{
+			// ceil(4 (spec replicas) * 8600 / 4000) = 9
+			name:             "annotation, no pod matches the selector",
+			annotation:       "true",
+			scale:            makeScale("", 4, map[string]string{"name": "wrong"}),
+			podPhase:         []corev1.PodPhase{corev1.PodRunning, corev1.PodRunning, corev1.PodRunning, corev1.PodRunning},
+			expectedReplicas: 9,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tc := replicaCalcTestCase{
+				expectedReplicas: tt.expectedReplicas,
+				expectedError:    tt.expectedError,
+				readyReplicas:    0,
+				pos:              metricPosition{isAbove: true},
+				podCondition:     tt.podCondition,
+				podPhase:         tt.podPhase,
+				wpa: &v1alpha1.WatermarkPodAutoscaler{
+					ObjectMeta: metav1.ObjectMeta{
+						Annotations: map[string]string{scaleOnZeroReadyReplicasAnnotationKey: tt.annotation},
+					},
+					Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+						Algorithm:                     "absolute",
+						Tolerance:                     *resource.NewMilliQuantity(20, resource.DecimalSI),
+						Metrics:                       []v1alpha1.MetricSpec{metric1},
+						ReadinessDelaySeconds:         readinessDelay,
+						MinAvailableReplicaPercentage: 50, // ignored when 0 replicas are ready and the annotation is set
+						ReplicaScalingAbsoluteModulo:  v1alpha1.NewInt32(1),
+					},
+				},
+				scale:  tt.scale,
+				metric: &metricInfo{spec: metric1, levels: []int64{8600}, expectedUtilization: 8600}, // above the HighWatermark
+			}
+			tc.runTest(t)
+		})
+	}
+}
+
 func TestReplicaCalcAverageScaleDown(t *testing.T) {
 	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
@@ -3264,7 +3355,7 @@ func TestGetReadyPodsCount(t *testing.T) {
 			podList, err := replicaCalculator.podLister.Pods(tc.scale.Namespace).List(labels.SelectorFromSet(f.selector))
 			require.NoError(t, err)
 
-			val, _, err := replicaCalculator.getReadyPodsCount(logf.Log, tc.scale.Name, podList, readinessDelay*time.Second, false)
+			val, _, err := replicaCalculator.getReadyPodsCount(logf.Log, tc.scale.Name, podList, readinessDelay*time.Second, false, false)
 			assert.Equal(t, f.expected, val)
 			if f.errorExpected != nil {
 				assert.EqualError(t, f.errorExpected, err.Error())
@@ -3543,14 +3634,57 @@ func TestGetReadyPodsCount_SkipOwnerCheck(t *testing.T) {
 	rc := &ReplicaCalculator{}
 
 	// Without skipOwnerCheck, these pods don't match "dc1" and should not be counted
-	count, incorrectCount, err := rc.getReadyPodsCount(logf.Log, "dc1", podList, 0, false)
+	count, incorrectCount, err := rc.getReadyPodsCount(logf.Log, "dc1", podList, 0, false, false)
 	require.Error(t, err, "should error when no pods match")
 	assert.Equal(t, int32(0), count)
 	assert.Equal(t, int32(2), incorrectCount)
 
 	// With skipOwnerCheck, both pods should be counted regardless of OwnerReferences
-	count, incorrectCount, err = rc.getReadyPodsCount(logf.Log, "dc1", podList, 0, true)
+	count, incorrectCount, err = rc.getReadyPodsCount(logf.Log, "dc1", podList, 0, true, false)
 	require.NoError(t, err)
 	assert.Equal(t, int32(2), count)
 	assert.Equal(t, int32(0), incorrectCount)
+}
+
+func TestShouldScaleOnZeroReadyReplicas(t *testing.T) {
+	tests := []struct {
+		name        string
+		annotations map[string]string
+		want        bool
+	}{
+		{
+			name:        "nil annotations",
+			annotations: nil,
+			want:        false,
+		},
+		{
+			name:        "empty annotations",
+			annotations: map[string]string{},
+			want:        false,
+		},
+		{
+			name:        "annotation set to true",
+			annotations: map[string]string{scaleOnZeroReadyReplicasAnnotationKey: "true"},
+			want:        true,
+		},
+		{
+			name:        "annotation set to false",
+			annotations: map[string]string{scaleOnZeroReadyReplicasAnnotationKey: "false"},
+			want:        false,
+		},
+		{
+			name:        "annotation set to other value",
+			annotations: map[string]string{scaleOnZeroReadyReplicasAnnotationKey: "yes"},
+			want:        false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wpa := &v1alpha1.WatermarkPodAutoscaler{}
+			wpa.Annotations = tt.annotations
+			if got := shouldScaleOnZeroReadyReplicas(wpa); got != tt.want {
+				t.Errorf("shouldScaleOnZeroReadyReplicas() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }

@@ -208,6 +208,18 @@ In order to have more granular control over the conditions under which a target 
 
 - `readinessDelaySeconds`: Specifies how much time replicas need to be running for, prior to be taken into account in the scaling decisions.
 
+By default, if **none** of the target's pods is Ready (or if no pod matches the target selector), the WPA will not autoscale at all. If you want the WPA to keep scaling a target in that situation (e.g. to recover a workload whose pods are all crash-looping or unschedulable, or whose status replica count dropped to 0), you can opt in with the following annotation:
+
+```yaml
+metadata:
+  annotations:
+    wpa.datadoghq.com/scale-on-zero-ready-replicas: "true"
+```
+
+When this is set and no replica is ready, the replica recommendation is computed as if the spec replica count of the target were running and ready (the `minAvailableReplicaPercentage` gate is also skipped since the ratio is necessarily 0%). All the usual safety mechanisms (watermarks, tolerances, scaling velocity limits, forbidden windows and delays, min/max replicas) still apply.
+
+Note that this only applies to `External` metrics and to the [recommender](#recommender): `Resource` metrics (CPU/memory) inherently require ready pods to report any data, so targets with zero ready replicas cannot be scaled with them.
+
 * **Simulation** 
 
 If all the conditions are met, the controller will scale the targeted object in `scaleTargetRef` to the recommended number of replicas only if the `dryRun` flag is not set to `true`. It will indicate this by logging:
