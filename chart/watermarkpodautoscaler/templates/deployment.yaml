@@ -47,8 +47,8 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --loglevel={{ .Values.logLevel }}
-            {{- if .Values.controllerConfig.defaults.convergeTowardsWatermark }}
-            - --controller-config-file=/etc/wpa-controller/config.yaml
+            {{- if include "watermarkpodautoscaler.controllerConfig.enabled" . }}
+            - --controller-config-file=/etc/wpa-controller/{{ .Values.controllerConfig.configMapKey }}
             {{- end }}
           env:
             - name: WATCH_NAMESPACE
@@ -74,7 +74,7 @@ spec:
               path: /metrics
               port: 8383
             initialDelaySeconds: 5
-          {{- if .Values.controllerConfig.defaults.convergeTowardsWatermark }}
+          {{- if include "watermarkpodautoscaler.controllerConfig.enabled" . }}
           volumeMounts:
             # The whole ConfigMap is mounted (no subPath) so kubelet propagates its updates without a restart.
             - name: controller-config
@@ -83,11 +83,11 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-      {{- if .Values.controllerConfig.defaults.convergeTowardsWatermark }}
+      {{- if include "watermarkpodautoscaler.controllerConfig.enabled" . }}
       volumes:
         - name: controller-config
           configMap:
-            name: {{ include "watermarkpodautoscaler.fullname" . }}-config
+            name: {{ include "watermarkpodautoscaler.controllerConfig.configMapName" . }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

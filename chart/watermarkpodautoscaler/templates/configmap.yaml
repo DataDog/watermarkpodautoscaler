@@ -1,13 +1,17 @@
-{{- if .Values.controllerConfig.defaults.convergeTowardsWatermark }}
+{{- if and (include "watermarkpodautoscaler.controllerConfig.enabled" .) (not .Values.controllerConfig.existingConfigMap) }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "watermarkpodautoscaler.fullname" . }}-config
+  name: {{ include "watermarkpodautoscaler.controllerConfig.configMapName" . }}
   labels:
     {{- include "watermarkpodautoscaler.labels" . | nindent 4 }}
 data:
-  config.yaml: |
+  {{ .Values.controllerConfig.configMapKey }}: |
     version: v1
     defaults:
-      convergeTowardsWatermark: {{ .Values.controllerConfig.defaults.convergeTowardsWatermark | quote }}
+      {{- with .Values.controllerConfig.defaults.convergeTowardsWatermark }}
+      convergeTowardsWatermark: {{ . | quote }}
+      {{- else }}
+      {}
+      {{- end }}
 {{- end }}

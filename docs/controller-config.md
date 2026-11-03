@@ -57,6 +57,28 @@ The file is reloaded without restarting the controller, and all the WPAs are rec
 
 1. Update the WPA CRD first: the new `status.defaults` field is pruned by an older CRD.
 2. Deploy the controller without the setting (default off).
-3. Enable the default per cluster (staging first), by deploying the ConfigMap. With the Helm chart:
-   `--set controllerConfig.defaults.convergeTowardsWatermark=highwatermark`.
+3. Enable the default per cluster (staging first), by deploying the ConfigMap.
 4. To roll back, set the default back to empty: it is disabled everywhere without touching any WPA.
+
+## Helm chart
+
+The chart mounts the file from a ConfigMap, whole (no `subPath`), at `/etc/wpa-controller/<key>` and sets the flag.
+
+* Let the chart generate the ConfigMap:
+
+  ```yaml
+  controllerConfig:
+    defaults:
+      convergeTowardsWatermark: highwatermark
+  ```
+
+* Or provide your own ConfigMap (for instance managed through GitOps) whose key holds the file shown above:
+
+  ```yaml
+  controllerConfig:
+    existingConfigMap: wpa-controller-config
+    configMapKey: config.yaml   # default
+  ```
+
+  Changes to that ConfigMap are applied live. With a chart-generated ConfigMap, changing the value also applies
+  live. Removing the whole `controllerConfig` setting removes the volume and flag and restarts the pod.
