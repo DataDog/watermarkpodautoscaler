@@ -7,6 +7,7 @@ package datadoghq
 
 import (
 	"os"
+	"slices"
 	"strings"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -30,6 +31,7 @@ const (
 	namespacePromLabel         = "namespace" // matches the value of resourceNamespacePromLabel, used to compare with DPA
 	metricNamePromLabel        = "metric_name"
 	reasonPromLabel            = "reason"
+	modePromLabel              = "mode"
 	transitionPromLabel        = "transition"
 	lifecycleStatus            = "lifecycle_status"
 	monitorName                = "monitor_name"
@@ -46,6 +48,17 @@ const (
 
 // reasonValues contains the 3 possible values of the 'reason' label
 var reasonValues = []string{downscaleCappingPromLabelVal, upscaleCappingPromLabelVal, withinBoundsPromLabelVal}
+
+// convergeModeValues contains the possible values of the 'mode' label of the converge_towards_watermark metric
+var convergeModeValues = []string{
+	string(datadoghqv1alpha1.ConvergeUpwards),
+	string(datadoghqv1alpha1.ConvergeDownwards),
+	string(datadoghqv1alpha1.ConvergeDisabled),
+	convergeModeNone,
+}
+
+// convergeModeNone is the 'mode' label value used when no (or an unknown) convergence mode is in effect.
+const convergeModeNone = "none"
 
 // tracked conditions
 var trackedConditions = map[autoscalingv2.HorizontalPodAutoscalerConditionType]string{
@@ -170,6 +183,14 @@ var (
 		},
 		append(defaultPromLabels, reasonPromLabel),
 	)
+	convergeTowardsWatermarkMode = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "converge_towards_watermark",
+			Help:      "Gauge indicating the effective convergeTowardsWatermark mode (status.defaults.convergeTowardsWatermark): 1 for the active mode, 0 for the others",
+		},
+		append(defaultPromLabels, modePromLabel),
+	)
 	replicaMin = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: subsystem,
@@ -257,6 +278,7 @@ func init() {
 	sigmetrics.Registry.MustRegister(replicaProposal)
 	sigmetrics.Registry.MustRegister(replicaEffective)
 	sigmetrics.Registry.MustRegister(restrictedScaling)
+	sigmetrics.Registry.MustRegister(convergeTowardsWatermarkMode)
 	sigmetrics.Registry.MustRegister(transitionCountdown)
 	sigmetrics.Registry.MustRegister(lifecycleControlStatus)
 	sigmetrics.Registry.MustRegister(replicaMin)
@@ -284,6 +306,12 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 			restrictedScaling.Delete(promLabelsForWpa)
 		}
 		delete(promLabelsForWpa, reasonPromLabel)
+
+		for _, mode := range convergeModeValues {
+			promLabelsForWpa[modePromLabel] = mode
+			convergeTowardsWatermarkMode.Delete(promLabelsForWpa)
+		}
+		delete(promLabelsForWpa, modePromLabel)
 
 		promLabelsForWpa[transitionPromLabel] = "downscale"
 		transitionCountdown.Delete(promLabelsForWpa)
@@ -352,6 +380,20 @@ func getPrometheusLabels(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) promethe
 		resourceKindPromLabel:      wpa.Spec.ScaleTargetRef.Kind,
 		targetNamePromLabel:        wpa.Spec.ScaleTargetRef.Name,
 		namespacePromLabel:         wpa.Namespace,
+	}
+}
+
+// setConvergeTowardsWatermarkMetric sets the converge_towards_watermark gauge from status.defaults:
+// 1 for the effective mode and 0 for the others, so a mode change never leaves a stale series at 1.
+func setConvergeTowardsWatermarkMetric(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
+	active := convergeModeNone
+	if wpa.Status.Defaults != nil && slices.Contains(convergeModeValues, string(wpa.Status.Defaults.ConvergeTowardsWatermark)) {
+		active = string(wpa.Status.Defaults.ConvergeTowardsWatermark)
+	}
+	labels := getPrometheusLabels(wpa)
+	for _, mode := range convergeModeValues {
+		labels[modePromLabel] = mode
+		convergeTowardsWatermarkMode.With(labels).Set(boolToFloat64(mode == active))
 	}
 }
 

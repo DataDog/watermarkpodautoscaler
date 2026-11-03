@@ -87,6 +87,7 @@ spec:
                 description: |-
                   Try to make the usage converge towards High Watermark to save resources. This will slowly downscale by `ReplicaScalingAbsoluteModulo`
                   if the predicted usage stays bellow the high watermarks.
+                  Values: `highwatermark`, `lowwatermark`, or `disabled` to opt out. When not set, the controller default applies (see status.defaults).
                 type: string
               downscaleDelayBelowWatermarkSeconds:
                 format: int32
@@ -578,6 +579,16 @@ spec:
               currentReplicas:
                 format: int32
                 type: integer
+              defaults:
+                description: Defaults reports the effective value of the settings
+                  that can be defaulted by the controller configuration.
+                properties:
+                  convergeTowardsWatermark:
+                    description: |-
+                      ConvergeTowardsWatermark is the effective convergence mode: the value from the spec if set,
+                      otherwise the controller default.
+                    type: string
+                type: object
               desiredReplicas:
                 format: int32
                 type: integer

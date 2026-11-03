@@ -26,6 +26,13 @@ rbac:
 watchAllNamespaces: true
 # Labels to be included as metric tags
 labelsAsTags: []
+# Controller configuration file, reloaded by the controller without a restart. Requires a WPA controller version supporting `--controller-config-file`
+controllerConfig:
+  defaults:
+    # Default value of spec.convergeTowardsWatermark for the WPAs that do not set it: "highwatermark", "lowwatermark" or "disabled".
+    # Empty (default) keeps the historical behavior: no convergence unless the WPA asks for it.
+    # A WPA can opt out with `spec.convergeTowardsWatermark: disabled`.
+    convergeTowardsWatermark: ""
 podSecurityContext: {}
 # fsGroup: 2000
 

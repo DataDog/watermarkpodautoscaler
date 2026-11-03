@@ -1,0 +1,13 @@
+{{- if .Values.controllerConfig.defaults.convergeTowardsWatermark }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "watermarkpodautoscaler.fullname" . }}-config
+  labels:
+    {{- include "watermarkpodautoscaler.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    version: v1
+    defaults:
+      convergeTowardsWatermark: {{ .Values.controllerConfig.defaults.convergeTowardsWatermark | quote }}
+{{- end }}

@@ -1,5 +1,9 @@
 # WatermarkPodAutoscaler Helm chart changelog
 
+## Unreleased
+
+* Add `controllerConfig.defaults.convergeTowardsWatermark` to set the default `convergeTowardsWatermark` of the WPAs that do not set it (requires the new `status.defaults` field in the CRD, update the CRD before the controller).
+
 ## v0.5.1
 
 * CustomResourceDefinition update to fix display of high/low watermarks in some specific cases

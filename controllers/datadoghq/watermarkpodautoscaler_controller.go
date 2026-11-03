@@ -46,10 +46,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/DataDog/dd-trace-go/v2/ddtrace/tracer"
+	"github.com/DataDog/watermarkpodautoscaler/pkg/config"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/util"
 
 	"github.com/DataDog/watermarkpodautoscaler/third_party/kubernetes/pkg/controller/podautoscaler/metrics"
@@ -99,6 +102,10 @@ var datadogMonitorGVK = schema.GroupVersionKind{
 type Options struct {
 	SkipNotScalingEvents bool
 	TLSConfig            *datadoghqv1alpha1.TLSConfig
+	// ConfigProvider gives access to the controller configuration (defaults applied to the WPAs). Optional.
+	ConfigProvider config.ConfigProvider
+	// ConfigChanges receives an event each time the controller configuration changes, to reconcile all the WPAs. Optional.
+	ConfigChanges <-chan event.GenericEvent
 }
 
 // WatermarkPodAutoscalerReconciler reconciles a WatermarkPodAutoscaler object
@@ -177,6 +184,10 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 	}
 
 	wpaStatusOriginal := instance.Status.DeepCopy()
+
+	// Resolve the defaults coming from the controller configuration. This only updates the in-memory status:
+	// the spec is never modified.
+	r.setStatusDefaults(instance)
 
 	span.SetTag("wpa", instance.Name)
 	span.SetTag("namespace", instance.Namespace)
@@ -1060,11 +1071,43 @@ func updatePredicate(ev event.UpdateEvent) bool {
 	return hasChanged
 }
 
+// setStatusDefaults sets status.defaults with the effective value of the settings that can be defaulted by
+// the controller configuration, and exposes it as a metric.
+func (r *WatermarkPodAutoscalerReconciler) setStatusDefaults(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
+	converge := wpa.Spec.ConvergeTowardsWatermark
+	if converge == "" && r.Options.ConfigProvider != nil {
+		converge = r.Options.ConfigProvider.Get().Defaults.ConvergeTowardsWatermark
+	}
+	if converge == "" {
+		wpa.Status.Defaults = nil
+	} else {
+		wpa.Status.Defaults = &datadoghqv1alpha1.WatermarkPodAutoscalerStatusDefaults{ConvergeTowardsWatermark: converge}
+	}
+	setConvergeTowardsWatermarkMetric(wpa)
+}
+
+// allWPARequests returns a reconcile request for every WPA, used when the controller configuration changes.
+func (r *WatermarkPodAutoscalerReconciler) allWPARequests(ctx context.Context, _ client.Object) []reconcile.Request {
+	list := &datadoghqv1alpha1.WatermarkPodAutoscalerList{}
+	if err := r.Client.List(ctx, list); err != nil {
+		r.Log.Error(err, "unable to list the WPAs after a configuration change")
+		return nil
+	}
+	requests := make([]reconcile.Request, 0, len(list.Items))
+	for i := range list.Items {
+		requests = append(requests, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: list.Items[i].Namespace, Name: list.Items[i].Name}})
+	}
+	return requests
+}
+
 // SetupWithManager creates a new Watermarkpodautoscaler controller
 func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, workers int) error {
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&datadoghqv1alpha1.WatermarkPodAutoscaler{}, builder.WithPredicates(predicate.Funcs{UpdateFunc: updatePredicate})).
 		WithOptions(controller.Options{MaxConcurrentReconciles: workers})
+	if r.Options.ConfigChanges != nil {
+		b = b.WatchesRawSource(source.Channel(r.Options.ConfigChanges, handler.EnqueueRequestsFromMapFunc(r.allWPARequests)))
+	}
 	err := b.Complete(r)
 	if err != nil {
 		return err
