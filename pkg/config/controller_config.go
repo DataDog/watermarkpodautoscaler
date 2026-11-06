@@ -7,6 +7,7 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -18,7 +19,6 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	sigmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/yaml"
@@ -31,7 +31,7 @@ const ControllerConfigVersionV1 = "v1"
 
 var configValid = prometheus.NewGauge(prometheus.GaugeOpts{
 	Subsystem: "wpa_controller",
-	Name:      "controller_config_valid",
+	Name:      "config_valid",
 	Help:      "1 if the last read of the controller configuration file was valid (or no file is configured), 0 otherwise",
 })
 
@@ -41,7 +41,8 @@ func init() {
 }
 
 // ControllerConfig is the content of the controller configuration file.
-// Unknown keys are ignored so that new sections can be added without breaking older controllers.
+// Unknown top-level keys are ignored so that new sections can be added without breaking older controllers.
+// Unknown keys inside a known section are rejected, so that a typo does not silently disable a setting.
 type ControllerConfig struct {
 	// Version of the file format.
 	Version string `json:"version"`
@@ -62,8 +63,18 @@ func ParseControllerConfig(data []byte) (*ControllerConfig, error) {
 	if len(data) == 0 {
 		return cfg, nil
 	}
-	if err := yaml.Unmarshal(data, cfg); err != nil {
+	var raw struct {
+		Version  string          `json:"version"`
+		Defaults json.RawMessage `json:"defaults,omitempty"`
+	}
+	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("unable to parse the controller configuration: %w", err)
+	}
+	cfg.Version = raw.Version
+	if len(raw.Defaults) > 0 {
+		if err := yaml.UnmarshalStrict(raw.Defaults, &cfg.Defaults); err != nil {
+			return nil, fmt.Errorf("unable to parse the controller configuration defaults: %w", err)
+		}
 	}
 	if reflect.DeepEqual(cfg, &ControllerConfig{}) {
 		// blank or comment-only document
@@ -89,19 +100,19 @@ func (c *ControllerConfig) Validate() error {
 	return nil
 }
 
-// ConfigProvider gives access to the current controller configuration.
-type ConfigProvider interface {
+// Provider gives access to the current controller configuration.
+type Provider interface {
 	// Get returns the current configuration. It never returns nil.
 	Get() *ControllerConfig
 }
 
-// StaticConfigProvider is a ConfigProvider always returning the same configuration.
-type StaticConfigProvider struct {
+// StaticProvider is a Provider always returning the same configuration.
+type StaticProvider struct {
 	Config *ControllerConfig
 }
 
-// Get implements ConfigProvider.
-func (s StaticConfigProvider) Get() *ControllerConfig {
+// Get implements Provider.
+func (s StaticProvider) Get() *ControllerConfig {
 	if s.Config == nil {
 		return &ControllerConfig{}
 	}
@@ -116,11 +127,14 @@ type FileProvider struct {
 	log     logr.Logger
 	current atomic.Pointer[ControllerConfig]
 	changes chan event.GenericEvent
+	// fileLoaded is true once a file has been read. Only accessed by load, which runs in NewFileProvider and
+	// then in the Start goroutine.
+	fileLoaded bool
 }
 
 // NewFileProvider creates a FileProvider and loads the file once.
-// A missing file or an invalid content results in an empty configuration (feature off), reported in the logs
-// and in the controller_config_valid metric, until a valid file shows up.
+// A missing file results in an empty configuration (feature off), logged once. An invalid content also results
+// in an empty configuration, reported in the logs and in the config_valid metric, until a valid file shows up.
 func NewFileProvider(path string, log logr.Logger) *FileProvider {
 	p := &FileProvider{
 		path:    path,
@@ -132,7 +146,7 @@ func NewFileProvider(path string, log logr.Logger) *FileProvider {
 	return p
 }
 
-// Get implements ConfigProvider.
+// Get implements Provider.
 func (p *FileProvider) Get() *ControllerConfig {
 	return p.current.Load()
 }
@@ -154,16 +168,24 @@ func (p *FileProvider) reload() {
 }
 
 // load reads the file and swaps the current configuration, it returns true if the configuration changed.
-// The last valid configuration is kept on error. A missing file is an empty configuration at startup only:
-// once a configuration is loaded, a file that disappears (volume being remounted, ConfigMap deleted) must not
-// silently drop the defaults. They are removed by setting them to empty in the file.
+// The last valid configuration is kept on error. A missing file is an empty configuration until a file has
+// been read: once a configuration is loaded, a file that disappears (volume being remounted, ConfigMap deleted)
+// must not silently drop the defaults. They are removed by setting them to empty in the file.
 func (p *FileProvider) load(startup bool) bool {
 	data, err := os.ReadFile(p.path)
-	if err != nil && (!startup || !errors.Is(err, os.ErrNotExist)) {
+	switch {
+	case err != nil && errors.Is(err, os.ErrNotExist) && !p.fileLoaded:
+		if startup {
+			p.log.Info("controller configuration file not found, no defaults applied", "path", p.path)
+		}
+		configValid.Set(1)
+		return false
+	case err != nil:
 		p.log.Error(err, "unable to read the controller configuration, keeping the previous one", "path", p.path)
 		configValid.Set(0)
 		return false
 	}
+	p.fileLoaded = true
 	cfg, err := ParseControllerConfig(data)
 	if err != nil {
 		p.log.Error(err, "invalid controller configuration, keeping the previous one", "path", p.path)
@@ -172,12 +194,14 @@ func (p *FileProvider) load(startup bool) bool {
 	}
 	configValid.Set(1)
 
-	if reflect.DeepEqual(cfg, p.current.Load()) {
-		return false
+	changed := !reflect.DeepEqual(cfg, p.current.Load())
+	if changed {
+		p.current.Store(cfg)
 	}
-	p.current.Store(cfg)
-	p.log.Info("controller configuration loaded", "path", p.path, "defaults", cfg.Defaults)
-	return true
+	if changed || startup {
+		p.log.Info("controller configuration loaded", "path", p.path, "defaults", cfg.Defaults)
+	}
+	return changed
 }
 
 // resyncPeriod is the interval of the periodic reload, a safety net if a file system event is missed
@@ -233,7 +257,6 @@ func (p *FileProvider) NeedLeaderElection() bool {
 
 // ensure the interfaces are satisfied.
 var (
-	_ ConfigProvider = (*FileProvider)(nil)
-	_ ConfigProvider = StaticConfigProvider{}
-	_ client.Object  = (*datadoghqv1alpha1.WatermarkPodAutoscaler)(nil)
+	_ Provider = (*FileProvider)(nil)
+	_ Provider = StaticProvider{}
 )

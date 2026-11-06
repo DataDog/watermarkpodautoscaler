@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/spf13/pflag"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -18,11 +19,20 @@ import (
 	"github.com/DataDog/agent-payload/v5/autoscaling/kubernetes"
 )
 
+// Static recommendation returned for every request, set with the --replicas, --lower-bound and --upper-bound flags.
+// The bounds do not depend on the current replica count, as the WPA controller expects: a WPA converging towards
+// a watermark steps down to the lower bound, so bounds that follow the current count would never stop it.
+var (
+	targetReplicas     int32
+	lowerBoundReplicas int32
+	upperBoundReplicas int32
+)
+
 func int32Ptr(i int32) *int32 {
 	return &i
 }
 
-// Static autoscaler that always recommends to scale up by 1 replica, can be tried with
+// Static autoscaler that always recommends the same number of replicas, can be tried with
 // curl -X POST -d '{"state": {"currentReplicas": 1}, "targets": [{"type": "cpu", "targetValue": 0.5}]}' http://localhost:8089/autoscaling
 func autoscaling(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Handling %s %s %s bytes\n", r.Method, r.URL.Path, r.Header.Get("Content-Length"))
@@ -54,10 +64,10 @@ func autoscaling(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := &kubernetes.WorkloadRecommendationReply{
-		TargetReplicas:     currentReplicas + 1,
-		LowerBoundReplicas: int32Ptr(currentReplicas - 1),
-		UpperBoundReplicas: int32Ptr(currentReplicas + 2),
-		Reason:             fmt.Sprintf("Autoscaling from %d to %d replicas", currentReplicas, currentReplicas+1),
+		TargetReplicas:     targetReplicas,
+		LowerBoundReplicas: int32Ptr(lowerBoundReplicas),
+		UpperBoundReplicas: int32Ptr(upperBoundReplicas),
+		Reason:             fmt.Sprintf("Autoscaling from %d to %d replicas", currentReplicas, targetReplicas),
 		ObservedTargets:    request.GetTargets(),
 	}
 
@@ -86,8 +96,15 @@ func autoscalingRedirect(w http.ResponseWriter, r *http.Request) {
 func main() {
 	flags := pflag.NewFlagSet("skeleton-recommender", pflag.ExitOnError)
 	flags.String("addr", ":8089", "Address to listen on")
+	flags.Int32Var(&targetReplicas, "replicas", 3, "Recommended number of replicas")
+	flags.Int32Var(&lowerBoundReplicas, "lower-bound", 2, "Fewest replicas that keep the usage under the high watermark")
+	flags.Int32Var(&upperBoundReplicas, "upper-bound", 5, "Most replicas that keep the usage above the low watermark")
 
 	pflag.CommandLine = flags
+	_ = flags.Parse(os.Args[1:]) // exits on error (pflag.ExitOnError)
+	if lowerBoundReplicas > targetReplicas || targetReplicas > upperBoundReplicas {
+		log.Fatalf("--lower-bound (%d) <= --replicas (%d) <= --upper-bound (%d) is required", lowerBoundReplicas, targetReplicas, upperBoundReplicas)
+	}
 
 	http.HandleFunc("/autoscaling", autoscaling)
 	http.HandleFunc("/autoscaling/redirect", autoscalingRedirect)

@@ -103,7 +103,7 @@ type Options struct {
 	SkipNotScalingEvents bool
 	TLSConfig            *datadoghqv1alpha1.TLSConfig
 	// ConfigProvider gives access to the controller configuration (defaults applied to the WPAs). Optional.
-	ConfigProvider config.ConfigProvider
+	ConfigProvider config.Provider
 	// ConfigChanges receives an event each time the controller configuration changes, to reconcile all the WPAs. Optional.
 	ConfigChanges <-chan event.GenericEvent
 }

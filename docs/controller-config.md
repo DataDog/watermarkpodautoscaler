@@ -25,6 +25,13 @@ With `highwatermark`, a WPA whose metric is between its low and high watermarks 
 See `spec.convergeTowardsWatermark`. All the other limits (`minReplicas`, scale-down limit factor, forbidden
 windows, delays) still apply. Convergence is only officially supported for WPAs with a single metric.
 
+For WPAs that use `spec.recommender`, convergence steps toward the recommender's lower bound
+(`highwatermark`) or upper bound (`lowwatermark`). While the current replica count is within these bounds,
+the WPA does not follow a recommendation that goes against the convergence direction, so it does not flip
+between N and N-1. When the current count leaves the bounds, the WPA scales back to the bound, not to the
+recommendation, so a moving bound only moves the WPA by the same amount. The recommender must return bounds that do not depend on the current replica count.
+If the recommender does not return both bounds, the WPA does not converge.
+
 To opt a WPA out of the default:
 
 ```yaml
@@ -50,8 +57,10 @@ The file is reloaded without restarting the controller, and all the WPAs are rec
 * Mount the **whole ConfigMap** as a volume, not a `subPath`: kubelet never updates `subPath` mounts.
   Kubelet propagates ConfigMap updates after its sync period (about a minute).
 * An invalid file (unknown version, unknown value, bad YAML) is ignored: the controller keeps the last valid
-  configuration, logs an error and sets `wpa_controller_controller_config_valid` to 0.
-* A missing file is an empty configuration.
+  configuration, logs an error and sets `wpa_controller_config_valid` to 0.
+* A missing file is an empty configuration, logged once at startup. Once a file has been read, a file that
+  disappears keeps the last configuration, logs an error and sets `wpa_controller_config_valid` to 0.
+* Unknown top-level keys are ignored, but unknown keys inside `defaults` (a typo) make the file invalid.
 
 ## Rolling out
 

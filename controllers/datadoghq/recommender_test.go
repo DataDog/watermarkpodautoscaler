@@ -47,7 +47,7 @@ type RecommenderClientMock struct {
 
 func NewMockRecommenderClient() *RecommenderClientMock {
 	return &RecommenderClientMock{
-		ReturnedResponse: ReplicaRecommendationResponse{2, 1, 3, time.Now(), "because", 0.5},
+		ReturnedResponse: ReplicaRecommendationResponse{Replicas: 2, ReplicasLowerBound: 1, ReplicasUpperBound: 3, HasBounds: true, Timestamp: time.Now(), Details: "because", ObservedTargetValue: 0.5},
 	}
 }
 
@@ -214,6 +214,7 @@ func newExpectedResponse(now time.Time) *ReplicaRecommendationResponse {
 		Replicas:           6,
 		ReplicasLowerBound: 4,
 		ReplicasUpperBound: 6,
+		HasBounds:          true,
 		Timestamp:          now,
 		Details:            "an upscale was needed",
 	}
@@ -583,4 +584,18 @@ func TestBuildReplicaRecommendationResponse(t *testing.T) {
 			assert.InDelta(t, tt.expectedObservedTarget, resp.ObservedTargetValue, 0.001)
 		})
 	}
+}
+
+func TestBuildReplicaRecommendationResponseHasBounds(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+
+	resp, err := buildReplicaRecommendationResponse(newTestReply(now))
+	require.NoError(t, err)
+	assert.True(t, resp.HasBounds)
+
+	reply := newTestReply(now)
+	reply.LowerBoundReplicas = nil
+	resp, err = buildReplicaRecommendationResponse(reply)
+	require.NoError(t, err)
+	assert.False(t, resp.HasBounds, "a missing lower bound must not be read as a lower bound of 0")
 }

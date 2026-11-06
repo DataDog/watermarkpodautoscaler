@@ -10,24 +10,30 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/api/meta/testrestmapper"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	fakescale "k8s.io/client-go/scale/fake"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
+	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1/test"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/config"
 )
 
 func TestSetStatusDefaults(t *testing.T) {
-	highDefault := config.StaticConfigProvider{Config: &config.ControllerConfig{
+	highDefault := config.StaticProvider{Config: &config.ControllerConfig{
 		Version:  config.ControllerConfigVersionV1,
 		Defaults: config.Defaults{ConvergeTowardsWatermark: v1alpha1.ConvergeUpwards},
 	}}
 
 	tests := []struct {
 		name           string
-		provider       config.ConfigProvider
+		provider       config.Provider
 		specConverge   v1alpha1.ConvergeTowardsWatermarkType
 		wantStatus     *v1alpha1.WatermarkPodAutoscalerStatusDefaults
 		wantActiveMode string
@@ -38,7 +44,7 @@ func TestSetStatusDefaults(t *testing.T) {
 		},
 		{
 			name:           "empty configuration",
-			provider:       config.StaticConfigProvider{},
+			provider:       config.StaticProvider{},
 			wantActiveMode: convergeModeNone,
 		},
 		{
@@ -159,4 +165,80 @@ func TestAllWPARequests(t *testing.T) {
 		got = append(got, req.NamespacedName)
 	}
 	assert.ElementsMatch(t, []types.NamespacedName{{Namespace: "ns1", Name: "a"}, {Namespace: "ns2", Name: "b"}}, got)
+}
+
+// TestReconcileStatusDefaults runs Reconcile against a fake API server and checks that the default is persisted
+// in the status, through the status subresource, and never written to the spec.
+func TestReconcileStatusDefaults(t *testing.T) {
+	provider := config.StaticProvider{Config: &config.ControllerConfig{
+		Version:  config.ControllerConfigVersionV1,
+		Defaults: config.Defaults{ConvergeTowardsWatermark: v1alpha1.ConvergeUpwards},
+	}}
+	newWPA := func(defaulted bool) *v1alpha1.WatermarkPodAutoscaler {
+		wpa := test.NewWatermarkPodAutoscaler(testingNamespace, testingWPAName, &test.NewWatermarkPodAutoscalerOptions{
+			Spec: &v1alpha1.WatermarkPodAutoscalerSpec{
+				ScaleTargetRef: testCrossVersionObjectRef,
+				MaxReplicas:    5,
+				MinReplicas:    getReplicas(3),
+				Metrics: []v1alpha1.MetricSpec{{
+					Type: v1alpha1.ExternalMetricSourceType,
+					External: &v1alpha1.ExternalMetricSource{
+						MetricName:     "deadbeef",
+						MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"label": "value"}},
+						// invalid watermarks: the reconcile stops after the spec check, with a status update
+						HighWatermark: resource.NewQuantity(3, resource.DecimalSI),
+						LowWatermark:  resource.NewQuantity(4, resource.DecimalSI),
+					},
+				}},
+			},
+		})
+		if defaulted {
+			return v1alpha1.DefaultWatermarkPodAutoscaler(wpa)
+		}
+		return wpa
+	}
+
+	tests := []struct {
+		name         string
+		defaulted    bool
+		wantDefaults *v1alpha1.WatermarkPodAutoscalerStatusDefaults
+	}{
+		{
+			name:         "invalid spec path persists the default in the status",
+			defaulted:    true,
+			wantDefaults: &v1alpha1.WatermarkPodAutoscalerStatusDefaults{ConvergeTowardsWatermark: v1alpha1.ConvergeUpwards},
+		},
+		{
+			// the spec defaulting path writes the spec back with Client.Update: the default must not leak into it
+			name:      "spec defaulting path does not write the default to the spec",
+			defaulted: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := runtime.NewScheme()
+			require.NoError(t, v1alpha1.AddToScheme(s))
+			c := fake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&v1alpha1.WatermarkPodAutoscaler{}).Build()
+			wpa := newWPA(tt.defaulted)
+			require.NoError(t, c.Create(t.Context(), wpa))
+			t.Cleanup(func() { cleanupAssociatedMetrics(wpa, false) })
+
+			r := &WatermarkPodAutoscalerReconciler{
+				Client:        c,
+				Scheme:        s,
+				Log:           logf.Log,
+				scaleClient:   &fakescale.FakeScaleClient{},
+				restMapper:    testrestmapper.TestOnlyStaticRESTMapper(s),
+				eventRecorder: events.NewFakeRecorder(10),
+				Options:       Options{ConfigProvider: provider},
+			}
+			_, err := r.Reconcile(t.Context(), newRequest(testingNamespace, testingWPAName))
+			require.NoError(t, err)
+
+			got := &v1alpha1.WatermarkPodAutoscaler{}
+			require.NoError(t, c.Get(t.Context(), types.NamespacedName{Namespace: testingNamespace, Name: testingWPAName}, got))
+			assert.Empty(t, got.Spec.ConvergeTowardsWatermark, "the default must never be written to the spec")
+			assert.Equal(t, tt.wantDefaults, got.Status.Defaults)
+		})
+	}
 }

@@ -80,9 +80,11 @@ type ReplicaRecommendationRequest struct {
 }
 
 type ReplicaRecommendationResponse struct {
-	Replicas            int
-	ReplicasLowerBound  int
-	ReplicasUpperBound  int
+	Replicas           int
+	ReplicasLowerBound int
+	ReplicasUpperBound int
+	// HasBounds is true when the recommender returned both bounds. Without both, the WPA does not converge.
+	HasBounds           bool
 	Timestamp           time.Time
 	Details             string
 	ObservedTargetValue float64
@@ -293,6 +295,7 @@ func buildReplicaRecommendationResponse(reply *autoscaling.WorkloadRecommendatio
 		Replicas:           int(reply.GetTargetReplicas()),
 		ReplicasLowerBound: int(reply.GetLowerBoundReplicas()),
 		ReplicasUpperBound: int(reply.GetUpperBoundReplicas()),
+		HasBounds:          reply.LowerBoundReplicas != nil && reply.UpperBoundReplicas != nil,
 		Timestamp:          reply.GetTimestamp().AsTime(),
 		Details:            reply.GetReason(),
 	}

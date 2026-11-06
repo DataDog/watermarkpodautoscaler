@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -42,6 +43,8 @@ func TestParseControllerConfig(t *testing.T) {
 		{name: "unknown version", data: "version: v2\n", wantErr: "unsupported controller configuration version"},
 		{name: "invalid value", data: "version: v1\ndefaults:\n  convergeTowardsWatermark: middle\n", wantErr: "invalid defaults.convergeTowardsWatermark"},
 		{name: "invalid yaml", data: "version: [", wantErr: "unable to parse"},
+		{name: "typo in a defaults key", data: "version: v1\ndefaults:\n  convergeTowardWatermark: highwatermark\n", wantErr: "unknown field"},
+		{name: "defaults set to null", data: "version: v1\ndefaults:\n", want: &ControllerConfig{Version: "v1"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -74,6 +77,7 @@ func TestFileProviderKeepsConfigWhenFileDisappears(t *testing.T) {
 	require.NoError(t, os.Remove(path))
 	p.reload()
 	assert.Equal(t, v1alpha1.ConvergeUpwards, p.Get().Defaults.ConvergeTowardsWatermark, "defaults must survive a missing file")
+	assert.InDelta(t, 0, testutil.ToFloat64(configValid), 0, "a file that disappears after a load is reported")
 
 	// clearing the defaults in the file is the way to remove them
 	require.NoError(t, os.WriteFile(path, []byte("version: v1\n"), 0o600))
@@ -85,14 +89,13 @@ func TestFileProviderStartWithoutWatchableDirectory(t *testing.T) {
 	p := NewFileProvider(filepath.Join(t.TempDir(), "missing-dir", "config.yaml"), logf.Log)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	go func() { done <- p.Start(ctx) }()
-	time.Sleep(50 * time.Millisecond)
 	cancel()
+	go func() { done <- p.Start(ctx) }()
 	require.NoError(t, <-done, "an unwatchable directory must not stop the controller")
 }
 
-func TestStaticConfigProviderNil(t *testing.T) {
-	assert.NotNil(t, StaticConfigProvider{}.Get())
+func TestStaticProviderNil(t *testing.T) {
+	assert.NotNil(t, StaticProvider{}.Get())
 }
 
 func TestFileProviderMissingAndInvalidFile(t *testing.T) {
@@ -101,6 +104,9 @@ func TestFileProviderMissingAndInvalidFile(t *testing.T) {
 
 	p := NewFileProvider(path, logf.Log)
 	assert.Equal(t, &ControllerConfig{}, p.Get(), "missing file is an empty configuration")
+	assert.InDelta(t, 1, testutil.ToFloat64(configValid), 0, "a missing file is not an error")
+	p.reload()
+	assert.InDelta(t, 1, testutil.ToFloat64(configValid), 0, "a file still missing on reload is not an error")
 
 	require.NoError(t, os.WriteFile(path, []byte("version: v1\ndefaults:\n  convergeTowardsWatermark: highwatermark\n"), 0o600))
 	p.reload()
@@ -115,6 +121,7 @@ func TestFileProviderMissingAndInvalidFile(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("version: v1\ndefaults:\n  convergeTowardsWatermark: nope\n"), 0o600))
 	p.reload()
 	assert.Equal(t, v1alpha1.ConvergeUpwards, p.Get().Defaults.ConvergeTowardsWatermark)
+	assert.InDelta(t, 0, testutil.ToFloat64(configValid), 0)
 	select {
 	case <-p.Changes():
 		t.Fatal("no notification expected for an invalid file")

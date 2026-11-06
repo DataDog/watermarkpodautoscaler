@@ -87,7 +87,7 @@ To use the Watermark Pod Autoscaler, deploy it in your Kubernetes cluster:
 
 #### Controller configuration file
 
-The controller can read an optional configuration file to set defaults for the WPAs that do not set a value, for instance `convergeTowardsWatermark: highwatermark` by default (opt-out with `spec.convergeTowardsWatermark: disabled`). More information on the dedicated documentation page: [docs/controller-config.md](docs/controller-config.md)
+The controller can read an optional configuration file to set defaults for the WPAs that do not set a value, for instance `convergeTowardsWatermark: highwatermark` by default (opt-out with `spec.convergeTowardsWatermark: disabled`). The default also applies to the WPAs that use a recommender. More information on the dedicated documentation page: [docs/controller-config.md](docs/controller-config.md)
 
 #### kubectl plugin
 

@@ -19,7 +19,8 @@ The controller applies `convergeTowardsWatermark: highwatermark` by default to e
 8. All existing safety limits apply unchanged: minReplicas, scale-down limit factor, forbidden windows, delays, `replicaScalingAbsoluteModulo` stepping, and the "never cross the high watermark" check.
 
 ## Scope decisions
-- The default applies to all WPAs, including multi-metric ones. The RFC's open questions (exclude multi-metric, minimum size threshold, staging-to-prod timing and signals) are not implemented; they can become `defaults` filters later.
+- The default applies to all WPAs, including multi-metric and recommender ones. On the recommender path, a WPA within the recommender bounds does not scale against the convergence direction, so it does not flip between N and N-1. This also changes WPAs that already set `spec.convergeTowardsWatermark` with a recommender: inside the bounds they no longer follow the recommendation back up (or down).
+- The RFC's open questions (exclude multi-metric, minimum size threshold, staging-to-prod timing and signals) are not implemented; they can become `defaults` filters later.
 - The config loader is generic and versioned (`version: v1`), and only `defaults` is implemented. Unknown top-level keys are ignored so Target Stretch can add its section later.
 - Out of scope: any other WPA spec change or default, defaulting to `lowwatermark`, DatadogPodAutoscaler support, and `convergeToHwTolerancePercent` (a recommender-side setting, not in this repo; WPA only forwards lower and upper bounds as today).
 
