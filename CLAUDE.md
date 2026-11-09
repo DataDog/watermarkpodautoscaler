@@ -57,6 +57,23 @@ make install-tools            # Install all development tools (golangci-lint, op
 make tidy                     # Run go mod tidy
 ```
 
+### Before pushing dependency or go.mod changes
+CI fails on any diff left by these, so run them and commit the results:
+```bash
+make test                     # runs manifests + verify-license, not just go test
+make update-golang            # check-golang-version; ends with `go work sync`
+make generate && git diff --exit-code
+```
+- Use `make test`, not bare `go test ./...`: the latter skips `verify-license`.
+- `go.work` links `.` and `apis`, so a root go.mod bump changes `apis/go.mod` via
+  `go work sync`. Keep that change; don't revert it as noise. Then check
+  `cd apis && GOWORK=off go build ./...`, and run
+  `GOWORK=off go mod download <module>` if go.sum is missing `/go.mod` hashes.
+- CI runs on linux/amd64. On other hosts, regenerate the license file with
+  `CGO_ENABLED=1 GOARCH=amd64 make licenses`, or amd64-only deps go missing.
+- Build in both workspace mode and with `GOWORK=off`; they can resolve different
+  versions (e.g. an ambiguous `genproto` import that only shows in workspace mode).
+
 ### Deployment
 ```bash
 make install                  # Install CRDs into the cluster
@@ -149,7 +166,7 @@ The `cmd/kubectl-wpa/` directory contains a kubectl plugin that provides helper 
 
 ## Golang Version
 
-Currently on Go 1.24. Use `make update-golang` to update Go version across all repository files.
+Currently on Go 1.26. Use `make update-golang` to update Go version across all repository files.
 
 ## FIPS Mode
 
