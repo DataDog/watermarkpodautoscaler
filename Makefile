@@ -196,6 +196,7 @@ $(ENVTEST): Makefile ## Download envtest-setup locally if necessary.
 
 # go-get-tool will 'go get' any package $2 and install it to $1.
 PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
+GO_TOOLCHAIN := $(shell sed -n "s/^go /go/p" $(PROJECT_DIR)/go.mod)
 define go-get-tool
 @[ -f $(1) ] || { \
 set -e ;\
@@ -203,7 +204,7 @@ TMP_DIR=$$(mktemp -d) ;\
 cd $$TMP_DIR ;\
 go mod init tmp ;\
 echo "Downloading $(2)" ;\
-GOTOOLCHAIN=$$(sed -n "s/^go /go/p" $(PROJECT_DIR)/go.mod) \
+GOTOOLCHAIN=$(GO_TOOLCHAIN) \
 GOBIN=$(PROJECT_DIR)/bin/$(PLATFORM) go install $(2) ;\
 rm -rf $$TMP_DIR ;\
 }
@@ -254,7 +255,7 @@ lint: bin/$(PLATFORM)/golangci-lint fmt vet
 
 .PHONY: licenses
 licenses: bin/$(PLATFORM)/go-licenses
-	bin/$(PLATFORM)/go-licenses report . --template ./hack/licenses.tpl > LICENSE-3rdparty.csv 2> errors
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) bin/$(PLATFORM)/go-licenses report . --template ./hack/licenses.tpl > LICENSE-3rdparty.csv 2> errors
 
 .PHONY: verify-license
 verify-license:
@@ -279,7 +280,7 @@ bin/$(PLATFORM)/operator-sdk: Makefile
 
 bin/$(PLATFORM)/go-licenses:
 	mkdir -p $(ROOT)bin/$(PLATFORM)
-	GOTOOLCHAIN=$$(sed -n "s/^go /go/p" $(ROOT)/go.mod) GOBIN=$(ROOT)/bin/$(PLATFORM) go install github.com/google/go-licenses@v1.5.0
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) GOBIN=$(ROOT)/bin/$(PLATFORM) go install github.com/google/go-licenses@v1.5.0
 
 bin/$(PLATFORM)/operator-manifest-tools: Makefile
 	hack/install-operator-manifest-tools.sh 0.2.0
