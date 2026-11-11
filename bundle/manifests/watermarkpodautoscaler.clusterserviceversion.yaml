@@ -41,9 +41,10 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    operators.operatorframework.io/builder: operator-sdk-v1.23.0
+    createdAt: "2026-11-11T20:02:32Z"
+    operators.operatorframework.io/builder: operator-sdk-v1.37.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
-  name: watermarkpodautoscaler.v0.12.0-rc.2
+  name: watermarkpodautoscaler.v0.12.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -175,7 +176,7 @@ spec:
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.name
-                image: gcr.io/datadoghq/watermarkpodautoscaler:v0.12.0-rc.2
+                image: gcr.io/datadoghq/watermarkpodautoscaler:v0.12.0
                 imagePullPolicy: IfNotPresent
                 livenessProbe:
                   httpGet:
@@ -249,4 +250,4 @@ spec:
   maturity: alpha
   provider:
     name: Datadog
-  version: 0.12.0-rc.2
+  version: 0.12.0
