@@ -9,7 +9,7 @@ permissions:
   # packages: read
 jobs:
   build-linux-binary:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       # https://github.com/marketplace/actions/goreleaser-action
       contents: write
