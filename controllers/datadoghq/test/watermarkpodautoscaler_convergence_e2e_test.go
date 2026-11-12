@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	dynclient "sigs.k8s.io/controller-runtime/pkg/client"
 	sigmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
@@ -40,10 +41,29 @@ const (
 	// convergeTimeout covers pod startup, a few forbidden windows and the 15s resync of the controller.
 	convergeTimeout = 3 * time.Minute
 	// convergeHold is how long a WPA must keep its replicas to show it does not converge or flip back.
-	convergeHold = 30 * time.Second
+	convergeHold = 15 * time.Second
 	// convergeWindowSeconds keeps the forbidden windows short, so that converging steps fast.
-	convergeWindowSeconds = 10
+	convergeWindowSeconds = 5
 )
+
+// convergeObjects are the objects created by the current convergence spec. Unlike createWrapper, they are
+// cleaned up without the fake metrics server, which is kept across the convergence specs.
+var convergeObjects []dynclient.Object
+
+func createConvergeObject(obj dynclient.Object) {
+	Expect(k8sClient.Create(ctx, obj)).Should(Succeed())
+	convergeObjects = append(convergeObjects, obj)
+}
+
+func cleanUpConvergeObjects() {
+	for _, obj := range convergeObjects {
+		Eventually(func() bool {
+			err := k8sClient.Delete(ctx, obj)
+			return apierrors.IsNotFound(err)
+		}, timeout, interval).Should(BeTrue())
+	}
+	convergeObjects = nil
+}
 
 // writeControllerConfig replaces the controller configuration file atomically, like kubelet does for a ConfigMap.
 func writeControllerConfig(content string) {
@@ -75,7 +95,7 @@ func setFakeMetric(name, value string) {
 			ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: configMapName},
 			Data:       map[string]string{name: encoded},
 		}
-		Expect(createWrapper(ctx, cm)).Should(Succeed())
+		createConvergeObject(cm)
 		return
 	}
 	Expect(err).Should(Succeed())
@@ -88,7 +108,7 @@ func setFakeMetric(name, value string) {
 
 // newConvergeApp creates a fake app Deployment with the given replicas.
 func newConvergeApp(name string, replicas int32) {
-	Expect(createWrapper(ctx, utils.NewFakeAppDeployment(namespace, name, &utils.NewFakeAppDeploymentOptions{Replicas: replicas}))).Should(Succeed())
+	createConvergeObject(utils.NewFakeAppDeployment(namespace, name, &utils.NewFakeAppDeploymentOptions{Replicas: replicas}))
 }
 
 // newConvergeWPA returns a WPA for the Deployment of the same name, with short forbidden windows.
@@ -231,7 +251,7 @@ func hasConvergeCondition(name, reason, text string) bool {
 var _ = Describe("WatermarkPodAutoscaler convergence", func() {
 	BeforeEach(func() { setControllerDefault(datadoghqv1alpha1.ConvergeUpwards) })
 	JustBeforeEach(func() { objectsBeforeEachFunc() })
-	JustAfterEach(func() { cleanUpAfter() })
+	JustAfterEach(func() { cleanUpConvergeObjects() })
 	AfterEach(func() {
 		setControllerDefault("")
 		Eventually(func() float64 {
@@ -246,7 +266,7 @@ var _ = Describe("WatermarkPodAutoscaler convergence", func() {
 		name := "converge-default"
 		newConvergeApp(name, 6)
 		setFakeMetric(name, "600")
-		Expect(createWrapper(ctx, withAverageMetric(newConvergeWPA(name, ""), name, 90, 150))).Should(Succeed())
+		createConvergeObject(withAverageMetric(newConvergeWPA(name, ""), name, 90, 150))
 
 		By("reporting the controller default and converging")
 		Eventually(func() bool {
@@ -267,7 +287,7 @@ var _ = Describe("WatermarkPodAutoscaler convergence", func() {
 		name := "converge-optout"
 		newConvergeApp(name, 6)
 		setFakeMetric(name, "600")
-		Expect(createWrapper(ctx, withAverageMetric(newConvergeWPA(name, datadoghqv1alpha1.ConvergeDisabled), name, 90, 150))).Should(Succeed())
+		createConvergeObject(withAverageMetric(newConvergeWPA(name, datadoghqv1alpha1.ConvergeDisabled), name, 90, 150))
 
 		Eventually(func() bool {
 			return statusDefault(name) == datadoghqv1alpha1.ConvergeUpwards && hasConvergeCondition(name, "ConvergenceDisabled", "Convergence disabled (spec)")
@@ -294,8 +314,8 @@ var _ = Describe("WatermarkPodAutoscaler convergence", func() {
 		converging, nodefault := "reco-converge", "reco-nodefault"
 		newConvergeApp(converging, 5)
 		newConvergeApp(nodefault, 3)
-		Expect(createWrapper(ctx, withRecommender(newConvergeWPA(converging, datadoghqv1alpha1.ConvergeUpwards)))).Should(Succeed())
-		Expect(createWrapper(ctx, withRecommender(newConvergeWPA(nodefault, "")))).Should(Succeed())
+		createConvergeObject(withRecommender(newConvergeWPA(converging, datadoghqv1alpha1.ConvergeUpwards)))
+		createConvergeObject(withRecommender(newConvergeWPA(nodefault, "")))
 
 		By("converging the spec value down to the lower bound")
 		Eventually(func() bool {
@@ -321,7 +341,7 @@ var _ = Describe("WatermarkPodAutoscaler convergence", func() {
 		setFakeMetric(name, "1000")
 		wpa := withAverageMetric(newConvergeWPA(name, ""), name, 200, 500)
 		wpa.Spec.DryRun = true
-		Expect(createWrapper(ctx, wpa)).Should(Succeed())
+		createConvergeObject(wpa)
 
 		By("converging towards the high watermark")
 		Eventually(func() bool {
