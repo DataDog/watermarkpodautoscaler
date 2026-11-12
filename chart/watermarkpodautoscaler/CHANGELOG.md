@@ -1,5 +1,10 @@
 # WatermarkPodAutoscaler Helm chart changelog
 
+## v0.6.0
+
+* Add `targetStretch.mode` and `targetStretch.ratio` values for the cluster-wide target stretch (`WPA_STRETCH_MODE`, `WPA_STRETCH_RATIO`).
+* CustomResourceDefinition update: add `status.targetStretch` and the `stretch ratio` column.
+
 ## v0.5.1
 
 * CustomResourceDefinition update to fix display of high/low watermarks in some specific cases

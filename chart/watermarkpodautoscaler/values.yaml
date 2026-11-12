@@ -56,6 +56,14 @@ resources: {}
 #   cpu: 100m
 #   memory: 128Mi
 
+# targetStretch configures the cluster-wide WPA target stretch (see docs/target-stretch.md).
+# A change restarts the controller.
+targetStretch:
+  # mode: disabled, dry-run-opt-in, dry-run-opt-out, enabled-opt-in or enabled-opt-out
+  mode: disabled
+  # ratio: watermark multiplier in [1, 2] (e.g. "1.2"). Required when mode is not disabled.
+  ratio: ""
+
 nodeSelector: {}
 tolerations: []
 affinity: {}

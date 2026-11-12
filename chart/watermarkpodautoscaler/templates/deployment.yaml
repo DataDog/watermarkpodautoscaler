@@ -62,6 +62,12 @@ spec:
                   fieldPath: metadata.name
             - name: OPERATOR_NAME
               value: "watermarkpodautoscaler"
+            - name: WPA_STRETCH_MODE
+              value: {{ .Values.targetStretch.mode | default "disabled" | quote }}
+            {{- if .Values.targetStretch.ratio }}
+            - name: WPA_STRETCH_RATIO
+              value: {{ .Values.targetStretch.ratio | quote }}
+            {{- end }}
             {{- if .Values.labelsAsTags }}
             - name: DD_LABELS_AS_TAGS
               value: {{ join " " .Values.labelsAsTags | quote }}
