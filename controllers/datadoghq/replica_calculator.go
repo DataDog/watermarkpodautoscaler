@@ -455,16 +455,21 @@ func setConvergeNotEvaluated(wpa *v1alpha1.WatermarkPodAutoscaler, cause string)
 	setConvergeConditionMetric(wpa, "", false)
 }
 
+// effectiveMinReplicas returns spec.minReplicas, at least 1.
+func effectiveMinReplicas(wpa *v1alpha1.WatermarkPodAutoscaler) int32 {
+	if wpa.Spec.MinReplicas != nil && *wpa.Spec.MinReplicas > 0 {
+		return *wpa.Spec.MinReplicas
+	}
+	return 1
+}
+
 // tryToConvergeToWatermark will try to make the replicaCount slowly converge to a watermark.
 // It will suggest converging until the estimated usage goes beyond the respective watermark.
 // This feature is officially only supported with 1 metric.
 func tryToConvergeToWatermarkForUsage(logger logr.Logger, convergingType v1alpha1.ConvergeTowardsWatermarkType, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, lowMark, highMark *resource.Quantity) (optimisedReplicaCount int32) {
 	// Compute lowerBound, higherBound and optimisedReplicaCount
 	// We compute the maximum and minimum amount of replicas we think we can have without going over the watermarks.
-	minReplicas := int32(1)
-	if (wpa.Spec.MinReplicas != nil) && (*wpa.Spec.MinReplicas > 0) {
-		minReplicas = *wpa.Spec.MinReplicas
-	}
+	minReplicas := effectiveMinReplicas(wpa)
 	maxReplicas := wpa.Spec.MaxReplicas
 
 	var lowerBoundReplicaCount, upperBoundReplicaCount int32
@@ -577,16 +582,16 @@ func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplica
 		scaleState = convergeOutsideRecommenderBounds
 	}
 
-	switch {
 	// Within the bounds, don't follow the recommendation against the convergence, or it flips between N and N-1.
-	case withinBounds && converge == v1alpha1.ConvergeUpwards && recommendedReplicaCount >= currentReplicas,
-		withinBounds && converge == v1alpha1.ConvergeDownwards && recommendedReplicaCount <= currentReplicas:
+	converging := withinBounds &&
+		(converge == v1alpha1.ConvergeUpwards && recommendedReplicaCount >= currentReplicas ||
+			converge == v1alpha1.ConvergeDownwards && recommendedReplicaCount <= currentReplicas)
+
+	switch {
+	case converging:
 		msg = "Within bounds of the watermarks"
 		// Cap the bounds like the metric path, so a step clamped by min/max is reported as unstable.
-		minReplicas := int32(1)
-		if (wpa.Spec.MinReplicas != nil) && (*wpa.Spec.MinReplicas > 0) {
-			minReplicas = *wpa.Spec.MinReplicas
-		}
+		minReplicas := effectiveMinReplicas(wpa)
 		lowerBound := math32.Cap(lowerBoundReplicas, minReplicas, wpa.Spec.MaxReplicas)
 		upperBound := math32.Cap(upperBoundReplicas, minReplicas, wpa.Spec.MaxReplicas)
 		replicaCount = tryToConvergeToWatermark(logger, converge, currentReplicas, currentReadyReplicas, wpa, lowerBound, upperBound)
@@ -600,7 +605,6 @@ func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplica
 			target = min(target, lowerBoundReplicas)
 		}
 		replicaCount = adjustReplicaCountForUpscale(logger, currentReplicas, currentReadyReplicas, wpa, target)
-		setConvergeCondition(wpa, converge, scaleState)
 	// Downscale
 	case recommendedReplicaCount < currentReplicas:
 		msg = "Value is below lowMark"
@@ -610,21 +614,15 @@ func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplica
 			target = max(target, upperBoundReplicas)
 		}
 		replicaCount = adjustReplicaCountForDownscale(logger, currentReplicas, currentReadyReplicas, wpa, target)
-		setConvergeCondition(wpa, converge, scaleState)
-	// If within bounds, do nothing unless converging is enabled
+	// Recommendation matches the current replicas, and no convergence step
 	default:
 		msg = "Within bounds of the watermarks"
 		position.isAbove = false
 		position.isBelow = false
-		switch converge {
-		// Outside the bounds, or without bounds: don't converge
-		case v1alpha1.ConvergeUpwards, v1alpha1.ConvergeDownwards:
-			msg = "Outside the recommender bounds, not converging"
-			setConvergeCondition(wpa, converge, convergeOutsideRecommenderBounds)
-			replicaCount = currentReplicas
-		default:
-			replicaCount = tryToConvergeToWatermark(logger, converge, currentReplicas, currentReadyReplicas, wpa, lowerBoundReplicas, upperBoundReplicas)
-		}
+		replicaCount = currentReplicas
+	}
+	if !converging {
+		setConvergeCondition(wpa, converge, scaleState)
 	}
 
 	logger.Info(msg, "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "recommendedReplicaCount", recommendedReplicaCount, "upperBoundReplicas", upperBoundReplicas, "lowerBoundReplicas", lowerBoundReplicas)
