@@ -322,6 +322,13 @@ func getReplicaCountUpscale(logger logr.Logger, currentReplicas, currentReadyRep
 	return adjustReplicaCountForUpscale(logger, currentReplicas, currentReadyReplicas, wpa, replicaCount)
 }
 
+// floorReplicaCountToAbsoluteModulo returns the highest multiple of ReplicaScalingAbsoluteModulo not above
+// replicaCount, and at least one modulo.
+func floorReplicaCountToAbsoluteModulo(replicaCount int32, wpa *v1alpha1.WatermarkPodAutoscaler) int32 {
+	modulo := *wpa.Spec.ReplicaScalingAbsoluteModulo
+	return max(replicaCount-math32.Mod(replicaCount, modulo), modulo)
+}
+
 func roundReplicaCountToAbsoluteModulo(replicaCount int32, wpa *v1alpha1.WatermarkPodAutoscaler) int32 {
 	// Scale up the computed replica count so that it is evenly divisible by the ReplicaScalingAbsoluteModulo.
 	if replicaScalingAbsoluteModuloRemainder := math32.Mod(replicaCount, *wpa.Spec.ReplicaScalingAbsoluteModulo); replicaScalingAbsoluteModuloRemainder > 0 {
@@ -487,7 +494,8 @@ func tryToConvergeToWatermark(logger logr.Logger, convergingType v1alpha1.Conver
 	switch convergingType {
 	case v1alpha1.ConvergeUpwards:
 		optimisedReplicaCount = math32.Max(currentReplicas-scaleBy, 1)
-		if optimisedReplicaCount < lowerBoundReplicaCount {
+		// At 1 replica the step changes nothing: converged, not stepping.
+		if optimisedReplicaCount < lowerBoundReplicaCount || optimisedReplicaCount >= currentReplicas {
 			// This would result in a downscale, give up
 			setConvergeCondition(wpa, convergingType, convergeConverged)
 			logger.Info("Scaling down would likely make the usage go above the High Watermark", "optimisedReplicaCount", optimisedReplicaCount, "currentReadyReplicas", currentReadyReplicas, "lowerBoundReplicaCount", lowerBoundReplicaCount, "upperBoundReplicaCount", upperBoundReplicaCount)
@@ -607,7 +615,8 @@ func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplica
 		restrictedScaling.With(labelsWithReason).Set(0)
 		target := recommendedReplicaCount
 		if hasBounds && converge == v1alpha1.ConvergeDownwards && position.isBelow {
-			target = max(target, upperBoundReplicas)
+			// Aligned down, or the downscale rounding brings it back above the bound.
+			target = max(target, floorReplicaCountToAbsoluteModulo(upperBoundReplicas, wpa))
 		}
 		replicaCount = adjustReplicaCountForDownscale(logger, currentReplicas, currentReadyReplicas, wpa, target)
 		setConvergeCondition(wpa, converge, scaleState)
