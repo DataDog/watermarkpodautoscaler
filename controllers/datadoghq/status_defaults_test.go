@@ -197,6 +197,12 @@ func TestReconcileStatusDefaults(t *testing.T) {
 			require.NoError(t, c.Get(t.Context(), types.NamespacedName{Namespace: testingNamespace, Name: testingWPAName}, got))
 			assert.Equal(t, tt.specConverge, got.Spec.ConvergeTowardsWatermark, "the default must never be written to the spec")
 			assert.Equal(t, tt.wantDefaults, got.Status.Defaults)
+			if tt.defaulted {
+				// the invalid spec stops the reconcile before the calculator: the convergence is not evaluated
+				cond, err := getCondition(&got.Status, v1alpha1.WatermarkPodAutoscalerStatusConvergeToWatermark)
+				require.NoError(t, err)
+				assert.Equal(t, convergeNotEvaluatedReason, cond.Reason)
+			}
 		})
 	}
 }

@@ -212,6 +212,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		// If the WPA spec is incorrect (most likely, in "metrics" section) stop processing it
 		// When the spec is updated, the wpa will be re-added to the reconcile queue
 		r.eventRecorder.Eventf(instance, nil, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedSpecCheck, datadoghqv1alpha1.ReasonFailedSpecCheck, "%s", err.Error())
+		setConvergeNotEvaluated(instance, "invalid WPA specification")
 		setCondition(instance, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedSpecCheck, "Invalid WPA specification: %s", err)
 		if err = r.updateStatusIfNeeded(ctx, wpaStatusOriginal, instance); err != nil {
 			r.eventRecorder.Eventf(instance, nil, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedUpdateStatus, datadoghqv1alpha1.ReasonFailedUpdateStatus, "%s", err.Error())
@@ -266,6 +267,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 			// DatadogMonitor not found, wait for a minute before trying again.
 			// not returning an error to adding to the main rate-limited queue.
 			r.eventRecorder.Eventf(instance, datadogMonitor, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedGetDatadogMonitor, datadoghqv1alpha1.ReasonFailedGetDatadogMonitor, "%s", err.Error())
+			setConvergeNotEvaluated(instance, "scaling blocked by the lifecycle control")
 			setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionTrue, datadoghqv1alpha1.ReasonFailedGetDatadogMonitor, "monitor %s not found, blocking the WPA from proceeding", dmon.String())
 			if err = r.updateStatusIfNeeded(ctx, wpaStatusOriginal, instance); err != nil {
 				r.eventRecorder.Eventf(instance, datadogMonitor, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedUpdateStatus, datadoghqv1alpha1.ReasonFailedUpdateStatus, "%s", err.Error())
@@ -281,6 +283,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		if !found || err != nil {
 			lifecycleControlStatus.With(promLabels).Set(1)
 			log.Info("Datadog Monitor state is not found, blocking reconcile loop for this WPA, will retry in a minute", "datadogMonitor", fmt.Sprintf("%s/%s", instance.Namespace, instance.Name))
+			setConvergeNotEvaluated(instance, "scaling blocked by the lifecycle control")
 			setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionTrue, datadoghqv1alpha1.ReasonDatadogMonitorNotOK, "monitor %s state not found, blocking the WPA from proceeding", dmon.String())
 			if err = r.updateStatusIfNeeded(ctx, wpaStatusOriginal, instance); err != nil {
 				r.eventRecorder.Eventf(instance, datadogMonitor, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedUpdateStatus, datadoghqv1alpha1.ReasonFailedUpdateStatus, "%s", err.Error())
@@ -294,6 +297,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 			log.Info("Datadog Monitor is not OK, blocking reconcile loop for this WPA, will retry in a minute", "datadogMonitor", fmt.Sprintf("%s/%s", instance.Namespace, instance.Name), "state", monitorState)
 			// Monitors are evaluated every minute, no need to reconcile the WPA before that duration if we are not in a OK state.
 			// TODO: Introduce more granular status handling if the monitor is in No Data or Alert.
+			setConvergeNotEvaluated(instance, "scaling blocked by the lifecycle control")
 			setCondition(instance, datadoghqv1alpha1.ScalingBlocked, corev1.ConditionTrue, datadoghqv1alpha1.ReasonDatadogMonitorNotOK, "monitor %s is in %s state, blocking the WPA from proceeding", dmon.String(), monitorState)
 			if err = r.updateStatusIfNeeded(ctx, wpaStatusOriginal, instance); err != nil {
 				r.eventRecorder.Eventf(instance, datadogMonitor, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedUpdateStatus, datadoghqv1alpha1.ReasonFailedUpdateStatus, "%s", err.Error())
@@ -310,6 +314,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 	if err = r.reconcileWPA(ctx, log, wpaStatusOriginal, instance); err != nil {
 		log.Info("Error during reconcileWPA", "error", err)
 		r.eventRecorder.Eventf(instance, nil, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedProcessWPA, datadoghqv1alpha1.ReasonFailedProcessWPA, "%s", err.Error())
+		setConvergeNotEvaluated(instance, "error while processing the WPA")
 		setCondition(instance, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedProcessWPA, "Error happened while processing the WPA")
 		// In case of `reconcileWPA` error, we need to requeue the Resource in order to retry to process it again
 		// we put a delay in order to not retry directly and limit the number of retries if it only a transient issue.
@@ -410,6 +415,7 @@ func (r *WatermarkPodAutoscalerReconciler) reconcileWPA(ctx context.Context, log
 	proposedReplicas, metricName, metricStatuses, metricTimestamp, readyReplicas, stableRegime, err := r.computeReplicas(ctx, logger, wpa, currentScale)
 
 	if err != nil {
+		setConvergeNotEvaluated(wpa, "the replica count could not be computed")
 		r.setCurrentReplicasInStatus(wpa, currentReplicas)
 		if err2 := r.updateStatusIfNeeded(ctx, wpaStatusOriginal, wpa); err2 != nil {
 			r.eventRecorder.Eventf(wpa, nil, corev1.EventTypeWarning, datadoghqv1alpha1.ConditionReasonFailedUpdateReplicasStatus, datadoghqv1alpha1.ConditionReasonFailedUpdateReplicasStatus, "%s", err2.Error())
@@ -1062,6 +1068,10 @@ func updatePredicate(ev event.UpdateEvent) bool {
 		// remove prometheus metrics associated to this WPA, only metrics associated to metrics
 		// since other could not have changed.
 		cleanupAssociatedMetrics(oldObject, true)
+		// The condition series carry the target labels: drop the old ones when the target changes.
+		if !apiequality.Semantic.DeepEqual(newObject.Spec.ScaleTargetRef, oldObject.Spec.ScaleTargetRef) {
+			cleanupConditionMetrics(oldObject)
+		}
 	}
 	return hasChanged
 }

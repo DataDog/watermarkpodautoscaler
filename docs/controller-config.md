@@ -54,6 +54,35 @@ status:
 
 The effective mode is the spec value if set, else the controller default, except for WPAs that use a recommender.
 
+The `ConvergeToWatermark` condition reports what the convergence did at the last reconcile. Its message names the
+direction and where the mode comes from (`spec`, `controller default`, `not set`, or `controller default not applied:
+the WPA uses a recommender`).
+
+| Reason | Status | When |
+|---|---|---|
+| `ConvergingToHighWatermark` / `ConvergingToLowWatermark` | True | Between the watermarks, the proposed next step keeps the usage within the watermark |
+| `ConvergedToHighWatermark` / `ConvergedToLowWatermark` | False | The next step would cross the watermark |
+| `OutsideWatermarks` | False | The usage is above the high or below the low watermark |
+| `OutsideRecommenderBounds` | False | Outside the recommender bounds, or the recommender returned no bounds |
+| `FollowingRecommendation` | False | Within the bounds, the WPA follows a recommendation in the convergence direction |
+| `ConvergenceDisabled` | False | No mode: `disabled`, not set, or the WPA uses a recommender without a spec value |
+| `NotEvaluated` | False | The replica count was not computed: error, invalid spec, lifecycle control blocking, or a tolerated 0 |
+
+True means the proposed step is a convergence step, not that a scale happens: forbidden windows, scale limits or
+`dryRun` can still hold it. With several metrics, the last metric evaluated sets the condition (convergence is only
+officially supported with one metric).
+
+The condition is also exposed as a metric, one series per direction, 1 while the condition is True for that
+direction:
+
+```
+wpa_controller_conditions{condition="converge_to_high_watermark", wpa_name="...", ...} 1
+wpa_controller_conditions{condition="converge_to_low_watermark", wpa_name="...", ...} 0
+```
+
+For instance, `sum by (condition) (wpa_controller_conditions{condition=~"converge_to_.*"})` counts the WPAs
+converging in each direction.
+
 ## Reloading
 
 The file is reloaded without restarting the controller. Each WPA picks up the change at its next periodic
