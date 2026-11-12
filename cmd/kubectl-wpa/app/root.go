@@ -10,6 +10,7 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 
 	"github.com/DataDog/watermarkpodautoscaler/cmd/kubectl-wpa/app/dryrun"
+	"github.com/DataDog/watermarkpodautoscaler/cmd/kubectl-wpa/app/stretch"
 )
 
 // WatermarkPodAutoscalerOptions provides information required to manage WatermarkPodAutoscaler.
@@ -37,6 +38,7 @@ func NewCmdRoot(streams genericclioptions.IOStreams) *cobra.Command {
 	}
 
 	cmd.AddCommand(dryrun.NewCmdDryRun(streams))
+	cmd.AddCommand(stretch.NewCmdStretch(streams))
 
 	o.configFlags.AddFlags(cmd.Flags())
 
