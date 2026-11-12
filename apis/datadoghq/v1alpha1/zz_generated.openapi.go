@@ -26,6 +26,8 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.ResourceMetricSource":         schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_ResourceMetricSource(ref),
 		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.ResourceMetricStatus":         schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_ResourceMetricStatus(ref),
 		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.TLSConfig":                    schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_TLSConfig(ref),
+		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.TargetStretchStatus":          schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_TargetStretchStatus(ref),
+		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.TargetStretchWatermarks":      schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_TargetStretchWatermarks(ref),
 		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.WatermarkPodAutoscaler":       schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscaler(ref),
 		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.WatermarkPodAutoscalerSpec":   schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscalerSpec(ref),
 		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.WatermarkPodAutoscalerStatus": schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscalerStatus(ref),
@@ -426,6 +428,100 @@ func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_TLSConfig(ref common.
 	}
 }
 
+func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_TargetStretchStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "TargetStretchStatus describes the cluster-wide target stretch applied to a WPA.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"mode": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Mode is the cluster-wide target stretch mode.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"appliedRatio": {
+						SchemaProps: spec.SchemaProps{
+							Description: "AppliedRatio is the ratio applied to the watermarks, as a decimal string (e.g. \"1.15\").",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"effectiveWatermarks": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "EffectiveWatermarks are the stretched watermarks, per metric.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref("github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.TargetStretchWatermarks"),
+									},
+								},
+							},
+						},
+					},
+					"replicasRecommended": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ReplicasRecommended is the shadow replica count computed with the stretched watermarks (dry-run modes only).",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+				},
+				Required: []string{"mode", "appliedRatio"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.TargetStretchWatermarks"},
+	}
+}
+
+func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_TargetStretchWatermarks(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "TargetStretchWatermarks are the stretched watermarks of one metric.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"metric": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Metric is the metric name (or the recommender name).",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"lowWatermark": {
+						SchemaProps: spec.SchemaProps{
+							Description: "LowWatermark is the stretched low watermark.",
+							Ref:         ref("k8s.io/apimachinery/pkg/api/resource.Quantity"),
+						},
+					},
+					"highWatermark": {
+						SchemaProps: spec.SchemaProps{
+							Description: "HighWatermark is the stretched high watermark.",
+							Ref:         ref("k8s.io/apimachinery/pkg/api/resource.Quantity"),
+						},
+					},
+				},
+				Required: []string{"metric", "lowWatermark", "highWatermark"},
+			},
+		},
+		Dependencies: []string{
+			"k8s.io/apimachinery/pkg/api/resource.Quantity"},
+	}
+}
+
 func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscaler(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -712,11 +808,17 @@ func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscale
 							Format:      "",
 						},
 					},
+					"targetStretch": {
+						SchemaProps: spec.SchemaProps{
+							Description: "TargetStretch reports the cluster-wide target stretch applied to this WPA. It is set only when the WPA is selected by the cluster-wide stretch mode.",
+							Ref:         ref("github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.TargetStretchStatus"),
+						},
+					},
 				},
 				Required: []string{"currentReplicas", "desiredReplicas"},
 			},
 		},
 		Dependencies: []string{
-			"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.MetricStatus", "k8s.io/api/autoscaling/v2.HorizontalPodAutoscalerCondition", "k8s.io/apimachinery/pkg/apis/meta/v1.Time"},
+			"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.MetricStatus", "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.TargetStretchStatus", "k8s.io/api/autoscaling/v2.HorizontalPodAutoscalerCondition", "k8s.io/apimachinery/pkg/apis/meta/v1.Time"},
 	}
 }

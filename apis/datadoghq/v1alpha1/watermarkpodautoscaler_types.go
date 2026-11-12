@@ -27,6 +27,7 @@ import (
 // +kubebuilder:printcolumn:name="dry-run",type="string",JSONPath=".status.conditions[?(@.type==\"DryRun\")].status"
 // +kubebuilder:printcolumn:name="last scale",type="date",JSONPath=".status.lastScaleTime"
 // +kubebuilder:printcolumn:name="scale count",type="integer",priority=1,JSONPath=".status.scalingEventsCount"
+// +kubebuilder:printcolumn:name="stretch ratio",type="string",priority=1,JSONPath=".status.targetStretch.appliedRatio"
 // +kubebuilder:resource:path=watermarkpodautoscalers,shortName=wpa
 // +k8s:openapi-gen=true
 // +genclient
@@ -297,6 +298,37 @@ type WatermarkPodAutoscalerStatus struct {
 	LastConditionType string `json:"lastConditionType,omitempty"`
 	// LastConditionType correspond to the last condition state (True,False) updated in the WPA status during the WPA reconcile state.
 	LastConditionState string `json:"lastConditionState,omitempty"`
+	// TargetStretch reports the cluster-wide target stretch applied to this WPA.
+	// It is set only when the WPA is selected by the cluster-wide stretch mode.
+	// +optional
+	TargetStretch *TargetStretchStatus `json:"targetStretch,omitempty"`
+}
+
+// TargetStretchStatus describes the cluster-wide target stretch applied to a WPA.
+// +k8s:openapi-gen=true
+type TargetStretchStatus struct {
+	// Mode is the cluster-wide target stretch mode.
+	Mode string `json:"mode"`
+	// AppliedRatio is the ratio applied to the watermarks, as a decimal string (e.g. "1.15").
+	AppliedRatio string `json:"appliedRatio"`
+	// EffectiveWatermarks are the stretched watermarks, per metric.
+	// +optional
+	// +listType=atomic
+	EffectiveWatermarks []TargetStretchWatermarks `json:"effectiveWatermarks,omitempty"`
+	// ReplicasRecommended is the shadow replica count computed with the stretched watermarks (dry-run modes only).
+	// +optional
+	ReplicasRecommended *int32 `json:"replicasRecommended,omitempty"`
+}
+
+// TargetStretchWatermarks are the stretched watermarks of one metric.
+// +k8s:openapi-gen=true
+type TargetStretchWatermarks struct {
+	// Metric is the metric name (or the recommender name).
+	Metric string `json:"metric"`
+	// LowWatermark is the stretched low watermark.
+	LowWatermark resource.Quantity `json:"lowWatermark"`
+	// HighWatermark is the stretched high watermark.
+	HighWatermark resource.Quantity `json:"highWatermark"`
 }
 
 // MetricStatus describes the last-read state of a single metric.
@@ -356,6 +388,9 @@ const WatermarkPodAutoscalerStatusAboveHighWatermark autoscalingv2.HorizontalPod
 
 // WatermarkPodAutoscalerStatusConvergeToWatermark ConditionType used when the value is within bound and we're trying to converge to the one of the watermarks
 const WatermarkPodAutoscalerStatusConvergeToWatermark autoscalingv2.HorizontalPodAutoscalerConditionType = "ConvergeToWatermark"
+
+// WatermarkPodAutoscalerStatusTargetStretched ConditionType reporting whether the cluster-wide target stretch is applied
+const WatermarkPodAutoscalerStatusTargetStretched autoscalingv2.HorizontalPodAutoscalerConditionType = "TargetStretched"
 
 // ScalingBlocked represents a given WPA's lifecycle will depend on the associated Datadog Monitor's state
 const ScalingBlocked autoscalingv2.HorizontalPodAutoscalerConditionType = "ScalingBlocked"
