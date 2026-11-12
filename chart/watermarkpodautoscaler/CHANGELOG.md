@@ -1,5 +1,9 @@
 # WatermarkPodAutoscaler Helm chart changelog
 
+## Unreleased
+
+* CustomResourceDefinition (`apiextensions.k8s.io/v1`) synced with `config/crd/bases`: adds `status.defaults`, `spec.recommender` and the other fields added since v0.5.1.
+
 ## v0.5.1
 
 * CustomResourceDefinition update to fix display of high/low watermarks in some specific cases
