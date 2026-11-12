@@ -61,3 +61,19 @@ Create the name of the service account to use
     {{ default "default" .Values.serviceAccount.name }}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Whether the controller configuration file is mounted
+*/}}
+{{- define "watermarkpodautoscaler.controllerConfig.enabled" -}}
+{{- if or .Values.controllerConfig.enabled .Values.controllerConfig.existingConfigMap .Values.controllerConfig.defaults.convergeTowardsWatermark -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/*
+Name of the ConfigMap holding the controller configuration file
+*/}}
+{{- define "watermarkpodautoscaler.controllerConfig.configMapName" -}}
+{{- default (printf "%s-config" (include "watermarkpodautoscaler.fullname" .)) .Values.controllerConfig.existingConfigMap -}}
+{{- end -}}

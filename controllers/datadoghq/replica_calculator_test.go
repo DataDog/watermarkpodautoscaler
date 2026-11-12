@@ -676,6 +676,75 @@ func TestScaleIntervalReplicaCalcConvergeScaleDown(t *testing.T) {
 	tc.runTest(t)
 }
 
+func TestScaleIntervalReplicaCalcConvergeFromStatusDefaults(t *testing.T) {
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ResourceMetricSourceType,
+		Resource: &v1alpha1.ResourceMetricSource{
+			Name:           corev1.ResourceCPU,
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
+			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
+		},
+	}
+
+	tests := []struct {
+		name             string
+		specConverge     v1alpha1.ConvergeTowardsWatermarkType
+		statusDefaults   *v1alpha1.WatermarkPodAutoscalerStatusDefaults
+		expectedReplicas int32
+	}{
+		{
+			name:             "no spec value and no default: no convergence",
+			expectedReplicas: 3,
+		},
+		{
+			name:             "default highwatermark: converges",
+			statusDefaults:   &v1alpha1.WatermarkPodAutoscalerStatusDefaults{ConvergeTowardsWatermark: v1alpha1.ConvergeUpwards},
+			expectedReplicas: 2,
+		},
+		{
+			name:             "spec disabled wins over the default",
+			specConverge:     v1alpha1.ConvergeDisabled,
+			statusDefaults:   &v1alpha1.WatermarkPodAutoscalerStatusDefaults{ConvergeTowardsWatermark: v1alpha1.ConvergeUpwards},
+			expectedReplicas: 3,
+		},
+		{
+			// scaling up to 4 would go below the low watermark, so lowwatermark keeps 3 where the default would give 2
+			name:             "spec lowwatermark wins over the default",
+			specConverge:     v1alpha1.ConvergeDownwards,
+			statusDefaults:   &v1alpha1.WatermarkPodAutoscalerStatusDefaults{ConvergeTowardsWatermark: v1alpha1.ConvergeUpwards},
+			expectedReplicas: 3,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tc := replicaCalcTestCase{
+				expectedReplicas: test.expectedReplicas,
+				readyReplicas:    3,
+				scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+				wpa: &v1alpha1.WatermarkPodAutoscaler{
+					Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+						Algorithm:                    "absolute",
+						Tolerance:                    *resource.NewMilliQuantity(25, resource.DecimalSI),
+						Metrics:                      []v1alpha1.MetricSpec{metric1},
+						ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
+						ConvergeTowardsWatermark:     test.specConverge,
+						MinReplicas:                  v1alpha1.NewInt32(1),
+						MaxReplicas:                  10,
+					},
+					Status: v1alpha1.WatermarkPodAutoscalerStatus{Defaults: test.statusDefaults},
+				},
+				metric: &metricInfo{
+					spec:                metric1,
+					levels:              []int64{8000, 8000, 8000}, // between the watermarks
+					expectedUtilization: 24000,
+				},
+			}
+			tc.runTest(t)
+		})
+	}
+}
+
 func TestReplicaCalcAbsoluteScaleDown(t *testing.T) {
 	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
@@ -1919,6 +1988,7 @@ func TestAdjustReplicaCountRecommenderConverge(t *testing.T) {
 	tests := []struct {
 		name             string
 		specConverge     v1alpha1.ConvergeTowardsWatermarkType
+		statusDefaults   *v1alpha1.WatermarkPodAutoscalerStatusDefaults
 		current          int32
 		reco             int32
 		lowerBound       int32
@@ -2103,6 +2173,15 @@ func TestAdjustReplicaCountRecommenderConverge(t *testing.T) {
 			expectedReplicas: 10,
 			expectedMessage:  convergeToWatermarkUnstable,
 		},
+		{
+			name:             "status.defaults is ignored with a recommender",
+			statusDefaults:   &v1alpha1.WatermarkPodAutoscalerStatusDefaults{ConvergeTowardsWatermark: v1alpha1.ConvergeUpwards},
+			current:          5,
+			reco:             5,
+			lowerBound:       3,
+			upperBound:       8,
+			expectedReplicas: 5,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2121,6 +2200,7 @@ func TestAdjustReplicaCountRecommenderConverge(t *testing.T) {
 					MinReplicas:                  v1alpha1.NewInt32(1),
 					MaxReplicas:                  maxReplicas,
 				},
+				Status: v1alpha1.WatermarkPodAutoscalerStatus{Defaults: tt.statusDefaults},
 			}
 			replicas, pos := adjustReplicaCount(logf.Log, tt.current, tt.current, wpa, tt.reco, tt.lowerBound, tt.upperBound, !tt.missingBounds)
 			assert.Equal(t, tt.expectedReplicas, replicas)

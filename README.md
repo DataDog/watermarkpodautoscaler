@@ -85,6 +85,10 @@ To use the Watermark Pod Autoscaler, deploy it in your Kubernetes cluster:
    helm install $DD_NAMEWPA -n $DD_NAMESPACE ./chart/watermarkpodautoscaler
    ```
 
+#### Controller configuration file
+
+The controller can read an optional configuration file to set defaults for the WPAs that do not set a value, for instance `convergeTowardsWatermark: highwatermark` by default (opt-out with `spec.convergeTowardsWatermark: disabled`). The default does not apply to the WPAs that use a recommender. More information on the dedicated documentation page: [docs/controller-config.md](docs/controller-config.md)
+
 #### kubectl plugin
 
 The WatermarkPodAutoscaler Controler comes with a kubectl plugin providing a set of helper utilities. more information on the dedicated documentation page: [docs/kubectl-plugin.md](docs/kubectl-plugin.md)

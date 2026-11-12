@@ -368,6 +368,17 @@ func adjustReplicaCountForDownscale(logger logr.Logger, currentReplicas, current
 	return replicaCount
 }
 
+// effectiveConvergeTowardsWatermark returns the spec value if set, otherwise status.defaults.
+func effectiveConvergeTowardsWatermark(wpa *v1alpha1.WatermarkPodAutoscaler) v1alpha1.ConvergeTowardsWatermarkType {
+	if wpa.Spec.ConvergeTowardsWatermark != "" {
+		return wpa.Spec.ConvergeTowardsWatermark
+	}
+	if wpa.Status.Defaults != nil {
+		return wpa.Status.Defaults.ConvergeTowardsWatermark
+	}
+	return ""
+}
+
 // tryToConvergeToWatermark will try to make the replicaCount slowly converge to a watermark.
 // It will suggest converging until the estimated usage goes beyond the respective watermark.
 // This feature is officially only supported with 1 metric.
@@ -463,7 +474,7 @@ func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas i
 		msg = "Within bounds of the watermarks"
 		position.isAbove = false
 		position.isBelow = false
-		replicaCount = tryToConvergeToWatermarkForUsage(logger, wpa.Spec.ConvergeTowardsWatermark, currentReplicas, currentReadyReplicas, wpa, adjustedUsage, lowMark, highMark)
+		replicaCount = tryToConvergeToWatermarkForUsage(logger, effectiveConvergeTowardsWatermark(wpa), currentReplicas, currentReadyReplicas, wpa, adjustedUsage, lowMark, highMark)
 	}
 
 	logger.Info(msg, "usage", utilizationQuantity.String(), "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "tolerance (%)", float64(wpa.Spec.Tolerance.MilliValue())/10, "adjustedLM", adjustedLM, "adjustedHM", adjustedHM, "adjustedUsage", adjustedUsage)

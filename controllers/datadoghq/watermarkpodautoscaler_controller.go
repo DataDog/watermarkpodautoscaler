@@ -50,6 +50,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/DataDog/dd-trace-go/v2/ddtrace/tracer"
+	"github.com/DataDog/watermarkpodautoscaler/pkg/config"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/util"
 
 	"github.com/DataDog/watermarkpodautoscaler/third_party/kubernetes/pkg/controller/podautoscaler/metrics"
@@ -99,6 +100,8 @@ var datadogMonitorGVK = schema.GroupVersionKind{
 type Options struct {
 	SkipNotScalingEvents bool
 	TLSConfig            *datadoghqv1alpha1.TLSConfig
+	// ConfigProvider provides the controller configuration. Optional.
+	ConfigProvider config.Provider
 }
 
 // WatermarkPodAutoscalerReconciler reconciles a WatermarkPodAutoscaler object
@@ -177,6 +180,9 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 	}
 
 	wpaStatusOriginal := instance.Status.DeepCopy()
+
+	// Resolve the controller defaults, in the status only.
+	r.setStatusDefaults(instance)
 
 	span.SetTag("wpa", instance.Name)
 	span.SetTag("namespace", instance.Namespace)
@@ -1058,6 +1064,18 @@ func updatePredicate(ev event.UpdateEvent) bool {
 		cleanupAssociatedMetrics(oldObject, true)
 	}
 	return hasChanged
+}
+
+// setStatusDefaults sets status.defaults to the defaults of the controller configuration, on every WPA. Whether a
+// default applies (not with a spec value or a recommender) is resolved by effectiveConvergeTowardsWatermark.
+func (r *WatermarkPodAutoscalerReconciler) setStatusDefaults(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
+	wpa.Status.Defaults = nil
+	if r.Options.ConfigProvider == nil {
+		return
+	}
+	if converge := r.Options.ConfigProvider.Get().Defaults.ConvergeTowardsWatermark; converge != "" {
+		wpa.Status.Defaults = &datadoghqv1alpha1.WatermarkPodAutoscalerStatusDefaults{ConvergeTowardsWatermark: converge}
+	}
 }
 
 // SetupWithManager creates a new Watermarkpodautoscaler controller
