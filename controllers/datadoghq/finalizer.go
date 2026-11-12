@@ -11,6 +11,7 @@ import (
 	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/util"
 	logr "github.com/go-logr/logr"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 const (
@@ -51,6 +52,7 @@ func (r *WatermarkPodAutoscalerReconciler) handleFinalizer(reqLogger logr.Logger
 
 func (r *WatermarkPodAutoscalerReconciler) finalizeWPA(reqLogger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
 	cleanupAssociatedMetrics(wpa, false)
+	stretchTracker.remove(types.NamespacedName{Namespace: wpa.Namespace, Name: wpa.Name})
 	reqLogger.Info("Successfully finalized WatermarkPodAutoscaler")
 }
 
