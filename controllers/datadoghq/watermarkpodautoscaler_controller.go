@@ -204,6 +204,16 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 		// default values of the WatermarkPodAutoscaler are set. Return and requeue to show them in the spec.
 		return reconcile.Result{Requeue: true}, nil
 	}
+	// Evaluate the target stretch before the invalid-spec and lifecycle-control early returns, so its status,
+	// condition and metrics follow opt-out or disabled transitions even when scaling is blocked. Those paths
+	// never run the scaling or the shadow computation, so the shadow gauge is cleared when none was produced.
+	stretch := evaluateTargetStretch(r.targetStretchConfig(), instance)
+	applyTargetStretchStatus(instance, stretch)
+	stretchTracker.update(request.NamespacedName, stretch)
+	updateTargetStretchWPAMetrics(instance, stretch)
+	r.emitTargetStretchEvents(instance, wpaStatusOriginal)
+	defer clearFailedShadowGauge(instance, stretch)
+
 	if err = datadoghqv1alpha1.CheckWPAValidity(instance); err != nil {
 		log.Info("Got an invalid WPA spec", "Instance", request.String(), "error", err)
 		// If the WPA spec is incorrect (most likely, in "metrics" section) stop processing it
@@ -304,15 +314,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 
 	fillMissingWatermark(log, instance)
 
-	stretch := evaluateTargetStretch(r.targetStretchConfig(), instance)
-	applyTargetStretchStatus(instance, stretch)
-	stretchTracker.update(request.NamespacedName, stretch)
-	updateTargetStretchWPAMetrics(instance, stretch)
-	r.emitTargetStretchEvents(instance, wpaStatusOriginal)
-
-	err = r.reconcileWPA(ctx, log, wpaStatusOriginal, instance, stretch)
-	clearFailedShadowGauge(instance, stretch)
-	if err != nil {
+	if err = r.reconcileWPA(ctx, log, wpaStatusOriginal, instance, stretch); err != nil {
 		log.Info("Error during reconcileWPA", "error", err)
 		r.eventRecorder.Eventf(instance, nil, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedProcessWPA, datadoghqv1alpha1.ReasonFailedProcessWPA, "%s", err.Error())
 		setCondition(instance, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedProcessWPA, "Error happened while processing the WPA")

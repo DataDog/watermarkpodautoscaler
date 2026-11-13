@@ -417,3 +417,81 @@ func TestTargetStretchShadowGaugeContinuity(t *testing.T) {
 	require.NotNil(t, got.Status.TargetStretch.ReplicasRecommended)
 	assert.InDelta(t, 10, testutil.ToFloat64(targetStretchReplicasRecommended.With(labels)), 0)
 }
+
+func stretchCondition(wpa *v1alpha1.WatermarkPodAutoscaler) *autoscalingv2.HorizontalPodAutoscalerCondition {
+	for i := range wpa.Status.Conditions {
+		if wpa.Status.Conditions[i].Type == v1alpha1.WatermarkPodAutoscalerStatusTargetStretched {
+			return &wpa.Status.Conditions[i]
+		}
+	}
+	return nil
+}
+
+// A WPA blocked by lifecycle control (no DatadogMonitor) that opts out must drop its stretch state, without
+// any scaling or shadow computation.
+func TestTargetStretchLifecycleBlockedOptOut(t *testing.T) {
+	tenPods := makeScale(testDeploymentName, 10, map[string]string{"name": podNamePrefix})
+	tenPods.Namespace = testNamespace
+	metric := externalWiringMetric()
+	tc := &replicaCalcTestCase{scale: tenPods, metric: &metricInfo{spec: metric, levels: []int64{78000}}, timestamp: time.Now()}
+	wpa := wiringWPA(&metric, nil)
+	w := newStretchWiring(t, tc, wpa, stretchCfg(config.TargetStretchModeEnabledOptIn, 1200))
+	labels := getPrometheusLabels(wpa)
+	t.Cleanup(func() { cleanupTargetStretchMetrics(wpa) })
+
+	got := w.reconcile(t, wpa)
+	require.NotNil(t, got.Status.TargetStretch)
+	require.True(t, targetStretchAppliedRatio.Delete(labels))
+	targetStretchAppliedRatio.With(labels).Set(1.2)
+	queries := *w.metricsQueries
+
+	got.Annotations[lifecycleControlEnabledAnnotationKey] = "true"
+	got.Annotations[v1alpha1.TargetStretchEnabledAnnotationKey] = "false"
+	require.NoError(t, w.r.Client.Update(t.Context(), got))
+	got = w.reconcile(t, wpa)
+
+	blocked, err := getCondition(&got.Status, v1alpha1.ScalingBlocked)
+	require.NoError(t, err)
+	assert.Equal(t, corev1.ConditionTrue, blocked.Status, "the WPA is blocked by lifecycle control")
+	assert.Nil(t, got.Status.TargetStretch, "the stretch block is cleared on the blocked path")
+	cond := stretchCondition(got)
+	require.NotNil(t, cond)
+	assert.Equal(t, v1alpha1.TargetStretchReasonOptedOut, cond.Reason)
+	assert.False(t, targetStretchAppliedRatio.Delete(labels), "per-WPA stretch gauges are removed")
+	assert.Equal(t, queries, *w.metricsQueries, "no scaling computation on the blocked path")
+}
+
+// An invalid WPA must follow the stretch mode too: a dry-run shadow gauge is cleared (no shadow is computed),
+// and switching the cluster to disabled clears the status block.
+func TestTargetStretchInvalidSpecTransitions(t *testing.T) {
+	tenPods := makeScale(testDeploymentName, 10, map[string]string{"name": podNamePrefix})
+	tenPods.Namespace = testNamespace
+	metric := externalWiringMetric()
+	tc := &replicaCalcTestCase{scale: tenPods, metric: &metricInfo{spec: metric, levels: []int64{78000}}, timestamp: time.Now()}
+	wpa := wiringWPA(&metric, nil)
+	w := newStretchWiring(t, tc, wpa, stretchCfg(config.TargetStretchModeDryRunOptIn, 1200))
+	labels := getPrometheusLabels(wpa)
+	t.Cleanup(func() { cleanupTargetStretchMetrics(wpa) })
+
+	got := w.reconcile(t, wpa)
+	require.NotNil(t, got.Status.TargetStretch.ReplicasRecommended)
+	require.InDelta(t, 10, testutil.ToFloat64(targetStretchReplicasRecommended.With(labels)), 0)
+	queries := *w.metricsQueries
+
+	got.Spec.MaxReplicas = 0 // below minReplicas: invalid spec
+	require.NoError(t, w.r.Client.Update(t.Context(), got))
+	got = w.reconcile(t, wpa)
+	require.NotNil(t, got.Status.TargetStretch, "still selected in dry-run")
+	assert.Nil(t, got.Status.TargetStretch.ReplicasRecommended, "no shadow on the invalid-spec path")
+	assert.False(t, targetStretchReplicasRecommended.Delete(labels), "the stale shadow gauge is removed")
+	assert.Equal(t, queries, *w.metricsQueries, "no scaling computation on the invalid-spec path")
+
+	w.r.Options.TargetStretch = &config.StaticTargetStretchConfigProvider{Config: config.DisabledTargetStretchConfig()}
+	got = w.reconcile(t, wpa)
+	assert.Nil(t, got.Status.TargetStretch, "disabled clears the stretch block on the invalid-spec path")
+	cond := stretchCondition(got)
+	require.NotNil(t, cond)
+	assert.Equal(t, v1alpha1.TargetStretchReasonDisabled, cond.Reason)
+	assert.False(t, targetStretchAppliedRatio.Delete(labels))
+	assert.Equal(t, queries, *w.metricsQueries)
+}

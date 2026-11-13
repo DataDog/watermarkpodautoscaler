@@ -230,6 +230,8 @@ func recommenderForScaling(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, d targ
 }
 
 func effectiveWatermarksStatus(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, ratioMilli int64) []datadoghqv1alpha1.TargetStretchWatermarks {
+	// The stretch is evaluated before fillMissingWatermark runs on the reconciled object.
+	wpa = withFilledWatermarks(wpa)
 	var out []datadoghqv1alpha1.TargetStretchWatermarks
 	if wpa.Spec.Recommender != nil {
 		reco := effectiveRecommender(wpa.Spec.Recommender, ratioMilli)
@@ -252,6 +254,13 @@ func effectiveWatermarksStatus(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, ra
 		out = append(out, datadoghqv1alpha1.TargetStretchWatermarks{Metric: metricSpecName(m), LowWatermark: *lw, HighWatermark: *hw})
 	}
 	return out
+}
+
+// withFilledWatermarks returns a copy of the WPA where a missing low or high watermark takes the other value.
+func withFilledWatermarks(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) *datadoghqv1alpha1.WatermarkPodAutoscaler {
+	cp := wpa.DeepCopy()
+	fillMissingWatermark(logr.Discard(), cp)
+	return cp
 }
 
 // removeCondition removes the condition type from the WPA status.
@@ -458,6 +467,7 @@ func updateTargetStretchWPAMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler
 		cleanupTargetStretchMetrics(wpa)
 		return
 	}
+	wpa = withFilledWatermarks(wpa)
 	labels := getPrometheusLabels(wpa)
 	targetStretchAppliedRatio.With(labels).Set(float64(d.appliedRatioMilli) / 1000)
 	// Outside dry-run there is no shadow. In dry-run the series is kept during the reconcile (no gap for a
