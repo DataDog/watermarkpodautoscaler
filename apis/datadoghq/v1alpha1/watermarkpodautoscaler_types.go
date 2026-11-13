@@ -60,6 +60,9 @@ var (
 	// ConvergeUpwards will suggest upscaling the target for a value to converge towards it's Low Watermark.
 	// +optional
 	ConvergeDownwards ConvergeTowardsWatermarkType = "lowwatermark"
+	// ConvergeDisabled disables the convergence, overriding the controller default.
+	// +optional
+	ConvergeDisabled ConvergeTowardsWatermarkType = "disabled"
 )
 
 // WatermarkPodAutoscalerSpec defines the desired state of WatermarkPodAutoscaler
@@ -95,6 +98,7 @@ type WatermarkPodAutoscalerSpec struct {
 
 	// Try to make the usage converge towards High Watermark to save resources. This will slowly downscale by `ReplicaScalingAbsoluteModulo`
 	// if the predicted usage stays bellow the high watermarks.
+	// One of `highwatermark`, `lowwatermark` or `disabled`. When not set, the controller default applies, except with a recommender.
 	ConvergeTowardsWatermark ConvergeTowardsWatermarkType `json:"convergeTowardsWatermark,omitempty"`
 
 	// Parameter used to be a float, in order to support the transition seamlessly, we validate that it is ]0;1[ in the code.
@@ -297,6 +301,18 @@ type WatermarkPodAutoscalerStatus struct {
 	LastConditionType string `json:"lastConditionType,omitempty"`
 	// LastConditionType correspond to the last condition state (True,False) updated in the WPA status during the WPA reconcile state.
 	LastConditionState string `json:"lastConditionState,omitempty"`
+
+	// Defaults reports the defaults of the controller configuration, on every WPA. Whether they apply depends on the spec.
+	// +optional
+	Defaults *WatermarkPodAutoscalerStatusDefaults `json:"defaults,omitempty"`
+}
+
+// WatermarkPodAutoscalerStatusDefaults holds the defaults of the controller configuration.
+// +k8s:openapi-gen=true
+type WatermarkPodAutoscalerStatusDefaults struct {
+	// ConvergeTowardsWatermark is the controller default. It does not apply with a spec value or a recommender.
+	// +optional
+	ConvergeTowardsWatermark ConvergeTowardsWatermarkType `json:"convergeTowardsWatermark,omitempty"`
 }
 
 // MetricStatus describes the last-read state of a single metric.

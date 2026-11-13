@@ -36,8 +36,8 @@ github.com/DataDog/go-tuf v1.1.1-0.5.2 h1:YWvghV4ZvrQsPcUw8IOUMSDpqc3W5ruOIC+KJx
 github.com/DataDog/go-tuf v1.1.1-0.5.2/go.mod h1:zBcq6f654iVqmkk8n2Cx81E1JnNTMOAx1UEO/wZR+P0=
 github.com/DataDog/sketches-go v1.4.8 h1:pFk9BNn+Rzv8IMIoPUttoOpOr3bJOqU3P6EP5wK+Lv8=
 github.com/DataDog/sketches-go v1.4.8/go.mod h1:a/wjRUqzqtGS8qRHRPDCs4EAQfmvPDZGDlMIF5mxXOE=
-github.com/DataDog/watermarkpodautoscaler/apis v0.0.0-20260915193337-0cde585f54eb h1:0voSadH1sCoVTOVRzSK/92z0N6i/O9DrVbargkOpBWY=
-github.com/DataDog/watermarkpodautoscaler/apis v0.0.0-20260915193337-0cde585f54eb/go.mod h1:pDE+gEOK/ThAxDkJOFscKKZCqFHd7jd9baBZTYq9Fag=
+github.com/DataDog/watermarkpodautoscaler/apis v0.0.0-20261112030259-ad151df6b664 h1:0i6jc5BOkIBfCEOAJRCQBmmPPYXMC4nX3lbkP5rbthI=
+github.com/DataDog/watermarkpodautoscaler/apis v0.0.0-20261112030259-ad151df6b664/go.mod h1:/bP9Vq32WP/HNh/dnQVvP7HcOsALD0bgnjP0VuCIXlg=
 github.com/Masterminds/semver/v3 v3.4.0 h1:Zog+i5UMtVoCU8oKka5P7i9q9HgrJeGzI9SA1Xbatp0=
 github.com/Masterminds/semver/v3 v3.4.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/Microsoft/go-winio v0.5.0/go.mod h1:JPGBdM1cNvN/6ISo+n8V5iA4v8pBzdOpzfwIujj1a84=

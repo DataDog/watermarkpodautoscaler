@@ -86,6 +86,7 @@ spec:
                   description: |-
                     Try to make the usage converge towards High Watermark to save resources. This will slowly downscale by `ReplicaScalingAbsoluteModulo`
                     if the predicted usage stays bellow the high watermarks.
+                    One of `highwatermark`, `lowwatermark` or `disabled`. When not set, the controller default applies, except with a recommender.
                   type: string
                 downscaleDelayBelowWatermarkSeconds:
                   format: int32
@@ -549,6 +550,13 @@ spec:
                 currentReplicas:
                   format: int32
                   type: integer
+                defaults:
+                  description: Defaults reports the defaults of the controller configuration, on every WPA. Whether they apply depends on the spec.
+                  properties:
+                    convergeTowardsWatermark:
+                      description: ConvergeTowardsWatermark is the controller default. It does not apply with a spec value or a recommender.
+                      type: string
+                  type: object
                 desiredReplicas:
                   format: int32
                   type: integer

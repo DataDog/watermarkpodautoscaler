@@ -8,6 +8,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -31,6 +32,7 @@ import (
 	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 	controllers "github.com/DataDog/watermarkpodautoscaler/controllers/datadoghq"
 	"github.com/DataDog/watermarkpodautoscaler/controllers/datadoghq/test/utils"
+	"github.com/DataDog/watermarkpodautoscaler/pkg/config"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -53,6 +55,8 @@ var (
 	k8sClient  client.Client
 	testEnv    *envtest.Environment
 	testConfig = initTestConfig()
+	// controllerConfigPath is the controller configuration file read by the controller under test.
+	controllerConfigPath string
 )
 
 func TestAPIs(t *testing.T) {
@@ -114,9 +118,19 @@ var _ = BeforeSuite(func(done Done) {
 		Scheme: scheme.Scheme,
 	})
 	Expect(err).ToNot(HaveOccurred())
+
+	// Controller configuration file, without defaults: tests that need one write it (see writeControllerConfig).
+	configDir, err := os.MkdirTemp("", "wpa-controller-config")
+	Expect(err).ToNot(HaveOccurred())
+	controllerConfigPath = filepath.Join(configDir, "config.yaml")
+	Expect(os.WriteFile(controllerConfigPath, []byte("version: v1\n"), 0o600)).To(Succeed())
+	configProvider := config.NewFileProvider(controllerConfigPath, ctrl.Log.WithName("controller-config"))
+	Expect(k8sManager.Add(configProvider)).To(Succeed())
+
 	err = (&controllers.WatermarkPodAutoscalerReconciler{
-		Client: k8sManager.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("WatermarkPodAutoscaler"),
+		Client:  k8sManager.GetClient(),
+		Log:     ctrl.Log.WithName("controllers").WithName("WatermarkPodAutoscaler"),
+		Options: controllers.Options{ConfigProvider: configProvider},
 	}).SetupWithManager(k8sManager, 1)
 	Expect(err).ToNot(HaveOccurred())
 

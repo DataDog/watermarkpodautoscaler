@@ -676,6 +676,75 @@ func TestScaleIntervalReplicaCalcConvergeScaleDown(t *testing.T) {
 	tc.runTest(t)
 }
 
+func TestScaleIntervalReplicaCalcConvergeFromStatusDefaults(t *testing.T) {
+	metric1 := v1alpha1.MetricSpec{
+		Type: v1alpha1.ResourceMetricSourceType,
+		Resource: &v1alpha1.ResourceMetricSource{
+			Name:           corev1.ResourceCPU,
+			MetricSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": "test-pod"}},
+			HighWatermark:  resource.NewMilliQuantity(40000, resource.DecimalSI),
+			LowWatermark:   resource.NewMilliQuantity(20000, resource.DecimalSI),
+		},
+	}
+
+	tests := []struct {
+		name             string
+		specConverge     v1alpha1.ConvergeTowardsWatermarkType
+		statusDefaults   *v1alpha1.WatermarkPodAutoscalerStatusDefaults
+		expectedReplicas int32
+	}{
+		{
+			name:             "no spec value and no default: no convergence",
+			expectedReplicas: 3,
+		},
+		{
+			name:             "default highwatermark: converges",
+			statusDefaults:   &v1alpha1.WatermarkPodAutoscalerStatusDefaults{ConvergeTowardsWatermark: v1alpha1.ConvergeUpwards},
+			expectedReplicas: 2,
+		},
+		{
+			name:             "spec disabled wins over the default",
+			specConverge:     v1alpha1.ConvergeDisabled,
+			statusDefaults:   &v1alpha1.WatermarkPodAutoscalerStatusDefaults{ConvergeTowardsWatermark: v1alpha1.ConvergeUpwards},
+			expectedReplicas: 3,
+		},
+		{
+			// scaling up to 4 would go below the low watermark, so lowwatermark keeps 3 where the default would give 2
+			name:             "spec lowwatermark wins over the default",
+			specConverge:     v1alpha1.ConvergeDownwards,
+			statusDefaults:   &v1alpha1.WatermarkPodAutoscalerStatusDefaults{ConvergeTowardsWatermark: v1alpha1.ConvergeUpwards},
+			expectedReplicas: 3,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tc := replicaCalcTestCase{
+				expectedReplicas: test.expectedReplicas,
+				readyReplicas:    3,
+				scale:            makeScale(testDeploymentName, 3, map[string]string{"name": "test-pod"}),
+				wpa: &v1alpha1.WatermarkPodAutoscaler{
+					Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+						Algorithm:                    "absolute",
+						Tolerance:                    *resource.NewMilliQuantity(25, resource.DecimalSI),
+						Metrics:                      []v1alpha1.MetricSpec{metric1},
+						ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
+						ConvergeTowardsWatermark:     test.specConverge,
+						MinReplicas:                  v1alpha1.NewInt32(1),
+						MaxReplicas:                  10,
+					},
+					Status: v1alpha1.WatermarkPodAutoscalerStatus{Defaults: test.statusDefaults},
+				},
+				metric: &metricInfo{
+					spec:                metric1,
+					levels:              []int64{8000, 8000, 8000}, // between the watermarks
+					expectedUtilization: 24000,
+				},
+			}
+			tc.runTest(t)
+		})
+	}
+}
+
 func TestReplicaCalcAbsoluteScaleDown(t *testing.T) {
 	logf.SetLogger(zap.New())
 	metric1 := v1alpha1.MetricSpec{
@@ -1463,6 +1532,9 @@ func TestTolerateZeroDefault(t *testing.T) {
 		},
 	}
 	tc.runTest(t)
+	cond, err := getCondition(&tc.wpa.Status, v1alpha1.WatermarkPodAutoscalerStatusConvergeToWatermark)
+	require.NoError(t, err)
+	assert.Equal(t, convergeNotEvaluatedReason, cond.Reason)
 }
 
 func TestTolerateZeroEnabled(t *testing.T) {
@@ -1913,6 +1985,349 @@ func TestReplicaCalcWithRecommender(t *testing.T) {
 	for i, tc := range tcs {
 		t.Run(fmt.Sprintf("test-%d", i), tc.runTest)
 	}
+}
+
+func TestAdjustReplicaCountRecommenderConverge(t *testing.T) {
+	tests := []struct {
+		name             string
+		specConverge     v1alpha1.ConvergeTowardsWatermarkType
+		statusDefaults   *v1alpha1.WatermarkPodAutoscalerStatusDefaults
+		current          int32
+		reco             int32
+		lowerBound       int32
+		upperBound       int32
+		missingBounds    bool
+		modulo           int32
+		maxReplicas      int32
+		expectedReplicas int32
+		expectedPos      metricPosition
+		expectedReason   string
+	}{
+		{
+			name:             "highwatermark at the recommendation: converges",
+			expectedReason:   convergingToHighWatermarkReason,
+			specConverge:     v1alpha1.ConvergeUpwards,
+			current:          3,
+			reco:             3,
+			lowerBound:       2,
+			upperBound:       6,
+			expectedReplicas: 2,
+		},
+		{
+			name:             "highwatermark converged below the recommendation: holds instead of flipping back up",
+			expectedReason:   convergedToHighWatermarkReason,
+			specConverge:     v1alpha1.ConvergeUpwards,
+			current:          2,
+			reco:             3,
+			lowerBound:       2,
+			upperBound:       6,
+			expectedReplicas: 2,
+		},
+		{
+			name:             "highwatermark below the lower bound: upscales",
+			expectedReason:   convergeOutsideRecommenderBoundsReason,
+			specConverge:     v1alpha1.ConvergeUpwards,
+			current:          2,
+			reco:             3,
+			lowerBound:       3,
+			upperBound:       6,
+			expectedReplicas: 3,
+			expectedPos:      metricPosition{isAbove: true},
+		},
+		{
+			name:             "highwatermark with a lower recommendation: follows it",
+			expectedReason:   convergeFollowingRecommendationReason,
+			specConverge:     v1alpha1.ConvergeUpwards,
+			current:          40,
+			reco:             31,
+			lowerBound:       27,
+			upperBound:       53,
+			expectedReplicas: 31,
+		},
+		{
+			name:             "lowwatermark at the recommendation: converges",
+			expectedReason:   convergingToLowWatermarkReason,
+			specConverge:     v1alpha1.ConvergeDownwards,
+			current:          5,
+			reco:             5,
+			lowerBound:       2,
+			upperBound:       6,
+			expectedReplicas: 6,
+		},
+		{
+			name:             "lowwatermark converged above the recommendation: holds instead of flipping back down",
+			expectedReason:   convergedToLowWatermarkReason,
+			specConverge:     v1alpha1.ConvergeDownwards,
+			current:          6,
+			reco:             5,
+			lowerBound:       2,
+			upperBound:       6,
+			expectedReplicas: 6,
+		},
+		{
+			name:             "highwatermark below the lower bound: upscales to the bound, not to the recommendation",
+			expectedReason:   convergeOutsideRecommenderBoundsReason,
+			specConverge:     v1alpha1.ConvergeUpwards,
+			current:          6,
+			reco:             10,
+			lowerBound:       7,
+			upperBound:       14,
+			expectedReplicas: 7,
+			expectedPos:      metricPosition{isAbove: true},
+		},
+		{
+			name:             "lowwatermark above the upper bound: downscales to the bound, not to the recommendation",
+			expectedReason:   convergeOutsideRecommenderBoundsReason,
+			specConverge:     v1alpha1.ConvergeDownwards,
+			current:          10,
+			reco:             4,
+			lowerBound:       2,
+			upperBound:       8,
+			expectedReplicas: 8,
+			expectedPos:      metricPosition{isBelow: true},
+		},
+		{
+			name:             "no convergence below the lower bound: upscales to the recommendation",
+			expectedReason:   convergenceDisabledReason,
+			current:          6,
+			reco:             10,
+			lowerBound:       7,
+			upperBound:       14,
+			expectedReplicas: 10,
+			expectedPos:      metricPosition{isAbove: true},
+		},
+		{
+			name:             "no convergence: follows the recommendation",
+			expectedReason:   convergenceDisabledReason,
+			current:          2,
+			reco:             3,
+			lowerBound:       2,
+			upperBound:       6,
+			expectedReplicas: 3,
+		},
+		{
+			name:             "highwatermark without bounds: does not converge",
+			expectedReason:   convergeOutsideRecommenderBoundsReason,
+			specConverge:     v1alpha1.ConvergeUpwards,
+			current:          3,
+			reco:             3,
+			missingBounds:    true,
+			expectedReplicas: 3,
+		},
+		{
+			name:             "highwatermark with only an upper bound: does not converge",
+			expectedReason:   convergeOutsideRecommenderBoundsReason,
+			specConverge:     v1alpha1.ConvergeUpwards,
+			current:          3,
+			reco:             3,
+			upperBound:       6,
+			missingBounds:    true,
+			expectedReplicas: 3,
+		},
+		{
+			name:             "highwatermark with only an upper bound, reco above: follows the recommendation",
+			expectedReason:   convergeOutsideRecommenderBoundsReason,
+			specConverge:     v1alpha1.ConvergeUpwards,
+			current:          3,
+			reco:             4,
+			upperBound:       6,
+			missingBounds:    true,
+			expectedReplicas: 4,
+		},
+		{
+			name:             "highwatermark with modulo 2: steps by 2",
+			expectedReason:   convergingToHighWatermarkReason,
+			specConverge:     v1alpha1.ConvergeUpwards,
+			current:          8,
+			reco:             8,
+			lowerBound:       5,
+			upperBound:       12,
+			modulo:           2,
+			expectedReplicas: 6,
+		},
+		{
+			name:             "highwatermark with modulo 2: holds when the next step would cross the lower bound",
+			expectedReason:   convergedToHighWatermarkReason,
+			specConverge:     v1alpha1.ConvergeUpwards,
+			current:          6,
+			reco:             8,
+			lowerBound:       5,
+			upperBound:       12,
+			modulo:           2,
+			expectedReplicas: 6,
+		},
+		{
+			name:             "highwatermark below a lower bound above maxReplicas: upscales to the bound, the controller clamps to max",
+			expectedReason:   convergeOutsideRecommenderBoundsReason,
+			specConverge:     v1alpha1.ConvergeUpwards,
+			current:          8,
+			reco:             13,
+			lowerBound:       12,
+			upperBound:       14,
+			maxReplicas:      10,
+			expectedReplicas: 12,
+			expectedPos:      metricPosition{isAbove: true},
+		},
+		{
+			name:             "lowwatermark with the upper bound capped to maxReplicas: converges up to max",
+			expectedReason:   convergingToLowWatermarkReason,
+			specConverge:     v1alpha1.ConvergeDownwards,
+			current:          9,
+			reco:             9,
+			lowerBound:       2,
+			upperBound:       14,
+			maxReplicas:      10,
+			expectedReplicas: 10,
+		},
+		{
+			name:             "lowwatermark at maxReplicas: holds",
+			expectedReason:   convergedToLowWatermarkReason,
+			specConverge:     v1alpha1.ConvergeDownwards,
+			current:          10,
+			reco:             9,
+			lowerBound:       2,
+			upperBound:       14,
+			maxReplicas:      10,
+			expectedReplicas: 10,
+		},
+		{
+			name:             "highwatermark at 1 replica: converged, not stepping",
+			specConverge:     v1alpha1.ConvergeUpwards,
+			expectedReason:   convergedToHighWatermarkReason,
+			current:          1,
+			reco:             1,
+			lowerBound:       1,
+			upperBound:       8,
+			expectedReplicas: 1,
+		},
+		{
+			name:             "lowwatermark above a non-aligned upper bound with modulo 2: downscales to the aligned count within the bounds",
+			specConverge:     v1alpha1.ConvergeDownwards,
+			expectedReason:   convergeOutsideRecommenderBoundsReason,
+			current:          8,
+			reco:             5,
+			lowerBound:       2,
+			upperBound:       7,
+			modulo:           2,
+			expectedReplicas: 6,
+			expectedPos:      metricPosition{isBelow: true},
+		},
+		{
+			name:             "lowwatermark above an aligned upper bound with modulo 2: downscales to the bound",
+			specConverge:     v1alpha1.ConvergeDownwards,
+			expectedReason:   convergeOutsideRecommenderBoundsReason,
+			current:          10,
+			reco:             4,
+			lowerBound:       2,
+			upperBound:       8,
+			modulo:           2,
+			expectedReplicas: 8,
+			expectedPos:      metricPosition{isBelow: true},
+		},
+		{
+			name:             "status.defaults is ignored with a recommender",
+			expectedReason:   convergenceDisabledReason,
+			statusDefaults:   &v1alpha1.WatermarkPodAutoscalerStatusDefaults{ConvergeTowardsWatermark: v1alpha1.ConvergeUpwards},
+			current:          5,
+			reco:             5,
+			lowerBound:       3,
+			upperBound:       8,
+			expectedReplicas: 5,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			modulo, maxReplicas := tt.modulo, tt.maxReplicas
+			if modulo == 0 {
+				modulo = 1
+			}
+			if maxReplicas == 0 {
+				maxReplicas = 100
+			}
+			wpa := &v1alpha1.WatermarkPodAutoscaler{
+				Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+					Recommender:                  &v1alpha1.RecommenderSpec{URL: "http://recommender.example.com", TargetType: "cpu"},
+					ConvergeTowardsWatermark:     tt.specConverge,
+					ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(modulo),
+					MinReplicas:                  v1alpha1.NewInt32(1),
+					MaxReplicas:                  maxReplicas,
+				},
+				Status: v1alpha1.WatermarkPodAutoscalerStatus{Defaults: tt.statusDefaults},
+			}
+			replicas, pos := adjustReplicaCount(logf.Log, tt.current, tt.current, wpa, tt.reco, tt.lowerBound, tt.upperBound, !tt.missingBounds)
+			assert.Equal(t, tt.expectedReplicas, replicas)
+			assert.Equal(t, tt.expectedPos, pos)
+			cond, err := getCondition(&wpa.Status, v1alpha1.WatermarkPodAutoscalerStatusConvergeToWatermark)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedReason, cond.Reason)
+			wantStatus := corev1.ConditionFalse
+			if tt.expectedReason == convergingToHighWatermarkReason || tt.expectedReason == convergingToLowWatermarkReason {
+				wantStatus = corev1.ConditionTrue
+			}
+			assert.Equal(t, wantStatus, cond.Status)
+			if tt.specConverge != "" {
+				assert.Contains(t, cond.Message, "(spec)")
+			}
+		})
+	}
+}
+
+func TestRecommenderConvergeIsStable(t *testing.T) {
+	wpa := &v1alpha1.WatermarkPodAutoscaler{
+		Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+			Recommender:                  &v1alpha1.RecommenderSpec{URL: "http://recommender.example.com", TargetType: "cpu"},
+			ConvergeTowardsWatermark:     v1alpha1.ConvergeUpwards,
+			ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
+			MinReplicas:                  v1alpha1.NewInt32(1),
+			MaxReplicas:                  10,
+		},
+	}
+	current := int32(5)
+	got := []int32{current}
+	for range 5 {
+		current, _ = adjustReplicaCount(logf.Log, current, current, wpa, 5, 3, 8, true)
+		got = append(got, current)
+	}
+	assert.Equal(t, []int32{5, 4, 3, 3, 3, 3}, got)
+}
+
+func TestRecommenderConvergeWithMovingLowerBound(t *testing.T) {
+	wpa := &v1alpha1.WatermarkPodAutoscaler{
+		Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+			Recommender:                  &v1alpha1.RecommenderSpec{URL: "http://recommender.example.com", TargetType: "cpu"},
+			ConvergeTowardsWatermark:     v1alpha1.ConvergeUpwards,
+			ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
+			MinReplicas:                  v1alpha1.NewInt32(1),
+			MaxReplicas:                  20,
+		},
+	}
+	// The lower bound alternates between 6 and 7: the WPA follows it, never the recommendation.
+	current := int32(10)
+	got := []int32{current}
+	for i := range 7 {
+		lowerBound := int32(6 + i%2)
+		current, _ = adjustReplicaCount(logf.Log, current, current, wpa, 10, lowerBound, 14, true)
+		got = append(got, current)
+	}
+	assert.Equal(t, []int32{10, 9, 8, 7, 7, 6, 7, 6}, got)
+}
+
+func TestRecommenderConvergeBoundsCappedToMinReplicas(t *testing.T) {
+	wpa := &v1alpha1.WatermarkPodAutoscaler{
+		Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+			Recommender:                  &v1alpha1.RecommenderSpec{URL: "http://recommender.example.com", TargetType: "cpu"},
+			ConvergeTowardsWatermark:     v1alpha1.ConvergeUpwards,
+			ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
+			MinReplicas:                  v1alpha1.NewInt32(5),
+			MaxReplicas:                  20,
+		},
+	}
+	replicas, _ := adjustReplicaCount(logf.Log, 5, 5, wpa, 6, 3, 14, true)
+	assert.Equal(t, int32(5), replicas)
+	cond, err := getCondition(&wpa.Status, v1alpha1.WatermarkPodAutoscalerStatusConvergeToWatermark)
+	require.NoError(t, err)
+	assert.Equal(t, corev1.ConditionFalse, cond.Status)
+	assert.Equal(t, convergedToHighWatermarkReason, cond.Reason)
 }
 
 func TestReplicasWithRecommenderError(t *testing.T) {
