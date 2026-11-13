@@ -59,10 +59,11 @@ resources: {}
 # targetStretch configures the cluster-wide WPA target stretch (see docs/target-stretch.md).
 # A change restarts the controller.
 targetStretch:
-  # mode: disabled, dry-run-opt-in, dry-run-opt-out, enabled-opt-in or enabled-opt-out
-  mode: disabled
-  # ratio: watermark multiplier in [1, 2] (e.g. "1.2"). Required when mode is not disabled.
-  ratio: ""
+  # mode: disabled, dry-run-opt-in, dry-run-opt-out, enabled-opt-in or enabled-opt-out.
+  # Empty renders no WPA_STRETCH_* env var, so the controller default (disabled) applies.
+  mode: ""
+  # ratio: watermark multiplier in [1, 2] (e.g. 1.2). Rendered only when mode is set.
+  ratio: 1
 
 nodeSelector: {}
 tolerations: []

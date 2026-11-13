@@ -13,7 +13,8 @@ The controller reads two environment variables at startup. A change restarts the
 | `WPA_STRETCH_MODE` | `disabled`, `dry-run-opt-in`, `dry-run-opt-out`, `enabled-opt-in`, `enabled-opt-out` | `disabled` |
 | `WPA_STRETCH_RATIO` | decimal in [1, 2], rounded to 3 decimals (e.g. `1.2`) | required when the mode is not `disabled` |
 
-With the Helm chart, set `targetStretch.mode` and `targetStretch.ratio`.
+With the Helm chart, set `targetStretch.mode` and `targetStretch.ratio` (default `1`). When `targetStretch.mode` is empty
+(the chart default), the chart renders neither env var and the controller default, `disabled`, applies.
 
 An invalid value (unknown mode, ratio outside [1, 2], missing ratio with an active mode) is logged as an error.
 The controller keeps running, the feature stays disabled and `wpa_controller_target_stretch_config_valid` is 0.

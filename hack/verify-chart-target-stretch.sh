@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Verify the WPA_STRETCH_* env vars rendered by the Helm chart, including when the targetStretch values are absent
-# (for example after "helm upgrade --reuse-values" from a chart version that did not have them).
+# Verify the WPA_STRETCH_* env vars rendered by the Helm chart. They must render only when targetStretch.mode is
+# set, and an absent targetStretch map (e.g. "helm upgrade --reuse-values" from an older chart) must not error.
+# Any helm failure makes the script fail.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -13,25 +14,36 @@ trap 'rm -rf "$TMP"' EXIT
 cp -r "$CHART_DIR" "$TMP/chart"
 sed -i.bak '/^dependencies:/,$d' "$TMP/chart/Chart.yaml"
 
-# expect LABEL WANT_MODE WANT_RATIO HELM_ARGS...: WANT_RATIO "-" means WPA_STRETCH_RATIO must not be rendered.
+# A user values file that predates targetStretch (it does not set the key).
+printf 'logLevel: info\n' > "$TMP/old-values.yaml"
+
+# count NAME: number of env entries named NAME in $out.
+count() { printf '%s\n' "$out" | grep -c "^ *- name: $1$" || true; }
+# value NAME: the quoted value following the env entry NAME in $out, without quotes.
+value() { printf '%s\n' "$out" | awk -v n="$1" '$0 ~ "^ *- name: "n"$" {getline; sub(/^ *value: /, ""); gsub(/"/, ""); print; exit}'; }
+
+# expect LABEL MODE_COUNT RATIO_COUNT MODE RATIO HELM_ARGS... (MODE/RATIO "-" skip the value check).
 expect() {
-  local label="$1" want_mode="$2" want_ratio="$3"
-  shift 3
-  local out mode ratio
+  local label="$1" want_mc="$2" want_rc="$3" want_mode="$4" want_ratio="$5"
+  shift 5
   # Capture first: a failing helm aborts the script through set -e.
   out="$("$HELM" template wpa "$TMP/chart" --show-only templates/deployment.yaml "$@")"
-  mode="$(printf '%s\n' "$out" | { grep -A1 'name: WPA_STRETCH_MODE' || true; } | sed -n 's/.*value: "\(.*\)"/\1/p')"
-  ratio="$(printf '%s\n' "$out" | { grep -A1 'name: WPA_STRETCH_RATIO' || true; } | sed -n 's/.*value: "\(.*\)"/\1/p')"
-  [ -n "$ratio" ] || ratio="-"
-  echo "$label: WPA_STRETCH_MODE=$mode WPA_STRETCH_RATIO=$ratio"
-  if [ "$mode" != "$want_mode" ] || [ "$ratio" != "$want_ratio" ]; then
-    echo "$label: expected WPA_STRETCH_MODE=$want_mode WPA_STRETCH_RATIO=$want_ratio" >&2
+  local mc rc mode ratio
+  mc="$(count WPA_STRETCH_MODE)"
+  rc="$(count WPA_STRETCH_RATIO)"
+  mode="$(value WPA_STRETCH_MODE)"
+  ratio="$(value WPA_STRETCH_RATIO)"
+  echo "$label: WPA_STRETCH_MODE x$mc ${mode:-<none>}, WPA_STRETCH_RATIO x$rc ${ratio:-<none>}"
+  if [ "$mc" != "$want_mc" ] || [ "$rc" != "$want_rc" ] ||
+    { [ "$want_mode" != - ] && [ "$mode" != "$want_mode" ]; } ||
+    { [ "$want_ratio" != - ] && [ "$ratio" != "$want_ratio" ]; }; then
+    echo "$label: expected WPA_STRETCH_MODE x$want_mc $want_mode, WPA_STRETCH_RATIO x$want_rc $want_ratio" >&2
     exit 1
   fi
 }
 
-expect "chart defaults" disabled -
-expect "explicit values" enabled-opt-in 1.2 --set targetStretch.mode=enabled-opt-in --set targetStretch.ratio=1.2
-# "--set targetStretch=null" removes the key, like "helm upgrade --reuse-values" from a release whose values
-# predate targetStretch (reused values replace the chart defaults).
-expect "targetStretch absent" disabled - --set targetStretch=null
+expect "defaults (empty mode)" 0 0 - -
+expect "absent targetStretch map" 0 0 - - --set targetStretch=null
+expect "values file without targetStretch" 0 0 - - -f "$TMP/old-values.yaml"
+expect "mode without ratio" 1 1 enabled-opt-in 1 --set targetStretch.mode=enabled-opt-in
+expect "mode and ratio" 1 1 dry-run-opt-out 1.15 --set targetStretch.mode=dry-run-opt-out --set targetStretch.ratio=1.15
