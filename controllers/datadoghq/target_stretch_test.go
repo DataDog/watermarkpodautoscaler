@@ -75,6 +75,8 @@ func TestEvaluateTargetStretch(t *testing.T) {
 		{"opt-out false", config.TargetStretchModeEnabledOptOut, map[string]string{en: "false"}, want{optedOut: true, ratio: 1000, status: "False", reason: "OptedOut"}},
 		{"opt-out typo is never stretched", config.TargetStretchModeEnabledOptOut, map[string]string{en: "flase"}, want{optedOut: true, ratio: 1000, status: "False", reason: "InvalidAnnotation"}},
 		{"opt-out invalid cap", config.TargetStretchModeEnabledOptOut, map[string]string{mr: "3"}, want{optedOut: true, ratio: 1000, status: "False", reason: "InvalidAnnotation"}},
+		{"cap below 1 before rounding", config.TargetStretchModeEnabledOptOut, map[string]string{mr: "0.9999"}, want{optedOut: true, ratio: 1000, status: "False", reason: "InvalidAnnotation"}},
+		{"cap above 2 before rounding", config.TargetStretchModeEnabledOptOut, map[string]string{mr: "2.0004"}, want{optedOut: true, ratio: 1000, status: "False", reason: "InvalidAnnotation"}},
 		{"dry-run opt-in true", config.TargetStretchModeDryRunOptIn, map[string]string{en: "true", mr: "1.15"}, want{selected: true, dryRun: true, capped: true, ratio: 1150, status: "False", reason: "DryRun"}},
 		{"dry-run opt-in unannotated", config.TargetStretchModeDryRunOptIn, nil, want{ratio: 1000, status: "False", reason: "NotOptedIn"}},
 		{"dry-run opt-out unannotated", config.TargetStretchModeDryRunOptOut, nil, want{selected: true, dryRun: true, ratio: 1200, status: "False", reason: "DryRun"}},
@@ -97,6 +99,34 @@ func TestEvaluateTargetStretch(t *testing.T) {
 	d := evaluateTargetStretch(invalid, newStretchWPA("w", map[string]string{en: "true"}))
 	if d.selected || d.reason != v1alpha1.TargetStretchReasonInvalidConfig {
 		t.Fatalf("invalid config: got %+v", d)
+	}
+}
+
+func TestStretchQuantityLargeValues(t *testing.T) {
+	tests := []struct {
+		in    string
+		ratio int64
+		want  string
+	}{
+		{"50", 1150, "57500m"},
+		{"70", 1150, "80500m"},
+		{"5T", 2000, "10T"},                            // product 5e15*2000 overflows int64, result fits
+		{"9000T", 2000, "18000T"},                      // result itself exceeds int64 milli
+		{"1", 1001, "1001m"},                           // half-up rounding at milli
+		{"333m", 1500, "500m"},                         // 499.5 rounds to 500
+		{"9223372036854775", 1000, "9223372036854775"}, // close to the int64 milli limit
+	}
+	for _, tt := range tests {
+		in := resource.MustParse(tt.in)
+		orig := in.DeepCopy()
+		got := stretchQuantity(&in, tt.ratio)
+		want := resource.MustParse(tt.want)
+		if got.Cmp(want) != 0 {
+			t.Errorf("stretchQuantity(%s, %d) = %s, want %s", tt.in, tt.ratio, got.String(), tt.want)
+		}
+		if in.Cmp(orig) != 0 || in.String() != orig.String() {
+			t.Errorf("stretchQuantity mutated its input: %s -> %s", orig.String(), in.String())
+		}
 	}
 }
 

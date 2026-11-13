@@ -8,6 +8,7 @@ package datadoghq
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"strconv"
 	"strings"
 	"sync"
@@ -151,12 +152,35 @@ func evaluateTargetStretch(cfg config.TargetStretchConfig, wpa *datadoghqv1alpha
 	return d
 }
 
-// stretchQuantity multiplies q by ratioMilli/1000 with integer math on the milli value.
+// stretchQuantity multiplies q by ratioMilli/1000, rounding half up at the milli unit.
+// The product is computed with big.Int so it cannot overflow int64.
 func stretchQuantity(q *resource.Quantity, ratioMilli int64) *resource.Quantity {
 	if q == nil {
 		return nil
 	}
-	return resource.NewMilliQuantity((q.MilliValue()*ratioMilli+500)/1000, q.Format)
+	// AsDec converts in place, so work on a copy to leave the spec quantity untouched.
+	cp := q.DeepCopy()
+	milli := cp.AsDec()
+	milli.SetScale(milli.Scale() - 3) // value in milli units
+	// Round the milli value to an integer before multiplying (Quantity never holds sub-milli precision here).
+	unscaled := new(big.Int).Set(milli.UnscaledBig())
+	if s := milli.Scale(); s > 0 {
+		unscaled.Quo(unscaled, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(s)), nil))
+	} else if s < 0 {
+		unscaled.Mul(unscaled, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(-s)), nil))
+	}
+	res := unscaled.Mul(unscaled, big.NewInt(ratioMilli))
+	res.Add(res, big.NewInt(500))
+	res.Quo(res, big.NewInt(1000))
+	if res.IsInt64() {
+		return resource.NewMilliQuantity(res.Int64(), q.Format)
+	}
+	out, err := resource.ParseQuantity(res.String() + "m")
+	if err != nil {
+		fallback := q.DeepCopy()
+		return &fallback
+	}
+	return &out
 }
 
 // effectiveMetrics returns a copy of the metrics with stretched watermarks.
@@ -317,7 +341,7 @@ func (r *WatermarkPodAutoscalerReconciler) computeShadowReplicas(ctx context.Con
 	var replicas int32
 	if wpa.Spec.Recommender != nil {
 		reco := effectiveRecommender(wpa.Spec.Recommender, d.appliedRatioMilli)
-		calc, err := r.replicaCalc.GetRecommenderReplicas(ctx, logger, scale, shadow, reco)
+		calc, err := r.replicaCalc.GetRecommenderShadowReplicas(ctx, logger, scale, shadow, reco)
 		if err != nil {
 			logger.Info("Failed to compute the target stretch shadow recommendation", "error", err)
 			return nil

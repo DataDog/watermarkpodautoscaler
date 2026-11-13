@@ -161,11 +161,11 @@ func ParseTargetStretchRatioMilli(raw string) (int64, error) {
 	if math.IsNaN(f) || math.IsInf(f, 0) {
 		return 0, fmt.Errorf("%q is not a finite number", raw)
 	}
-	milli := int64(math.Round(f * 1000))
-	if milli < TargetStretchRatioMinMilli || milli > TargetStretchRatioMaxMilli {
+	// Check the parsed value before rounding so that 0.9999 or 2.0004 are rejected.
+	if f < 1 || f > 2 {
 		return 0, fmt.Errorf("%q is outside [1, 2]", raw)
 	}
-	return milli, nil
+	return int64(math.Round(f * 1000)), nil
 }
 
 // FormatRatioMilli formats a milli ratio as a short decimal string (e.g. 1150 -> "1.15").

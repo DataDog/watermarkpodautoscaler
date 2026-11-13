@@ -1857,6 +1857,10 @@ func (f *fakeReplicaCalculator) GetRecommenderReplicas(ctx context.Context, logg
 	return EmptyReplicaCalculation(), nil
 }
 
+func (f *fakeReplicaCalculator) GetRecommenderShadowReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, wpa *v1alpha1.WatermarkPodAutoscaler, reco *v1alpha1.RecommenderSpec) (replicaCalculation ReplicaCalculation, err error) {
+	return f.GetRecommenderReplicas(ctx, logger, target, wpa, reco)
+}
+
 var _ ReplicaCalculatorItf = &fakeReplicaCalculator{}
 
 func TestDefaultWatermarkPodAutoscaler(t *testing.T) {

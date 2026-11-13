@@ -68,6 +68,8 @@ type ReplicaCalculatorItf interface {
 	GetExternalMetricReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error)
 	GetResourceReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error)
 	GetRecommenderReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, wpa *v1alpha1.WatermarkPodAutoscaler, recommender *v1alpha1.RecommenderSpec) (replicaCalculation ReplicaCalculation, err error)
+	// GetRecommenderShadowReplicas is GetRecommenderReplicas without any prometheus gauge write (target stretch shadow).
+	GetRecommenderShadowReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, wpa *v1alpha1.WatermarkPodAutoscaler, recommender *v1alpha1.RecommenderSpec) (replicaCalculation ReplicaCalculation, err error)
 }
 
 // ReplicaCalculator is responsible for calculation of the number of replicas
@@ -243,6 +245,15 @@ func (c *ReplicaCalculator) GetResourceReplicas(ctx context.Context, logger logr
 // GetRecommenderReplicas contacts an external replica recommender to get the desired replica count.
 // The given recommender spec is sent in the request; it can differ from wpa.Spec.Recommender (target stretch).
 func (c *ReplicaCalculator) GetRecommenderReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, wpa *v1alpha1.WatermarkPodAutoscaler, recommender *v1alpha1.RecommenderSpec) (ReplicaCalculation, error) {
+	return c.getRecommenderReplicas(ctx, logger, target, wpa, recommender, true)
+}
+
+// GetRecommenderShadowReplicas is GetRecommenderReplicas without any prometheus gauge write.
+func (c *ReplicaCalculator) GetRecommenderShadowReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, wpa *v1alpha1.WatermarkPodAutoscaler, recommender *v1alpha1.RecommenderSpec) (ReplicaCalculation, error) {
+	return c.getRecommenderReplicas(ctx, logger, target, wpa, recommender, false)
+}
+
+func (c *ReplicaCalculator) getRecommenderReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, wpa *v1alpha1.WatermarkPodAutoscaler, recommender *v1alpha1.RecommenderSpec, recordMetrics bool) (ReplicaCalculation, error) {
 	if recommender == nil {
 		recommender = wpa.Spec.Recommender
 	}
@@ -293,6 +304,9 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(ctx context.Context, logger l
 		MaxReplicas:          wpa.Spec.MaxReplicas,
 	}
 	reco, err := c.recommenderClient.GetReplicaRecommendation(ctx, &request)
+	if err != nil && !recordMetrics {
+		return EmptyReplicaCalculation(), fmt.Errorf("unable to get external recommendation %+v: %s", metricName, err) //nolint:errorlint
+	}
 	if err != nil {
 		// When we add official support for several metrics, move this Delete to only occur if no metric is available at all.
 		labelsWithReason := getPrometheusLabels(wpa)
@@ -319,11 +333,13 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(ctx context.Context, logger l
 
 	utilizationQuantity := int64(reco.ObservedTargetValue * 1000) // We need to multiply by 1000 to convert it to milliValue
 
-	labelsWithMetricName := getPrometheusLabels(wpa)
-	labelsWithMetricName[metricNamePromLabel] = metricName
-	value.With(labelsWithMetricName).Set(float64(utilizationQuantity))
+	if recordMetrics {
+		labelsWithMetricName := getPrometheusLabels(wpa)
+		labelsWithMetricName[metricNamePromLabel] = metricName
+		value.With(labelsWithMetricName).Set(float64(utilizationQuantity))
+	}
 
-	replicaCount, metricPos := adjustReplicaCount(logger, target.Spec.Replicas, currentReadyReplicas, wpa, int32(reco.Replicas), int32(reco.ReplicasLowerBound), int32(reco.ReplicasUpperBound))
+	replicaCount, metricPos := adjustReplicaCount(logger, target.Spec.Replicas, currentReadyReplicas, wpa, int32(reco.Replicas), int32(reco.ReplicasLowerBound), int32(reco.ReplicasUpperBound), recordMetrics)
 	logger.Info("Replicas Recommender replica calculation", "metricName", metricName, "replicaCount", replicaCount, "utilizationQuantity", utilizationQuantity, "timestamp", reco.Timestamp, "currentReadyReplicas", currentReadyReplicas)
 	return ReplicaCalculation{replicaCount, utilizationQuantity, reco.Timestamp, currentReadyReplicas, metricPos, reco.Details, 0, false}, nil
 }
@@ -482,7 +498,7 @@ func computeReplicaCountForUsage(logger logr.Logger, currentReplicas, currentRea
 	return replicaCount, position, msg, adjustedLM, adjustedHM
 }
 
-func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, recommendedReplicaCount, lowerBoundReplicas, upperBoundReplicas int32) (replicaCount int32, position metricPosition) {
+func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, recommendedReplicaCount, lowerBoundReplicas, upperBoundReplicas int32, recordMetrics bool) (replicaCount int32, position metricPosition) {
 	labelsWithReason := getPrometheusLabels(wpa)
 	labelsWithReason[reasonPromLabel] = withinBoundsPromLabelVal
 	msg := ""
@@ -494,12 +510,16 @@ func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplica
 	// Upscale
 	case recommendedReplicaCount > currentReplicas:
 		msg = "Value is above highMark"
-		restrictedScaling.With(labelsWithReason).Set(0)
+		if recordMetrics {
+			restrictedScaling.With(labelsWithReason).Set(0)
+		}
 		replicaCount = adjustReplicaCountForUpscale(logger, currentReplicas, currentReadyReplicas, wpa, recommendedReplicaCount)
 	// Downscale
 	case recommendedReplicaCount < currentReplicas:
 		msg = "Value is below lowMark"
-		restrictedScaling.With(labelsWithReason).Set(0)
+		if recordMetrics {
+			restrictedScaling.With(labelsWithReason).Set(0)
+		}
 		replicaCount = adjustReplicaCountForDownscale(logger, currentReplicas, currentReadyReplicas, wpa, recommendedReplicaCount)
 	// If within bounds, do nothing unless converging is enabled
 	default:
