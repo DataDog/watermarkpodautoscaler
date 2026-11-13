@@ -85,7 +85,7 @@ build_image_fips:
     FIPS_ENABLED: "true"
 
 .docker_publish_job_definition:
-  image: registry.ddbuild.io/agent-delivery/dd-pkg@sha256:8822416fd5d94532c6c93ef9f58bea0236489f1431fd228f39a23d24af1a7894
+  image: registry.ddbuild.io/agent-delivery/dd-pkg@sha256:8be3aa0cf72ceebe98f1683af84b943fec34d3ca410530f6301f13b6b6894eb1
   tags: ["arch:arm64"]
   before_script: []
   variables:
