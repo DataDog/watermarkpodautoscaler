@@ -4,8 +4,8 @@ go 1.26.5
 
 require (
 	github.com/DataDog/agent-payload/v5 v5.0.205
-	github.com/DataDog/dd-trace-go/contrib/net/http/v2 v2.11.2
-	github.com/DataDog/dd-trace-go/v2 v2.11.2
+	github.com/DataDog/dd-trace-go/contrib/net/http/v2 v2.12.0
+	github.com/DataDog/dd-trace-go/v2 v2.12.0
 	github.com/DataDog/watermarkpodautoscaler/apis v0.0.0-20260915193337-0cde585f54eb
 	github.com/go-logr/logr v1.4.4
 	github.com/onsi/ginkgo v1.16.5
