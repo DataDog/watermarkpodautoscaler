@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta/testrestmapper"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -300,4 +301,44 @@ func TestRecommenderShadowLeavesLiveGaugesUntouched(t *testing.T) {
 	assert.InDelta(t, 42.0, testutil.ToFloat64(value.With(valueLabels)), 0)
 	// Delete reports whether the series still existed (the live error path would have deleted it).
 	assert.True(t, restrictedScaling.Delete(restrictedLabels), "restricted_scaling series must survive a shadow error")
+}
+
+// Usage 70 on 10 ready replicas with LW/HW 50/70 and convergeTowardsWatermark=highwatermark: the spec watermarks
+// cannot converge (9 replicas would exceed HW 70), the watermarks stretched by 1.2 (HW 84) allow converging to 9.
+func TestTargetStretchReconcileConvergence(t *testing.T) {
+	tenPods := makeScale(testDeploymentName, 10, map[string]string{"name": podNamePrefix})
+	tenPods.Namespace = testNamespace
+	for _, mode := range []config.TargetStretchMode{config.TargetStretchModeEnabledOptIn, config.TargetStretchModeDryRunOptIn} {
+		t.Run(string(mode), func(t *testing.T) {
+			metric := externalWiringMetric()
+			tc := &replicaCalcTestCase{scale: tenPods, metric: &metricInfo{spec: metric, levels: []int64{70000}}, timestamp: time.Now()}
+			wpa := wiringWPA(&metric, nil)
+			wpa.Spec.ConvergeTowardsWatermark = v1alpha1.ConvergeUpwards
+			w := newStretchWiring(t, tc, wpa, stretchCfg(mode, 1200))
+
+			got := w.reconcile(t, wpa)
+
+			var converge *autoscalingv2.HorizontalPodAutoscalerCondition
+			for i := range got.Status.Conditions {
+				if got.Status.Conditions[i].Type == v1alpha1.WatermarkPodAutoscalerStatusConvergeToWatermark {
+					converge = &got.Status.Conditions[i]
+				}
+			}
+			require.NotNil(t, converge, "the persisted WPA carries the convergence condition")
+			ts := got.Status.TargetStretch
+			require.NotNil(t, ts)
+			if mode.IsEnforced() {
+				assert.Equal(t, int32(9), got.Status.DesiredReplicas, "converges on the stretched high watermark")
+				assert.Equal(t, corev1.ConditionTrue, converge.Status)
+				assert.Nil(t, ts.ReplicasRecommended)
+			} else {
+				assert.Equal(t, int32(10), got.Status.DesiredReplicas, "the real path keeps the spec watermarks")
+				require.NotNil(t, ts.ReplicasRecommended)
+				assert.Equal(t, int32(9), *ts.ReplicasRecommended, "the shadow converges on the stretched watermarks")
+				// The shadow converges (it would set True); the persisted condition must come from the real path.
+				assert.Equal(t, corev1.ConditionFalse, converge.Status, "shadow conditions must not leak into the persisted status")
+				assert.Equal(t, convergeToWatermarkUnstable, converge.Message)
+			}
+		})
+	}
 }

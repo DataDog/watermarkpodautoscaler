@@ -8,6 +8,7 @@ package datadoghq
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/big"
 	"strconv"
 	"strings"
@@ -153,34 +154,23 @@ func evaluateTargetStretch(cfg config.TargetStretchConfig, wpa *datadoghqv1alpha
 }
 
 // stretchQuantity multiplies q by ratioMilli/1000, rounding half up at the milli unit.
-// The product is computed with big.Int so it cannot overflow int64.
+// It keeps the controller's milli semantics (q.MilliValue(), which rounds sub-milli values up), multiplies with
+// big.Int so the product cannot overflow, and saturates at math.MaxInt64 milli so consumers never see a negative value.
 func stretchQuantity(q *resource.Quantity, ratioMilli int64) *resource.Quantity {
 	if q == nil {
 		return nil
 	}
-	// AsDec converts in place, so work on a copy to leave the spec quantity untouched.
-	cp := q.DeepCopy()
-	milli := cp.AsDec()
-	milli.SetScale(milli.Scale() - 3) // value in milli units
-	// Round the milli value to an integer before multiplying (Quantity never holds sub-milli precision here).
-	unscaled := new(big.Int).Set(milli.UnscaledBig())
-	if s := milli.Scale(); s > 0 {
-		unscaled.Quo(unscaled, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(s)), nil))
-	} else if s < 0 {
-		unscaled.Mul(unscaled, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(-s)), nil))
+	if q.Cmp(*resource.NewMilliQuantity(math.MaxInt64, q.Format)) > 0 {
+		// MilliValue() would not fit in int64 for this input.
+		return resource.NewMilliQuantity(math.MaxInt64, q.Format)
 	}
-	res := unscaled.Mul(unscaled, big.NewInt(ratioMilli))
+	res := new(big.Int).Mul(big.NewInt(q.MilliValue()), big.NewInt(ratioMilli))
 	res.Add(res, big.NewInt(500))
 	res.Quo(res, big.NewInt(1000))
-	if res.IsInt64() {
-		return resource.NewMilliQuantity(res.Int64(), q.Format)
+	if !res.IsInt64() {
+		return resource.NewMilliQuantity(math.MaxInt64, q.Format)
 	}
-	out, err := resource.ParseQuantity(res.String() + "m")
-	if err != nil {
-		fallback := q.DeepCopy()
-		return &fallback
-	}
-	return &out
+	return resource.NewMilliQuantity(res.Int64(), q.Format)
 }
 
 // effectiveMetrics returns a copy of the metrics with stretched watermarks.

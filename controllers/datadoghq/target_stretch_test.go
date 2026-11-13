@@ -6,6 +6,7 @@
 package datadoghq
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -111,7 +112,6 @@ func TestStretchQuantityLargeValues(t *testing.T) {
 		{"50", 1150, "57500m"},
 		{"70", 1150, "80500m"},
 		{"5T", 2000, "10T"},                            // product 5e15*2000 overflows int64, result fits
-		{"9000T", 2000, "18000T"},                      // result itself exceeds int64 milli
 		{"1", 1001, "1001m"},                           // half-up rounding at milli
 		{"333m", 1500, "500m"},                         // 499.5 rounds to 500
 		{"9223372036854775", 1000, "9223372036854775"}, // close to the int64 milli limit
@@ -127,6 +127,24 @@ func TestStretchQuantityLargeValues(t *testing.T) {
 		if in.Cmp(orig) != 0 || in.String() != orig.String() {
 			t.Errorf("stretchQuantity mutated its input: %s -> %s", orig.String(), in.String())
 		}
+	}
+}
+
+func TestStretchQuantitySaturates(t *testing.T) {
+	prev := int64(0)
+	for _, in := range []string{"1T", "5T", "4000T", "9000T", "1E", "100E"} {
+		q := resource.MustParse(in)
+		got := stretchQuantity(&q, 2000).MilliValue()
+		if got <= 0 {
+			t.Fatalf("stretchQuantity(%s, 2) milli = %d, want positive", in, got)
+		}
+		if got < prev {
+			t.Fatalf("stretchQuantity is not monotonic: %s gives %d < %d", in, got, prev)
+		}
+		prev = got
+	}
+	if prev != math.MaxInt64 {
+		t.Fatalf("huge values must saturate at MaxInt64 milli, got %d", prev)
 	}
 }
 
