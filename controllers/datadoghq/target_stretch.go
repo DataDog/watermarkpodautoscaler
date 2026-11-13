@@ -283,15 +283,12 @@ func applyTargetStretchStatus(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, d t
 		wpa.Status.TargetStretch = nil
 		return
 	}
-	var prevReco *int32
-	if wpa.Status.TargetStretch != nil && d.dryRun {
-		prevReco = wpa.Status.TargetStretch.ReplicasRecommended
-	}
 	wpa.Status.TargetStretch = &datadoghqv1alpha1.TargetStretchStatus{
 		Mode:                string(d.mode),
 		AppliedRatio:        config.FormatRatioMilli(d.appliedRatioMilli),
 		EffectiveWatermarks: effectiveWatermarksStatus(wpa, d.appliedRatioMilli),
-		ReplicasRecommended: prevReco,
+		// Cleared on every reconcile: only a successful shadow computation sets it again.
+		ReplicasRecommended: nil,
 	}
 }
 
@@ -434,9 +431,8 @@ func updateTargetStretchWPAMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler
 	}
 	labels := getPrometheusLabels(wpa)
 	targetStretchAppliedRatio.With(labels).Set(float64(d.appliedRatioMilli) / 1000)
-	if !d.dryRun {
-		targetStretchReplicasRecommended.Delete(labels)
-	}
+	// Cleared on every reconcile: only a successful shadow computation sets it again.
+	targetStretchReplicasRecommended.Delete(labels)
 	setSpec := func(name string, lw, hw *resource.Quantity) {
 		if lw == nil || hw == nil {
 			return

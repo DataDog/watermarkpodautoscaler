@@ -342,3 +342,33 @@ func TestTargetStretchReconcileConvergence(t *testing.T) {
 		})
 	}
 }
+
+// After a cap change, a failed live metric lookup must not leave the previous shadow recommendation in the
+// status or in the per-WPA gauge.
+func TestTargetStretchShadowClearedOnFailedRecalculation(t *testing.T) {
+	tenPods := makeScale(testDeploymentName, 10, map[string]string{"name": podNamePrefix})
+	tenPods.Namespace = testNamespace
+	metric := externalWiringMetric()
+	tc := &replicaCalcTestCase{scale: tenPods, metric: &metricInfo{spec: metric, levels: []int64{78000}}, timestamp: time.Now()}
+	wpa := wiringWPA(&metric, nil)
+	w := newStretchWiring(t, tc, wpa, stretchCfg(config.TargetStretchModeDryRunOptIn, 1200))
+	labels := getPrometheusLabels(wpa)
+	t.Cleanup(func() { cleanupTargetStretchMetrics(wpa) })
+
+	got := w.reconcile(t, wpa)
+	require.NotNil(t, got.Status.TargetStretch.ReplicasRecommended)
+	assert.Equal(t, int32(10), *got.Status.TargetStretch.ReplicasRecommended)
+	assert.InDelta(t, 10, testutil.ToFloat64(targetStretchReplicasRecommended.With(labels)), 0)
+
+	// Lower the cap and make the live external metric lookup fail.
+	got.Annotations[v1alpha1.TargetStretchMaxRatioAnnotationKey] = "1.1"
+	require.NoError(t, w.r.Client.Update(t.Context(), got))
+	tc.metric.spec = v1alpha1.MetricSpec{}
+
+	got = w.reconcile(t, wpa)
+	ts := got.Status.TargetStretch
+	require.NotNil(t, ts)
+	assert.Equal(t, "1.1", ts.AppliedRatio, "the new cap is applied")
+	assert.Nil(t, ts.ReplicasRecommended, "the stale shadow recommendation must be cleared")
+	assert.False(t, targetStretchReplicasRecommended.Delete(labels), "the stale shadow gauge must be removed")
+}
