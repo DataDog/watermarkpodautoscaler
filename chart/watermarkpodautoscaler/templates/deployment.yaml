@@ -62,11 +62,13 @@ spec:
                   fieldPath: metadata.name
             - name: OPERATOR_NAME
               value: "watermarkpodautoscaler"
+            {{- /* targetStretch can be absent, e.g. on an upgrade with --reuse-values from an older chart */}}
+            {{- $targetStretch := .Values.targetStretch | default dict }}
             - name: WPA_STRETCH_MODE
-              value: {{ .Values.targetStretch.mode | default "disabled" | quote }}
-            {{- if .Values.targetStretch.ratio }}
+              value: {{ $targetStretch.mode | default "disabled" | quote }}
+            {{- if $targetStretch.ratio }}
             - name: WPA_STRETCH_RATIO
-              value: {{ .Values.targetStretch.ratio | quote }}
+              value: {{ $targetStretch.ratio | quote }}
             {{- end }}
             {{- if .Values.labelsAsTags }}
             - name: DD_LABELS_AS_TAGS
