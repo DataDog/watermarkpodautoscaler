@@ -11,10 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta/testrestmapper"
@@ -371,4 +373,47 @@ func TestTargetStretchShadowClearedOnFailedRecalculation(t *testing.T) {
 	assert.Equal(t, "1.1", ts.AppliedRatio, "the new cap is applied")
 	assert.Nil(t, ts.ReplicasRecommended, "the stale shadow recommendation must be cleared")
 	assert.False(t, targetStretchReplicasRecommended.Delete(labels), "the stale shadow gauge must be removed")
+}
+
+// hookedCalculator runs a hook before delegating external metric lookups, to observe state mid-reconcile.
+type hookedCalculator struct {
+	ReplicaCalculatorItf
+
+	beforeExternal func()
+}
+
+func (h *hookedCalculator) GetExternalMetricReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (ReplicaCalculation, error) {
+	if h.beforeExternal != nil {
+		h.beforeExternal()
+	}
+	return h.ReplicaCalculatorItf.GetExternalMetricReplicas(ctx, logger, target, metric, wpa)
+}
+
+// On a healthy dry-run reconcile the shadow gauge must stay exported while the reconcile runs.
+func TestTargetStretchShadowGaugeContinuity(t *testing.T) {
+	tenPods := makeScale(testDeploymentName, 10, map[string]string{"name": podNamePrefix})
+	tenPods.Namespace = testNamespace
+	metric := externalWiringMetric()
+	tc := &replicaCalcTestCase{scale: tenPods, metric: &metricInfo{spec: metric, levels: []int64{78000}}, timestamp: time.Now()}
+	wpa := wiringWPA(&metric, nil)
+	w := newStretchWiring(t, tc, wpa, stretchCfg(config.TargetStretchModeDryRunOptIn, 1200))
+	labels := getPrometheusLabels(wpa)
+	t.Cleanup(func() { cleanupTargetStretchMetrics(wpa) })
+
+	w.reconcile(t, wpa)
+	require.InDelta(t, 10, testutil.ToFloat64(targetStretchReplicasRecommended.With(labels)), 0)
+
+	presentDuring := false
+	w.r.replicaCalc = &hookedCalculator{ReplicaCalculatorItf: w.r.replicaCalc, beforeExternal: func() {
+		// Delete reports whether the series exists without creating it; restore it right away.
+		presentDuring = targetStretchReplicasRecommended.Delete(labels)
+		if presentDuring {
+			targetStretchReplicasRecommended.With(labels).Set(10)
+		}
+	}}
+	got := w.reconcile(t, wpa)
+
+	assert.True(t, presentDuring, "the shadow gauge must not disappear during a healthy reconcile")
+	require.NotNil(t, got.Status.TargetStretch.ReplicasRecommended)
+	assert.InDelta(t, 10, testutil.ToFloat64(targetStretchReplicasRecommended.With(labels)), 0)
 }

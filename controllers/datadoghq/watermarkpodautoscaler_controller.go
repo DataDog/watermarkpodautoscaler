@@ -310,7 +310,9 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 	updateTargetStretchWPAMetrics(instance, stretch)
 	r.emitTargetStretchEvents(instance, wpaStatusOriginal)
 
-	if err = r.reconcileWPA(ctx, log, wpaStatusOriginal, instance, stretch); err != nil {
+	err = r.reconcileWPA(ctx, log, wpaStatusOriginal, instance, stretch)
+	clearFailedShadowGauge(instance, stretch)
+	if err != nil {
 		log.Info("Error during reconcileWPA", "error", err)
 		r.eventRecorder.Eventf(instance, nil, corev1.EventTypeWarning, datadoghqv1alpha1.ReasonFailedProcessWPA, datadoghqv1alpha1.ReasonFailedProcessWPA, "%s", err.Error())
 		setCondition(instance, autoscalingv2.AbleToScale, corev1.ConditionFalse, datadoghqv1alpha1.ReasonFailedProcessWPA, "Error happened while processing the WPA")

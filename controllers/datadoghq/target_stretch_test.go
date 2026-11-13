@@ -6,8 +6,10 @@
 package datadoghq
 
 import (
+	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -305,5 +307,68 @@ func TestTargetStretchMetrics(t *testing.T) {
 	updateTargetStretchWPAMetrics(wpa, evaluateTargetStretch(stretchCfg(config.TargetStretchModeDisabled, 1000), wpa))
 	if testutil.CollectAndCount(specHighWatermark) != 0 || testutil.CollectAndCount(targetStretchAppliedRatio) != 0 {
 		t.Fatalf("per-WPA gauges not cleaned up when unselected")
+	}
+}
+
+// recount is the reference: totals computed from scratch over the tracked flags.
+func recount(t *targetStretchTracker) targetStretchTotals {
+	var want targetStretchTotals
+	for _, f := range t.wpas {
+		want.apply(f, 1)
+	}
+	return want
+}
+
+func TestTargetStretchTrackerIncrementalCounts(t *testing.T) {
+	tracker := &targetStretchTracker{wpas: map[types.NamespacedName]targetStretchFlags{}}
+	key := types.NamespacedName{Namespace: testingNamespace, Name: "w"}
+	enforced := evaluateTargetStretch(stretchCfg(config.TargetStretchModeEnabledOptOut, 1200), newStretchWPA("w", map[string]string{v1alpha1.TargetStretchMaxRatioAnnotationKey: "1.1"}))
+	optedOut := evaluateTargetStretch(stretchCfg(config.TargetStretchModeEnabledOptOut, 1200), newStretchWPA("w", map[string]string{v1alpha1.TargetStretchEnabledAnnotationKey: "false"}))
+
+	tracker.update(key, enforced)
+	tracker.update(key, enforced) // unchanged: no double count
+	if got := tracker.totals; got != (targetStretchTotals{selected: 1, stretched: 1, capped: 1}) {
+		t.Fatalf("after repeated update: %+v", got)
+	}
+	tracker.update(key, optedOut) // transition replaces the previous flags
+	if got := tracker.totals; got != (targetStretchTotals{optedOut: 1}) {
+		t.Fatalf("after transition: %+v", got)
+	}
+	tracker.remove(key)
+	tracker.remove(key) // unknown key: no underflow
+	if got := tracker.totals; got != (targetStretchTotals{}) {
+		t.Fatalf("after remove: %+v", got)
+	}
+}
+
+func TestTargetStretchTrackerConcurrentUpdates(t *testing.T) {
+	tracker := &targetStretchTracker{wpas: map[types.NamespacedName]targetStretchFlags{}}
+	modes := []config.TargetStretchMode{config.TargetStretchModeEnabledOptOut, config.TargetStretchModeDryRunOptIn, config.TargetStretchModeDisabled}
+	anns := []map[string]string{nil, {v1alpha1.TargetStretchEnabledAnnotationKey: "true"}, {v1alpha1.TargetStretchEnabledAnnotationKey: "false"}, {v1alpha1.TargetStretchMaxRatioAnnotationKey: "1.1"}}
+	var wg sync.WaitGroup
+	for g := range 16 {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for i := range 500 {
+				key := types.NamespacedName{Namespace: testingNamespace, Name: fmt.Sprintf("w%d", (g*7+i)%40)}
+				if i%11 == 0 {
+					tracker.remove(key)
+					continue
+				}
+				d := evaluateTargetStretch(stretchCfg(modes[(g+i)%len(modes)], 1200), newStretchWPA(key.Name, anns[(g*3+i)%len(anns)]))
+				tracker.update(key, d)
+			}
+		}(g)
+	}
+	wg.Wait()
+	if want := recount(tracker); tracker.totals != want {
+		t.Fatalf("incremental totals %+v differ from a recount %+v", tracker.totals, want)
+	}
+	get := func(state string) float64 {
+		return testutil.ToFloat64(targetStretchWPAs.With(prometheus.Labels{statePromLabel: state}))
+	}
+	if get("selected") != float64(tracker.totals.selected) || get("opted_out") != float64(tracker.totals.optedOut) {
+		t.Fatalf("gauges do not match the totals")
 	}
 }

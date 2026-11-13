@@ -379,39 +379,68 @@ type targetStretchFlags struct {
 	selected, stretched, capped, optedOut bool
 }
 
+// targetStretchTracker keeps the controller-level WPA counts. Totals are maintained incrementally so a
+// reconcile never scans every tracked WPA; an unchanged WPA does not touch the gauges at all.
 type targetStretchTracker struct {
-	mu   sync.Mutex
-	wpas map[types.NamespacedName]targetStretchFlags
+	mu     sync.Mutex
+	wpas   map[types.NamespacedName]targetStretchFlags
+	totals targetStretchTotals
+}
+
+type targetStretchTotals struct {
+	selected, stretched, capped, optedOut int
+}
+
+func (t *targetStretchTotals) apply(f targetStretchFlags, delta int) {
+	if f.selected {
+		t.selected += delta
+	}
+	if f.stretched {
+		t.stretched += delta
+	}
+	if f.capped {
+		t.capped += delta
+	}
+	if f.optedOut {
+		t.optedOut += delta
+	}
 }
 
 var stretchTracker = &targetStretchTracker{wpas: map[types.NamespacedName]targetStretchFlags{}}
 
 func (t *targetStretchTracker) update(key types.NamespacedName, d targetStretchDecision) {
+	flags := targetStretchFlags{selected: d.selected, stretched: d.stretching(), capped: d.selected && d.capped, optedOut: d.optedOut}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.wpas[key] = targetStretchFlags{selected: d.selected, stretched: d.stretching(), capped: d.selected && d.capped, optedOut: d.optedOut}
+	old, found := t.wpas[key]
+	if found && old == flags {
+		return
+	}
+	if found {
+		t.totals.apply(old, -1)
+	}
+	t.totals.apply(flags, 1)
+	t.wpas[key] = flags
 	t.publishLocked()
 }
 
 func (t *targetStretchTracker) remove(key types.NamespacedName) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	old, found := t.wpas[key]
+	if !found {
+		return
+	}
+	t.totals.apply(old, -1)
 	delete(t.wpas, key)
 	t.publishLocked()
 }
 
 func (t *targetStretchTracker) publishLocked() {
-	var selected, stretched, capped, optedOut float64
-	for _, f := range t.wpas {
-		selected += boolToFloat64(f.selected)
-		stretched += boolToFloat64(f.stretched)
-		capped += boolToFloat64(f.capped)
-		optedOut += boolToFloat64(f.optedOut)
-	}
-	targetStretchWPAs.With(prometheus.Labels{statePromLabel: "selected"}).Set(selected)
-	targetStretchWPAs.With(prometheus.Labels{statePromLabel: "stretched"}).Set(stretched)
-	targetStretchWPAs.With(prometheus.Labels{statePromLabel: "capped"}).Set(capped)
-	targetStretchWPAs.With(prometheus.Labels{statePromLabel: "opted_out"}).Set(optedOut)
+	targetStretchWPAs.With(prometheus.Labels{statePromLabel: "selected"}).Set(float64(t.totals.selected))
+	targetStretchWPAs.With(prometheus.Labels{statePromLabel: "stretched"}).Set(float64(t.totals.stretched))
+	targetStretchWPAs.With(prometheus.Labels{statePromLabel: "capped"}).Set(float64(t.totals.capped))
+	targetStretchWPAs.With(prometheus.Labels{statePromLabel: "opted_out"}).Set(float64(t.totals.optedOut))
 }
 
 // RecordTargetStretchConfigMetrics publishes the controller-level target stretch configuration gauges.
@@ -431,8 +460,11 @@ func updateTargetStretchWPAMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler
 	}
 	labels := getPrometheusLabels(wpa)
 	targetStretchAppliedRatio.With(labels).Set(float64(d.appliedRatioMilli) / 1000)
-	// Cleared on every reconcile: only a successful shadow computation sets it again.
-	targetStretchReplicasRecommended.Delete(labels)
+	// Outside dry-run there is no shadow. In dry-run the series is kept during the reconcile (no gap for a
+	// scrape) and is overwritten on success or deleted by clearFailedShadowGauge.
+	if !d.dryRun {
+		targetStretchReplicasRecommended.Delete(labels)
+	}
 	setSpec := func(name string, lw, hw *resource.Quantity) {
 		if lw == nil || hw == nil {
 			return
@@ -452,6 +484,14 @@ func updateTargetStretchWPAMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler
 		case m.Resource != nil:
 			setSpec(metricSpecName(m), m.Resource.LowWatermark, m.Resource.HighWatermark)
 		}
+	}
+}
+
+// clearFailedShadowGauge deletes the shadow gauge when this reconcile did not produce a shadow recommendation
+// (metric lookup failure, shadow failure or early exit), so a stale value is never exported.
+func clearFailedShadowGauge(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, d targetStretchDecision) {
+	if d.dryRun && (wpa.Status.TargetStretch == nil || wpa.Status.TargetStretch.ReplicasRecommended == nil) {
+		targetStretchReplicasRecommended.Delete(getPrometheusLabels(wpa))
 	}
 }
 
