@@ -8,6 +8,7 @@ package datadoghq
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"strings"
 	"time"
 
@@ -473,11 +474,21 @@ func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas i
 	return replicaCount, utilizationQuantity.MilliValue(), position
 }
 
+// toleranceDelta returns mark*tolerance/1000 with the same truncating integer division as before, computed with
+// big.Int so that saturated (huge) watermarks cannot overflow int64.
+func toleranceDelta(mark, toleranceMilli int64) float64 {
+	d := new(big.Int).Mul(big.NewInt(mark), big.NewInt(toleranceMilli))
+	d.Quo(d, big.NewInt(1000))
+	f, _ := new(big.Float).SetInt(d).Float64()
+	return f
+}
+
 // computeReplicaCountForUsage compares the usage to the watermarks (with tolerance) and returns the replica count.
 // It does not set any prometheus gauge, so it can also compute the target stretch shadow recommendation.
 func computeReplicaCountForUsage(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, lowMark, highMark *resource.Quantity) (replicaCount int32, position metricPosition, msg string, adjustedLM, adjustedHM float64) {
-	adjustedHM = float64(highMark.MilliValue() + highMark.MilliValue()*wpa.Spec.Tolerance.MilliValue()/1000.)
-	adjustedLM = float64(lowMark.MilliValue() - lowMark.MilliValue()*wpa.Spec.Tolerance.MilliValue()/1000.)
+	tolerance := wpa.Spec.Tolerance.MilliValue()
+	adjustedHM = float64(highMark.MilliValue()) + toleranceDelta(highMark.MilliValue(), tolerance)
+	adjustedLM = float64(lowMark.MilliValue()) - toleranceDelta(lowMark.MilliValue(), tolerance)
 
 	switch {
 	// Upscale if usage > hw
