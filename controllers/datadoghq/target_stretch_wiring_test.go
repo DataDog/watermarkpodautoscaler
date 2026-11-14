@@ -638,3 +638,42 @@ func TestTargetStretchSpecSeriesEmptyMetricName(t *testing.T) {
 	cleanupAssociatedMetrics(wpa, false)
 	assert.False(t, specSeriesPresent(wpa, ""), "finalize removes the empty-name series")
 }
+
+// The invalid-spec reconcile does not requeue, so an annotation-only opt-out must be enqueued by updatePredicate.
+func TestTargetStretchAnnotationOnlyEditAfterInvalidSpec(t *testing.T) {
+	tenPods := makeScale(testDeploymentName, 10, map[string]string{"name": podNamePrefix})
+	tenPods.Namespace = testNamespace
+	metric := externalWiringMetric()
+	tc := &replicaCalcTestCase{scale: tenPods, metric: &metricInfo{spec: metric, levels: []int64{78000}}, timestamp: time.Now()}
+	wpa := wiringWPA(&metric, nil)
+	wpa.Spec.MaxReplicas = 0 // below minReplicas: invalid spec
+	w := newStretchWiring(t, tc, wpa, stretchCfg(config.TargetStretchModeEnabledOptOut, 1200))
+	t.Cleanup(func() { cleanupAssociatedMetrics(wpa, false) })
+	key := types.NamespacedName{Namespace: wpa.Namespace, Name: wpa.Name}
+
+	res, err := w.r.Reconcile(t.Context(), ctrl.Request{NamespacedName: key})
+	require.NoError(t, err)
+	require.Equal(t, ctrl.Result{}, res, "precondition: the invalid-spec reconcile does not requeue")
+	oldObj := &v1alpha1.WatermarkPodAutoscaler{}
+	require.NoError(t, w.r.Client.Get(t.Context(), key, oldObj))
+	require.NotNil(t, oldObj.Status.TargetStretch)
+
+	newObj := oldObj.DeepCopy()
+	newObj.Annotations[v1alpha1.TargetStretchEnabledAnnotationKey] = "false"
+	assert.True(t, updatePredicate(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj}), "an annotation-only target stretch edit is enqueued")
+
+	unrelated := oldObj.DeepCopy()
+	unrelated.Annotations["example.com/other"] = "x"
+	assert.False(t, updatePredicate(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: unrelated}), "unrelated annotation edits are still ignored")
+
+	capChange := oldObj.DeepCopy()
+	capChange.Annotations[v1alpha1.TargetStretchMaxRatioAnnotationKey] = "1.1"
+	assert.True(t, updatePredicate(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: capChange}), "a max-ratio edit is enqueued")
+
+	require.NoError(t, w.r.Client.Update(t.Context(), newObj))
+	got := w.reconcile(t, wpa)
+	assert.Nil(t, got.Status.TargetStretch, "the enqueued reconcile applies the opt-out")
+	cond := stretchCondition(got)
+	require.NotNil(t, cond)
+	assert.Equal(t, v1alpha1.TargetStretchReasonOptedOut, cond.Reason)
+}

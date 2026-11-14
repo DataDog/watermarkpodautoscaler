@@ -1083,7 +1083,23 @@ func updatePredicate(ev event.UpdateEvent) bool {
 		// since other could not have changed.
 		cleanupAssociatedMetrics(oldObject, true)
 	}
-	return hasChanged
+	// Target stretch annotations only live in the metadata. Enqueue on their change too: a WPA whose last
+	// reconcile did not requeue (invalid spec) would otherwise keep a stale stretch state.
+	return hasChanged || targetStretchAnnotationsChanged(oldObject, newObject)
+}
+
+// targetStretchAnnotationsChanged reports whether any target-stretch.* annotation differs between the objects.
+func targetStretchAnnotationsChanged(oldObject, newObject *datadoghqv1alpha1.WatermarkPodAutoscaler) bool {
+	pick := func(annotations map[string]string) map[string]string {
+		out := map[string]string{}
+		for k, v := range annotations {
+			if strings.HasPrefix(k, datadoghqv1alpha1.TargetStretchAnnotationPrefix) {
+				out[k] = v
+			}
+		}
+		return out
+	}
+	return !apiequality.Semantic.DeepEqual(pick(oldObject.Annotations), pick(newObject.Annotations))
 }
 
 // SetupWithManager creates a new Watermarkpodautoscaler controller
