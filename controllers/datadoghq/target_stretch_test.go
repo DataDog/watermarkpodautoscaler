@@ -14,6 +14,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/stretchr/testify/assert"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -371,4 +372,57 @@ func TestTargetStretchTrackerConcurrentUpdates(t *testing.T) {
 	if get("selected") != float64(tracker.totals.selected) || get("opted_out") != float64(tracker.totals.optedOut) {
 		t.Fatalf("gauges do not match the totals")
 	}
+}
+
+// Unselecting a WPA deletes exactly its own spec watermark series, not every series that shares its labels.
+func TestCleanupTargetStretchMetricsExactLabels(t *testing.T) {
+	wpa := newStretchWPA("exact", nil)
+	other := newStretchWPA("exact-other", nil)
+	labelsFor := func(w *v1alpha1.WatermarkPodAutoscaler, metric string) prometheus.Labels {
+		l := getPrometheusLabels(w)
+		l[metricNamePromLabel] = metric
+		return l
+	}
+	foreign := labelsFor(wpa, "not-in-spec") // same WPA labels, a metric name the WPA spec does not use
+	t.Cleanup(func() {
+		specLowWatermark.Delete(foreign)
+		cleanupTargetStretchMetrics(other)
+	})
+
+	cfg := stretchCfg(config.TargetStretchModeEnabledOptOut, 1200)
+	updateTargetStretchWPAMetrics(wpa, evaluateTargetStretch(cfg, wpa))
+	updateTargetStretchWPAMetrics(other, evaluateTargetStretch(cfg, other))
+	specLowWatermark.With(foreign).Set(1)
+
+	updateTargetStretchWPAMetrics(wpa, evaluateTargetStretch(stretchCfg(config.TargetStretchModeDisabled, 1000), wpa))
+
+	assert.False(t, specLowWatermark.Delete(labelsFor(wpa, "cpu")), "the WPA spec low watermark series is deleted")
+	assert.False(t, specHighWatermark.Delete(labelsFor(wpa, "cpu")), "the WPA spec high watermark series is deleted")
+	assert.True(t, specLowWatermark.Delete(foreign), "a series outside the WPA metric names is not touched")
+	assert.True(t, specHighWatermark.Delete(labelsFor(other, "cpu")), "another WPA is not touched")
+	specHighWatermark.With(labelsFor(other, "cpu")).Set(70000)
+}
+
+// When a selected WPA renames a metric, the spec-change cleanup (cleanupAssociatedMetrics on the old object, as
+// updatePredicate does) removes the old series, and the next reconcile only exports the new name.
+func TestCleanupTargetStretchMetricsOnMetricRename(t *testing.T) {
+	cfg := stretchCfg(config.TargetStretchModeEnabledOptOut, 1200)
+	oldWPA := newStretchWPA("rename", nil)
+	newWPA := oldWPA.DeepCopy()
+	newWPA.Spec.Metrics[0].External.MetricName = "memory"
+	labelsFor := func(metric string) prometheus.Labels {
+		l := getPrometheusLabels(oldWPA)
+		l[metricNamePromLabel] = metric
+		return l
+	}
+	t.Cleanup(func() { cleanupTargetStretchMetrics(newWPA) })
+
+	updateTargetStretchWPAMetrics(oldWPA, evaluateTargetStretch(cfg, oldWPA))
+	cleanupAssociatedMetrics(oldWPA, true)
+	updateTargetStretchWPAMetrics(newWPA, evaluateTargetStretch(cfg, newWPA))
+
+	assert.False(t, specLowWatermark.Delete(labelsFor("cpu")), "the series of the old metric name is removed")
+	assert.False(t, specHighWatermark.Delete(labelsFor("cpu")))
+	assert.True(t, specLowWatermark.Delete(labelsFor("memory")), "the new metric name is exported")
+	assert.True(t, specHighWatermark.Delete(labelsFor("memory")))
 }

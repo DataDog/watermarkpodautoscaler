@@ -505,10 +505,30 @@ func clearFailedShadowGauge(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, d tar
 	}
 }
 
+// specMetricNames returns the metric_name label values of the spec watermark gauges of a WPA.
+func specMetricNames(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) []string {
+	names := make([]string, 0, len(wpa.Spec.Metrics)+1)
+	for _, m := range wpa.Spec.Metrics {
+		if name := metricSpecName(m); name != "" {
+			names = append(names, name)
+		}
+	}
+	if wpa.Spec.Recommender != nil {
+		names = append(names, metricNameForRecommender(&wpa.Spec))
+	}
+	return names
+}
+
 func cleanupTargetStretchMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
 	labels := getPrometheusLabels(wpa)
 	targetStretchAppliedRatio.Delete(labels)
 	targetStretchReplicasRecommended.Delete(labels)
-	specLowWatermark.DeletePartialMatch(labels)
-	specHighWatermark.DeletePartialMatch(labels)
+	// Delete the exact series of this WPA's metric names, like cleanupAssociatedMetrics. A spec change runs this
+	// on the old object (updatePredicate), so series of removed metrics are cleaned up too.
+	for _, name := range specMetricNames(wpa) {
+		l := getPrometheusLabels(wpa)
+		l[metricNamePromLabel] = name
+		specLowWatermark.Delete(l)
+		specHighWatermark.Delete(l)
+	}
 }
