@@ -38,6 +38,8 @@ const (
 	methodPromLabel            = "method"
 	codePromLabel              = "code"
 	conditionPromLabel         = "condition"
+	statePromLabel             = "state"
+	modePromLabel              = "mode"
 	// Label values
 	downscaleCappingPromLabelVal = "downscale_capping"
 	upscaleCappingPromLabelVal   = "upscale_capping"
@@ -244,6 +246,68 @@ var (
 		},
 		append(defaultPromLabels, conditionPromLabel),
 	)
+	specLowWatermark = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "spec_low_watermark",
+			Help:      "Gauge for the low watermark set in the spec of a WPA selected by the target stretch",
+		},
+		append(defaultPromLabels, metricNamePromLabel),
+	)
+	specHighWatermark = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "spec_high_watermark",
+			Help:      "Gauge for the high watermark set in the spec of a WPA selected by the target stretch",
+		},
+		append(defaultPromLabels, metricNamePromLabel),
+	)
+	targetStretchAppliedRatio = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "target_stretch_applied_ratio",
+			Help:      "Gauge for the target stretch ratio applied to a WPA",
+		},
+		defaultPromLabels,
+	)
+	targetStretchReplicasRecommended = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "target_stretch_replicas_recommended",
+			Help:      "Gauge for the shadow replica count computed with the stretched watermarks (dry-run modes)",
+		},
+		defaultPromLabels,
+	)
+	targetStretchConfigValid = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "target_stretch_config_valid",
+			Help:      "1 when the target stretch env configuration is valid, 0 otherwise",
+		},
+	)
+	targetStretchMode = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "target_stretch_mode",
+			Help:      "1 for the active target stretch mode, 0 for the others",
+		},
+		[]string{modePromLabel},
+	)
+	targetStretchRatio = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "target_stretch_ratio",
+			Help:      "The configured cluster-wide target stretch ratio",
+		},
+	)
+	targetStretchWPAs = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "target_stretch_wpas",
+			Help:      "Number of WPAs per target stretch state (selected, stretched, capped, opted_out)",
+		},
+		[]string{statePromLabel},
+	)
 )
 
 func init() {
@@ -269,6 +333,14 @@ func init() {
 	sigmetrics.Registry.MustRegister(requestErrorsTotal)
 	sigmetrics.Registry.MustRegister(responseInflight)
 	sigmetrics.Registry.MustRegister(conditions)
+	sigmetrics.Registry.MustRegister(specLowWatermark)
+	sigmetrics.Registry.MustRegister(specHighWatermark)
+	sigmetrics.Registry.MustRegister(targetStretchAppliedRatio)
+	sigmetrics.Registry.MustRegister(targetStretchReplicasRecommended)
+	sigmetrics.Registry.MustRegister(targetStretchConfigValid)
+	sigmetrics.Registry.MustRegister(targetStretchMode)
+	sigmetrics.Registry.MustRegister(targetStretchRatio)
+	sigmetrics.Registry.MustRegister(targetStretchWPAs)
 }
 
 func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onlyMetricsSpecific bool) {
@@ -320,6 +392,8 @@ func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onl
 		promLabelsForWpa[metricNamePromLabel] = metricNameForRecommender(&wpa.Spec)
 		cleanupForLabels(promLabelsForWpa)
 	}
+
+	cleanupTargetStretchMetrics(wpa)
 
 	// TODO this only be cleaned up as part of the finalizer.
 	// Until the feature is moved to the Spec, updating the annotation to disable the feature will not clean up the metric.

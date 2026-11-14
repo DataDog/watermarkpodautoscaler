@@ -51,3 +51,34 @@ const (
 	// ReasonFailedGetDatadogMonitor Reason when the DatadogMonitor associated with a WPA is not found.
 	ReasonFailedGetDatadogMonitor = "FailedGetDatadogMonitor"
 )
+
+const (
+	// TargetStretchEnabledAnnotationKey opts a WPA in ("true") or out ("false") of the cluster-wide target stretch.
+	TargetStretchEnabledAnnotationKey = "wpa.datadoghq.com/target-stretch.enabled"
+	// TargetStretchMaxRatioAnnotationKey caps the stretch ratio applied to a WPA (decimal in [1, 2]).
+	TargetStretchMaxRatioAnnotationKey = "wpa.datadoghq.com/target-stretch.max-ratio"
+	// TargetStretchAnnotationPrefix is the prefix shared by the target stretch annotations.
+	TargetStretchAnnotationPrefix = "wpa.datadoghq.com/target-stretch."
+
+	// TargetStretchReasonEnforced the watermarks used for scaling are stretched by the cluster ratio.
+	TargetStretchReasonEnforced = "Enforced"
+	// TargetStretchReasonCappedByWPA the watermarks are stretched by the WPA max-ratio cap.
+	TargetStretchReasonCappedByWPA = "CappedByWPA"
+	// TargetStretchReasonDryRun the stretch is only computed as a shadow recommendation.
+	TargetStretchReasonDryRun = "DryRun"
+	// TargetStretchReasonOptedOut the WPA opted out of the stretch.
+	TargetStretchReasonOptedOut = "OptedOut"
+	// TargetStretchReasonNotOptedIn the WPA did not opt in while the cluster runs an opt-in mode.
+	TargetStretchReasonNotOptedIn = "NotOptedIn"
+	// TargetStretchReasonDisabled the cluster-wide stretch is disabled.
+	TargetStretchReasonDisabled = "Disabled"
+	// TargetStretchReasonInvalidConfig the cluster-wide stretch configuration is invalid.
+	TargetStretchReasonInvalidConfig = "InvalidConfig"
+	// TargetStretchReasonInvalidAnnotation a target stretch annotation of the WPA cannot be parsed.
+	TargetStretchReasonInvalidAnnotation = "InvalidAnnotation"
+
+	// ReasonTargetStretchApplied event reason when the effective watermarks change in an enabled mode.
+	ReasonTargetStretchApplied = "TargetStretchApplied"
+	// ReasonTargetStretchRemoved event reason when the stretch stops being applied.
+	ReasonTargetStretchRemoved = "TargetStretchRemoved"
+)

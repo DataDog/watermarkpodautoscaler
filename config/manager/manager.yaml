@@ -62,4 +62,9 @@ spec:
           # Additional labels to include as tags (requires label joins configuration for prometheus check)
           # - name: DD_LABELS_AS_TAGS
           #   value: "label1 label2"
+          # Cluster-wide target stretch (see docs/target-stretch.md)
+          # - name: WPA_STRETCH_MODE
+          #   value: "dry-run-opt-in"
+          # - name: WPA_STRETCH_RATIO
+          #   value: "1.2"
       terminationGracePeriodSeconds: 10

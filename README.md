@@ -339,6 +339,8 @@ Finally, we have verification that the deployment was correctly autoscaled:
 
 ### Extra options
 
+- The cluster-wide target stretch lets SRE raise the watermarks of opted-in (or not opted-out) WPAs by one ratio during a capacity shortage. See [docs/target-stretch.md](docs/target-stretch.md).
+
 - You can use the annotation `wpa.datadoghq.com/logs-attributes` to add extra key values in the logs associated with the underlying WPA object.
 Example:
 ```

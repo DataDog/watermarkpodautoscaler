@@ -64,7 +64,12 @@ Usage:
 Available Commands:
   dry-run     configure WPA(s) dry-run
   help        Help about any command
+  stretch     inspect the cluster-wide target stretch
 ```
+
+`kubectl wpa stretch status [name] [-l selector] [--all-namespaces] [-o csv]` lists the target stretch state of
+WPAs (annotations, mode, applied ratio, `TargetStretched` condition, replicas and the dry-run shadow replica count),
+followed by a count of WPAs per condition reason. See [target-stretch.md](target-stretch.md).
 
 ```
 ➜ kubectl wpa dry-run  --help 

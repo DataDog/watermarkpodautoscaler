@@ -1,5 +1,10 @@
 # WatermarkPodAutoscaler Helm chart changelog
 
+## v0.6.0
+
+* Add `targetStretch.mode` and `targetStretch.ratio` values for the cluster-wide target stretch (`WPA_STRETCH_MODE`, `WPA_STRETCH_RATIO`). Both env vars render only when `targetStretch.mode` is set; an empty mode (the default) or a missing `targetStretch` map keeps the controller default, `disabled`.
+* CustomResourceDefinition update: add `status.targetStretch` and the `stretch ratio` column (rendered once, from the `apiextensions.k8s.io/v1` template).
+
 ## v0.5.1
 
 * CustomResourceDefinition update to fix display of high/low watermarks in some specific cases

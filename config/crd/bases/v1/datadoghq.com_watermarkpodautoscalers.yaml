@@ -54,6 +54,10 @@ spec:
       name: scale count
       priority: 1
       type: integer
+    - jsonPath: .status.targetStretch.appliedRatio
+      name: stretch ratio
+      priority: 1
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -599,6 +603,59 @@ spec:
               scalingEventsCount:
                 format: int32
                 type: integer
+              targetStretch:
+                description: |-
+                  TargetStretch reports the cluster-wide target stretch applied to this WPA.
+                  It is set only when the WPA is selected by the cluster-wide stretch mode.
+                properties:
+                  appliedRatio:
+                    description: AppliedRatio is the ratio applied to the watermarks,
+                      as a decimal string (e.g. "1.15").
+                    type: string
+                  effectiveWatermarks:
+                    description: EffectiveWatermarks are the stretched watermarks,
+                      per metric.
+                    items:
+                      description: TargetStretchWatermarks are the stretched watermarks
+                        of one metric.
+                      properties:
+                        highWatermark:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          description: HighWatermark is the stretched high watermark.
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        lowWatermark:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          description: LowWatermark is the stretched low watermark.
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        metric:
+                          description: Metric is the metric name (or the recommender
+                            name).
+                          type: string
+                      required:
+                      - highWatermark
+                      - lowWatermark
+                      - metric
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  mode:
+                    description: Mode is the cluster-wide target stretch mode.
+                    type: string
+                  replicasRecommended:
+                    description: ReplicasRecommended is the shadow replica count computed
+                      with the stretched watermarks (dry-run modes only).
+                    format: int32
+                    type: integer
+                required:
+                - appliedRatio
+                - mode
+                type: object
             required:
             - currentReplicas
             - desiredReplicas

@@ -269,7 +269,7 @@ func (tc *replicaCalcTestCase) runTest(t *testing.T) {
 	if tc.recommenderResponse != nil {
 		recoClient.ReturnedResponse = *tc.recommenderResponse
 		recoClient.Error = tc.expectedError
-		replicaCalculation, err = replicaCalculator.GetRecommenderReplicas(ctx, logf.Log, tc.scale, tc.wpa)
+		replicaCalculation, err = replicaCalculator.GetRecommenderReplicas(ctx, logf.Log, tc.scale, tc.wpa, nil)
 	} else if tc.metric.spec.Resource != nil {
 		// Resource metric tests
 		// Update with the correct labels.
@@ -2020,7 +2020,7 @@ func TestRecommenderNoFalseUpscaleDuringRollingUpdate(t *testing.T) {
 			Timestamp:          ts,
 			Details:            "Fake",
 		}
-		result, err := replicaCalculator.GetRecommenderReplicas(ctx, logf.Log, scale, wpa)
+		result, err := replicaCalculator.GetRecommenderReplicas(ctx, logf.Log, scale, wpa, nil)
 		require.NoError(t, err)
 
 		// The fix: WPA must send Spec.Replicas (18), not Status.Replicas (19).
@@ -2043,7 +2043,7 @@ func TestRecommenderNoFalseUpscaleDuringRollingUpdate(t *testing.T) {
 			Timestamp:          ts,
 			Details:            "Fake",
 		}
-		result, err := replicaCalculator.GetRecommenderReplicas(ctx, logf.Log, scale, wpa)
+		result, err := replicaCalculator.GetRecommenderReplicas(ctx, logf.Log, scale, wpa, nil)
 		require.NoError(t, err)
 		assert.Equal(t, int32(25), result.replicaCount,
 			"genuine upscale should still be applied")
@@ -2057,7 +2057,7 @@ func TestRecommenderNoFalseUpscaleDuringRollingUpdate(t *testing.T) {
 			Timestamp:          ts,
 			Details:            "Fake",
 		}
-		result, err := replicaCalculator.GetRecommenderReplicas(ctx, logf.Log, scale, wpa)
+		result, err := replicaCalculator.GetRecommenderReplicas(ctx, logf.Log, scale, wpa, nil)
 		require.NoError(t, err)
 		assert.Equal(t, int32(12), result.replicaCount,
 			"genuine downscale should still be applied")

@@ -157,6 +157,13 @@ func main() {
 	klog.SetLogger(managerLogger) // Redirect klog to the controller logger (zap)
 
 	reconcilerOptions := datadoghqcontrollers.Options{SkipNotScalingEvents: skipNotScalingEvents}
+	stretchConfig := config.LoadTargetStretchConfigFromOSEnv()
+	if stretchConfig.Valid {
+		setupLog.Info("Target stretch configuration", "mode", stretchConfig.Mode, "ratio", config.FormatRatioMilli(stretchConfig.RatioMilli))
+	} else {
+		setupLog.Error(stretchConfig.Err, "Invalid target stretch configuration, the feature is disabled", "modeEnv", config.TargetStretchModeEnvVar, "ratioEnv", config.TargetStretchRatioEnvVar)
+	}
+	reconcilerOptions.TargetStretch = &config.StaticTargetStretchConfigProvider{Config: stretchConfig}
 	if tlsCAFile != "" || tlsCertFile != "" {
 		if tlsCertFile != "" && tlsKeyFile == "" {
 			setupLog.Error(errors.New("no TLS key file"), "TLS key file and certificate file must be specified together")

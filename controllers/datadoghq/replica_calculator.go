@@ -8,6 +8,7 @@ package datadoghq
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"strings"
 	"time"
 
@@ -48,10 +49,13 @@ type ReplicaCalculation struct {
 	readyReplicas int32
 	pos           metricPosition
 	details       string
+	// adjustedUsage is the usage compared to the watermarks; only meaningful when usageValid.
+	adjustedUsage float64
+	usageValid    bool
 }
 
 func EmptyReplicaCalculation() ReplicaCalculation {
-	return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}, ""}
+	return ReplicaCalculation{0, 0, time.Time{}, 0, metricPosition{}, "", 0, false}
 }
 
 // metricPosition is used to store whether the end value associated with a metric is above/below the Watermarks
@@ -64,7 +68,9 @@ type metricPosition struct {
 type ReplicaCalculatorItf interface {
 	GetExternalMetricReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error)
 	GetResourceReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, metric v1alpha1.MetricSpec, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error)
-	GetRecommenderReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, wpa *v1alpha1.WatermarkPodAutoscaler) (replicaCalculation ReplicaCalculation, err error)
+	GetRecommenderReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, wpa *v1alpha1.WatermarkPodAutoscaler, recommender *v1alpha1.RecommenderSpec) (replicaCalculation ReplicaCalculation, err error)
+	// GetRecommenderShadowReplicas is GetRecommenderReplicas without any prometheus gauge write (target stretch shadow).
+	GetRecommenderShadowReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, wpa *v1alpha1.WatermarkPodAutoscaler, recommender *v1alpha1.RecommenderSpec) (replicaCalculation ReplicaCalculation, err error)
 }
 
 // ReplicaCalculator is responsible for calculation of the number of replicas
@@ -157,14 +163,14 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(ctx context.Context, logge
 			"metricName", metricName,
 		)
 		// We artificially set the metricPos between the watermarks to force the controller not to scale the target.
-		return ReplicaCalculation{currentReadyReplicas, 0, timestamp, currentReadyReplicas, metricPosition{false, false}, ""}, nil
+		return ReplicaCalculation{currentReadyReplicas, 0, timestamp, currentReadyReplicas, metricPosition{false, false}, "", 0, false}, nil
 	}
 
 	// if the average algorithm is used, the metrics retrieved has to be divided by the number of available replicas.
 	adjustedUsage := float64(sum) / averaged
 	replicaCount, utilizationQuantity, metricPos := getReplicaCount(logger, target.Spec.Replicas, currentReadyReplicas, wpa, metricName, adjustedUsage, metric.External.LowWatermark, metric.External.HighWatermark)
 	logger.Info("External Metric replica calculation", "metricName", metricName, "replicaCount", replicaCount, "utilizationQuantity", utilizationQuantity, "timestamp", timestamp, "currentReadyReplicas", currentReadyReplicas)
-	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp, currentReadyReplicas, metricPos, ""}, nil
+	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp, currentReadyReplicas, metricPos, "", adjustedUsage, true}, nil
 }
 
 // GetResourceReplicas calculates the desired replica count based on a target resource utilization percentage
@@ -234,11 +240,24 @@ func (c *ReplicaCalculator) GetResourceReplicas(ctx context.Context, logger logr
 
 	replicaCount, utilizationQuantity, metricPos := getReplicaCount(logger, target.Spec.Replicas, int32(readyPodCount), wpa, string(resourceName), adjustedUsage, metric.Resource.LowWatermark, metric.Resource.HighWatermark)
 	logger.Info("Resource Metric replica calculation", "metricName", metric.Resource.Name, "replicaCount", replicaCount, "utilizationQuantity", utilizationQuantity, "timestamp", timestamp, "currentReadyReplicas", int32(readyPodCount))
-	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp, int32(readyPodCount), metricPos, ""}, nil
+	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp, int32(readyPodCount), metricPos, "", adjustedUsage, true}, nil
 }
 
-// GetRecommenderReplicas contacts an external replica recommender to get the desired replica count
-func (c *ReplicaCalculator) GetRecommenderReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, wpa *v1alpha1.WatermarkPodAutoscaler) (ReplicaCalculation, error) {
+// GetRecommenderReplicas contacts an external replica recommender to get the desired replica count.
+// The given recommender spec is sent in the request; it can differ from wpa.Spec.Recommender (target stretch).
+func (c *ReplicaCalculator) GetRecommenderReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, wpa *v1alpha1.WatermarkPodAutoscaler, recommender *v1alpha1.RecommenderSpec) (ReplicaCalculation, error) {
+	return c.getRecommenderReplicas(ctx, logger, target, wpa, recommender, true)
+}
+
+// GetRecommenderShadowReplicas is GetRecommenderReplicas without any prometheus gauge write.
+func (c *ReplicaCalculator) GetRecommenderShadowReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, wpa *v1alpha1.WatermarkPodAutoscaler, recommender *v1alpha1.RecommenderSpec) (ReplicaCalculation, error) {
+	return c.getRecommenderReplicas(ctx, logger, target, wpa, recommender, false)
+}
+
+func (c *ReplicaCalculator) getRecommenderReplicas(ctx context.Context, logger logr.Logger, target *autoscalingv1.Scale, wpa *v1alpha1.WatermarkPodAutoscaler, recommender *v1alpha1.RecommenderSpec, recordMetrics bool) (ReplicaCalculation, error) {
+	if recommender == nil {
+		recommender = wpa.Spec.Recommender
+	}
 	lbl, err := labels.Parse(target.Status.Selector)
 	if err != nil {
 		logger.Error(err, "Could not parse the labels of the target")
@@ -278,7 +297,7 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(ctx context.Context, logger l
 		Namespace:            wpa.Namespace,
 		TargetRef:            &wpa.Spec.ScaleTargetRef,
 		TargetCluster:        c.k8sClusterName,
-		Recommender:          wpa.Spec.Recommender,
+		Recommender:          recommender,
 		CurrentReadyReplicas: currentReadyReplicas,
 		CurrentReplicas:      target.Spec.Replicas,
 		DesiredReplicas:      target.Spec.Replicas,
@@ -286,6 +305,9 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(ctx context.Context, logger l
 		MaxReplicas:          wpa.Spec.MaxReplicas,
 	}
 	reco, err := c.recommenderClient.GetReplicaRecommendation(ctx, &request)
+	if err != nil && !recordMetrics {
+		return EmptyReplicaCalculation(), fmt.Errorf("unable to get external recommendation %+v: %s", metricName, err) //nolint:errorlint
+	}
 	if err != nil {
 		// When we add official support for several metrics, move this Delete to only occur if no metric is available at all.
 		labelsWithReason := getPrometheusLabels(wpa)
@@ -307,18 +329,20 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(ctx context.Context, logger l
 			"metricName", metricName,
 		)
 		// We artificially set the metricPos between the watermarks to force the controller not to scale the target.
-		return ReplicaCalculation{currentReadyReplicas, 0, reco.Timestamp, currentReadyReplicas, metricPosition{false, false}, ""}, nil
+		return ReplicaCalculation{currentReadyReplicas, 0, reco.Timestamp, currentReadyReplicas, metricPosition{false, false}, "", 0, false}, nil
 	}
 
 	utilizationQuantity := int64(reco.ObservedTargetValue * 1000) // We need to multiply by 1000 to convert it to milliValue
 
-	labelsWithMetricName := getPrometheusLabels(wpa)
-	labelsWithMetricName[metricNamePromLabel] = metricName
-	value.With(labelsWithMetricName).Set(float64(utilizationQuantity))
+	if recordMetrics {
+		labelsWithMetricName := getPrometheusLabels(wpa)
+		labelsWithMetricName[metricNamePromLabel] = metricName
+		value.With(labelsWithMetricName).Set(float64(utilizationQuantity))
+	}
 
-	replicaCount, metricPos := adjustReplicaCount(logger, target.Spec.Replicas, currentReadyReplicas, wpa, int32(reco.Replicas), int32(reco.ReplicasLowerBound), int32(reco.ReplicasUpperBound))
+	replicaCount, metricPos := adjustReplicaCount(logger, target.Spec.Replicas, currentReadyReplicas, wpa, int32(reco.Replicas), int32(reco.ReplicasLowerBound), int32(reco.ReplicasUpperBound), recordMetrics)
 	logger.Info("Replicas Recommender replica calculation", "metricName", metricName, "replicaCount", replicaCount, "utilizationQuantity", utilizationQuantity, "timestamp", reco.Timestamp, "currentReadyReplicas", currentReadyReplicas)
-	return ReplicaCalculation{replicaCount, utilizationQuantity, reco.Timestamp, currentReadyReplicas, metricPos, reco.Details}, nil
+	return ReplicaCalculation{replicaCount, utilizationQuantity, reco.Timestamp, currentReadyReplicas, metricPos, reco.Details, 0, false}, nil
 }
 
 func getReplicaCountUpscale(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, highMark *resource.Quantity) (replicaCount int32) {
@@ -432,8 +456,6 @@ func tryToConvergeToWatermark(logger logr.Logger, convergingType v1alpha1.Conver
 
 func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, name string, adjustedUsage float64, lowMark, highMark *resource.Quantity) (replicaCount int32, utilization int64, position metricPosition) {
 	utilizationQuantity := resource.NewMilliQuantity(int64(adjustedUsage), resource.DecimalSI)
-	adjustedHM := float64(highMark.MilliValue() + highMark.MilliValue()*wpa.Spec.Tolerance.MilliValue()/1000.)
-	adjustedLM := float64(lowMark.MilliValue() - lowMark.MilliValue()*wpa.Spec.Tolerance.MilliValue()/1000.)
 
 	labelsWithReason := getPrometheusLabels(wpa)
 	labelsWithReason[reasonPromLabel] = withinBoundsPromLabelVal
@@ -441,29 +463,10 @@ func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas i
 	labelsWithMetricName[metricNamePromLabel] = name
 
 	value.With(labelsWithMetricName).Set(adjustedUsage)
-	msg := ""
 
-	switch {
-	// Upscale if usage > hw
-	case adjustedUsage > adjustedHM:
-		msg = "Value is above highMark"
+	replicaCount, position, msg, adjustedLM, adjustedHM := computeReplicaCountForUsage(logger, currentReplicas, currentReadyReplicas, wpa, adjustedUsage, lowMark, highMark)
+	if position.isAbove || position.isBelow {
 		restrictedScaling.With(labelsWithReason).Set(0)
-		replicaCount = getReplicaCountUpscale(logger, currentReplicas, currentReadyReplicas, wpa, adjustedUsage, highMark)
-		position.isAbove = true
-		position.isBelow = false
-	// Downscale if usage < lw
-	case adjustedUsage < adjustedLM:
-		msg = "Value is below lowMark"
-		restrictedScaling.With(labelsWithReason).Set(0)
-		replicaCount = getReplicaCountDownscale(logger, currentReplicas, currentReadyReplicas, wpa, adjustedUsage, lowMark)
-		position.isAbove = false
-		position.isBelow = true
-	// If within bounds, do nothing unless converging is enabled
-	default:
-		msg = "Within bounds of the watermarks"
-		position.isAbove = false
-		position.isBelow = false
-		replicaCount = tryToConvergeToWatermarkForUsage(logger, wpa.Spec.ConvergeTowardsWatermark, currentReplicas, currentReadyReplicas, wpa, adjustedUsage, lowMark, highMark)
 	}
 
 	logger.Info(msg, "usage", utilizationQuantity.String(), "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "tolerance (%)", float64(wpa.Spec.Tolerance.MilliValue())/10, "adjustedLM", adjustedLM, "adjustedHM", adjustedHM, "adjustedUsage", adjustedUsage)
@@ -471,7 +474,42 @@ func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas i
 	return replicaCount, utilizationQuantity.MilliValue(), position
 }
 
-func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, recommendedReplicaCount, lowerBoundReplicas, upperBoundReplicas int32) (replicaCount int32, position metricPosition) {
+// toleranceDelta returns mark*tolerance/1000 with the same truncating integer division as before, computed with
+// big.Int so that saturated (huge) watermarks cannot overflow int64.
+func toleranceDelta(mark, toleranceMilli int64) float64 {
+	d := new(big.Int).Mul(big.NewInt(mark), big.NewInt(toleranceMilli))
+	d.Quo(d, big.NewInt(1000))
+	f, _ := new(big.Float).SetInt(d).Float64()
+	return f
+}
+
+// computeReplicaCountForUsage compares the usage to the watermarks (with tolerance) and returns the replica count.
+// It does not set any prometheus gauge, so it can also compute the target stretch shadow recommendation.
+func computeReplicaCountForUsage(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, lowMark, highMark *resource.Quantity) (replicaCount int32, position metricPosition, msg string, adjustedLM, adjustedHM float64) {
+	tolerance := wpa.Spec.Tolerance.MilliValue()
+	adjustedHM = float64(highMark.MilliValue()) + toleranceDelta(highMark.MilliValue(), tolerance)
+	adjustedLM = float64(lowMark.MilliValue()) - toleranceDelta(lowMark.MilliValue(), tolerance)
+
+	switch {
+	// Upscale if usage > hw
+	case adjustedUsage > adjustedHM:
+		msg = "Value is above highMark"
+		replicaCount = getReplicaCountUpscale(logger, currentReplicas, currentReadyReplicas, wpa, adjustedUsage, highMark)
+		position.isAbove = true
+	// Downscale if usage < lw
+	case adjustedUsage < adjustedLM:
+		msg = "Value is below lowMark"
+		replicaCount = getReplicaCountDownscale(logger, currentReplicas, currentReadyReplicas, wpa, adjustedUsage, lowMark)
+		position.isBelow = true
+	// If within bounds, do nothing unless converging is enabled
+	default:
+		msg = "Within bounds of the watermarks"
+		replicaCount = tryToConvergeToWatermarkForUsage(logger, wpa.Spec.ConvergeTowardsWatermark, currentReplicas, currentReadyReplicas, wpa, adjustedUsage, lowMark, highMark)
+	}
+	return replicaCount, position, msg, adjustedLM, adjustedHM
+}
+
+func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, recommendedReplicaCount, lowerBoundReplicas, upperBoundReplicas int32, recordMetrics bool) (replicaCount int32, position metricPosition) {
 	labelsWithReason := getPrometheusLabels(wpa)
 	labelsWithReason[reasonPromLabel] = withinBoundsPromLabelVal
 	msg := ""
@@ -483,12 +521,16 @@ func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplica
 	// Upscale
 	case recommendedReplicaCount > currentReplicas:
 		msg = "Value is above highMark"
-		restrictedScaling.With(labelsWithReason).Set(0)
+		if recordMetrics {
+			restrictedScaling.With(labelsWithReason).Set(0)
+		}
 		replicaCount = adjustReplicaCountForUpscale(logger, currentReplicas, currentReadyReplicas, wpa, recommendedReplicaCount)
 	// Downscale
 	case recommendedReplicaCount < currentReplicas:
 		msg = "Value is below lowMark"
-		restrictedScaling.With(labelsWithReason).Set(0)
+		if recordMetrics {
+			restrictedScaling.With(labelsWithReason).Set(0)
+		}
 		replicaCount = adjustReplicaCountForDownscale(logger, currentReplicas, currentReadyReplicas, wpa, recommendedReplicaCount)
 	// If within bounds, do nothing unless converging is enabled
 	default:
