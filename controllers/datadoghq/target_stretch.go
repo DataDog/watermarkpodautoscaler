@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -475,26 +476,25 @@ func updateTargetStretchWPAMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler
 	if !d.dryRun {
 		targetStretchReplicasRecommended.Delete(labels)
 	}
-	setSpec := func(name string, lw, hw *resource.Quantity) {
+	specs := map[string][2]float64{}
+	addSpec := func(name string, lw, hw *resource.Quantity) {
 		if lw == nil || hw == nil {
 			return
 		}
-		l := getPrometheusLabels(wpa)
-		l[metricNamePromLabel] = name
-		specLowWatermark.With(l).Set(float64(lw.MilliValue()))
-		specHighWatermark.With(l).Set(float64(hw.MilliValue()))
+		specs[name] = [2]float64{float64(lw.MilliValue()), float64(hw.MilliValue())}
 	}
 	if wpa.Spec.Recommender != nil {
-		setSpec(metricNameForRecommender(&wpa.Spec), wpa.Spec.Recommender.LowWatermark, wpa.Spec.Recommender.HighWatermark)
+		addSpec(metricNameForRecommender(&wpa.Spec), wpa.Spec.Recommender.LowWatermark, wpa.Spec.Recommender.HighWatermark)
 	}
 	for _, m := range wpa.Spec.Metrics {
 		switch {
 		case m.External != nil:
-			setSpec(metricSpecName(m), m.External.LowWatermark, m.External.HighWatermark)
+			addSpec(metricSpecName(m), m.External.LowWatermark, m.External.HighWatermark)
 		case m.Resource != nil:
-			setSpec(metricSpecName(m), m.Resource.LowWatermark, m.Resource.HighWatermark)
+			addSpec(metricSpecName(m), m.Resource.LowWatermark, m.Resource.HighWatermark)
 		}
 	}
+	specSeries.publish(wpa, specs)
 }
 
 // clearFailedShadowGauge deletes the shadow gauge when this reconcile did not produce a shadow recommendation
@@ -505,30 +505,81 @@ func clearFailedShadowGauge(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, d tar
 	}
 }
 
-// specMetricNames returns the metric_name label values of the spec watermark gauges of a WPA.
-func specMetricNames(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) []string {
-	names := make([]string, 0, len(wpa.Spec.Metrics)+1)
-	for _, m := range wpa.Spec.Metrics {
-		if name := metricSpecName(m); name != "" {
-			names = append(names, name)
+// specSeriesRegistry records, per WPA, the exact spec_low/high_watermark label sets that were published, so cleanup
+// deletes exactly those series (including an empty metric_name, or names from an older spec published by an
+// in-flight reconcile) without scanning the gauge vectors. Publishing and cleanup share one mutex, so a reconcile
+// cannot publish a series that a concurrent cleanup misses.
+type specSeriesRegistry struct {
+	mu     sync.Mutex
+	series map[types.NamespacedName]map[string]prometheus.Labels
+}
+
+var specSeries = &specSeriesRegistry{series: map[types.NamespacedName]map[string]prometheus.Labels{}}
+
+func wpaKey(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) types.NamespacedName {
+	return types.NamespacedName{Namespace: wpa.Namespace, Name: wpa.Name}
+}
+
+// publish sets the spec watermark gauges for the given metric names (name -> {low, high}) and deletes the
+// previously published series that are not part of this set.
+func (s *specSeriesRegistry) publish(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, specs map[string][2]float64) {
+	key := wpaKey(wpa)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current := make(map[string]prometheus.Labels, len(specs))
+	for name, v := range specs {
+		l := getPrometheusLabels(wpa)
+		l[metricNamePromLabel] = name
+		specLowWatermark.With(l).Set(v[0])
+		specHighWatermark.With(l).Set(v[1])
+		current[labelsID(l)] = l
+	}
+	for id, l := range s.series[key] {
+		if _, kept := current[id]; !kept {
+			specLowWatermark.Delete(l)
+			specHighWatermark.Delete(l)
 		}
 	}
-	if wpa.Spec.Recommender != nil {
-		names = append(names, metricNameForRecommender(&wpa.Spec))
+	if len(current) == 0 {
+		delete(s.series, key)
+		return
 	}
-	return names
+	s.series[key] = current
+}
+
+// labelsID returns a deterministic identifier for a label set.
+func labelsID(l prometheus.Labels) string {
+	keys := make([]string, 0, len(l))
+	for k := range l {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for _, k := range keys {
+		b.WriteString(k)
+		b.WriteByte('=')
+		b.WriteString(strconv.Quote(l[k]))
+		b.WriteByte(',')
+	}
+	return b.String()
+}
+
+// forget deletes every spec watermark series recorded for the WPA and drops its entry.
+func (s *specSeriesRegistry) forget(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
+	key := wpaKey(wpa)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, l := range s.series[key] {
+		specLowWatermark.Delete(l)
+		specHighWatermark.Delete(l)
+	}
+	delete(s.series, key)
 }
 
 func cleanupTargetStretchMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
 	labels := getPrometheusLabels(wpa)
 	targetStretchAppliedRatio.Delete(labels)
 	targetStretchReplicasRecommended.Delete(labels)
-	// Delete the exact series of this WPA's metric names, like cleanupAssociatedMetrics. A spec change runs this
-	// on the old object (updatePredicate), so series of removed metrics are cleaned up too.
-	for _, name := range specMetricNames(wpa) {
-		l := getPrometheusLabels(wpa)
-		l[metricNamePromLabel] = name
-		specLowWatermark.Delete(l)
-		specHighWatermark.Delete(l)
-	}
+	// Delete exactly the spec watermark series published for this WPA.
+	specSeries.forget(wpa)
 }

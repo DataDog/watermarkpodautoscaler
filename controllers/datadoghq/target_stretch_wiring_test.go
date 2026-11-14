@@ -12,13 +12,16 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/meta/testrestmapper"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,7 +34,9 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
@@ -494,4 +499,142 @@ func TestTargetStretchInvalidSpecTransitions(t *testing.T) {
 	assert.Equal(t, v1alpha1.TargetStretchReasonDisabled, cond.Reason)
 	assert.False(t, targetStretchAppliedRatio.Delete(labels))
 	assert.Equal(t, queries, *w.metricsQueries)
+}
+
+// gatedGetClient pauses the first gated WPA Get after reading it, to interleave a reconcile with a spec update.
+type gatedGetClient struct {
+	client.Client
+
+	gate    bool
+	got     chan struct{}
+	release chan struct{}
+}
+
+func (c *gatedGetClient) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+	err := c.Client.Get(ctx, key, obj, opts...)
+	if _, isWPA := obj.(*v1alpha1.WatermarkPodAutoscaler); isWPA && c.gate {
+		c.gate = false
+		close(c.got)
+		<-c.release
+	}
+	return err
+}
+
+// specSeriesPresent reports, without modifying the gauges, whether a spec low or high watermark series exists for
+// the WPA and metric name.
+func specSeriesPresent(wpa *v1alpha1.WatermarkPodAutoscaler, metric string) bool {
+	want := getPrometheusLabels(wpa)
+	want[metricNamePromLabel] = metric
+	for _, vec := range []*prometheus.GaugeVec{specLowWatermark, specHighWatermark} {
+		ch := make(chan prometheus.Metric, 1024)
+		vec.Collect(ch)
+		close(ch)
+		for m := range ch {
+			var pb dto.Metric
+			if err := m.Write(&pb); err != nil {
+				continue
+			}
+			got := prometheus.Labels{}
+			for _, lp := range pb.GetLabel() {
+				got[lp.GetName()] = lp.GetValue()
+			}
+			if apiequality.Semantic.DeepEqual(got, want) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// A reconcile in flight with the old spec republishes the old metric name after updatePredicate cleaned it up.
+// Opting out must still remove it, and finalize must leave nothing behind.
+func TestTargetStretchSpecSeriesRenameInterleaving(t *testing.T) {
+	tenPods := makeScale(testDeploymentName, 10, map[string]string{"name": podNamePrefix})
+	tenPods.Namespace = testNamespace
+	metric := externalWiringMetric() // metric name "queue"
+	tc := &replicaCalcTestCase{scale: tenPods, metric: &metricInfo{spec: metric, levels: []int64{78000}}, timestamp: time.Now()}
+	wpa := wiringWPA(&metric, nil)
+	w := newStretchWiring(t, tc, wpa, stretchCfg(config.TargetStretchModeEnabledOptOut, 1200))
+	t.Cleanup(func() { cleanupAssociatedMetrics(wpa, false) })
+	w.reconcile(t, wpa)
+
+	gated := &gatedGetClient{Client: w.r.Client, gate: true, got: make(chan struct{}), release: make(chan struct{})}
+	w.r.Client = gated
+	done := make(chan error, 1)
+	go func() {
+		_, err := w.r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: wpa.Namespace, Name: wpa.Name}})
+		done <- err
+	}()
+	<-gated.got // the in-flight reconcile holds the old spec (metric "queue")
+
+	oldObj := &v1alpha1.WatermarkPodAutoscaler{}
+	require.NoError(t, gated.Client.Get(t.Context(), types.NamespacedName{Namespace: wpa.Namespace, Name: wpa.Name}, oldObj))
+	newObj := oldObj.DeepCopy()
+	newObj.Spec.Metrics[0].External.MetricName = "memory"
+	newObj.Annotations[v1alpha1.TargetStretchEnabledAnnotationKey] = "false"
+	require.NoError(t, gated.Update(t.Context(), newObj))
+	require.True(t, updatePredicate(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj}))
+
+	close(gated.release)
+	// The in-flight status update conflicts with the spec update; its metrics were published before that.
+	<-done
+	tc.metric.spec = newObj.Spec.Metrics[0] // the fake metrics client serves the renamed metric from now on
+	require.True(t, specSeriesPresent(wpa, "queue"), "precondition: the in-flight reconcile republished the old name")
+	w.r.Client = gated.Client
+	_ = w.reconcile(t, wpa) // opted out with the new spec: removes every recorded series
+	assert.False(t, specSeriesPresent(wpa, "queue"), "the old-name series must not survive the opt-out")
+	assert.False(t, specSeriesPresent(wpa, "memory"))
+
+	cleanupAssociatedMetrics(wpa, false)
+	assert.False(t, specSeriesPresent(wpa, "queue"), "nothing left after finalize")
+}
+
+// An empty metric name (admitted by the CRD, rejected later by CheckWPAValidity) must not leave a metric_name=""
+// series behind through opt-out, disabled mode and finalize.
+func TestTargetStretchSpecSeriesEmptyMetricName(t *testing.T) {
+	tenPods := makeScale(testDeploymentName, 10, map[string]string{"name": podNamePrefix})
+	tenPods.Namespace = testNamespace
+	metric := v1alpha1.MetricSpec{Type: v1alpha1.ExternalMetricSourceType, External: &v1alpha1.ExternalMetricSource{
+		MetricName:   "",
+		LowWatermark: resource.NewQuantity(50, resource.DecimalSI), HighWatermark: resource.NewQuantity(70, resource.DecimalSI),
+	}}
+	tc := &replicaCalcTestCase{scale: tenPods, metric: &metricInfo{spec: metric, levels: []int64{78000}}, timestamp: time.Now()}
+	wpa := wiringWPA(&metric, nil)
+	w := newStretchWiring(t, tc, wpa, stretchCfg(config.TargetStretchModeEnabledOptOut, 1200))
+	t.Cleanup(func() { cleanupAssociatedMetrics(wpa, false) })
+	key := types.NamespacedName{Namespace: wpa.Namespace, Name: wpa.Name}
+	setEnabled := func(v string) {
+		cur := &v1alpha1.WatermarkPodAutoscaler{}
+		require.NoError(t, w.r.Client.Get(t.Context(), key, cur))
+		if cur.Annotations == nil {
+			cur.Annotations = map[string]string{}
+		}
+		if v == "" {
+			delete(cur.Annotations, v1alpha1.TargetStretchEnabledAnnotationKey)
+		} else {
+			cur.Annotations[v1alpha1.TargetStretchEnabledAnnotationKey] = v
+		}
+		require.NoError(t, w.r.Client.Update(t.Context(), cur))
+	}
+
+	setEnabled("")
+	w.reconcile(t, wpa)
+	require.True(t, specSeriesPresent(wpa, ""), "precondition: the empty metric name is published")
+
+	setEnabled("false")
+	w.reconcile(t, wpa)
+	assert.False(t, specSeriesPresent(wpa, ""), "opt-out removes the empty-name series")
+
+	setEnabled("")
+	w.reconcile(t, wpa)
+	require.True(t, specSeriesPresent(wpa, ""))
+	w.r.Options.TargetStretch = &config.StaticTargetStretchConfigProvider{Config: config.DisabledTargetStretchConfig()}
+	w.reconcile(t, wpa)
+	assert.False(t, specSeriesPresent(wpa, ""), "disabled mode removes the empty-name series")
+
+	w.r.Options.TargetStretch = &config.StaticTargetStretchConfigProvider{Config: stretchCfg(config.TargetStretchModeEnabledOptOut, 1200)}
+	w.reconcile(t, wpa)
+	require.True(t, specSeriesPresent(wpa, ""))
+	cleanupAssociatedMetrics(wpa, false)
+	assert.False(t, specSeriesPresent(wpa, ""), "finalize removes the empty-name series")
 }
