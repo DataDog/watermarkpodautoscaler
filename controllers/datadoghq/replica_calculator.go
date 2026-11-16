@@ -94,16 +94,17 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(ctx context.Context, logge
 	if err != nil {
 		logger.Error(err, "Could not parse the labels of the target")
 	}
+	scaleOnZeroReadyReplicas := shouldScaleOnZeroReadyReplicas(wpa)
 	podList, err := c.podLister.Pods(target.Namespace).List(lbl)
 	if err != nil {
 		return ReplicaCalculation{}, fmt.Errorf("unable to get pods while calculating replica count: %w", err)
 	}
-	if len(podList) == 0 {
+	if len(podList) == 0 && !scaleOnZeroReadyReplicas {
 		return ReplicaCalculation{}, fmt.Errorf("no pods returned by selector while calculating replica count")
 	}
 
 	skipOwnerCheck := shouldSkipOwnerCheck(wpa)
-	currentReadyReplicas, incorrectTargetPodsCount, err := c.getReadyPodsCount(logger, target.Name, podList, time.Duration(wpa.Spec.ReadinessDelaySeconds)*time.Second, skipOwnerCheck)
+	currentReadyReplicas, incorrectTargetPodsCount, err := c.getReadyPodsCount(logger, target.Name, podList, time.Duration(wpa.Spec.ReadinessDelaySeconds)*time.Second, skipOwnerCheck, scaleOnZeroReadyReplicas)
 	if err != nil {
 		return ReplicaCalculation{}, fmt.Errorf("unable to get the number of ready pods across all namespaces for %v: %w", lbl, err)
 	}
@@ -114,14 +115,26 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(ctx context.Context, logge
 		currentReadyReplicas = target.Status.Replicas
 	}
 
-	ratioReadyPods := (100 * currentReadyReplicas / (int32(len(podList)) - incorrectTargetPodsCount))
-	if ratioReadyPods < wpa.Spec.MinAvailableReplicaPercentage {
-		return ReplicaCalculation{}, fmt.Errorf("%d %% of the pods are unready, will not autoscale %s/%s", ratioReadyPods, target.Namespace, target.Name)
+	// When no replica is ready and the WPA opted in via the `scale-on-zero-ready-replicas` annotation,
+	// skip the MinAvailableReplicaPercentage gate: the ratio is necessarily 0% (and would even be a
+	// 0/0 division if no pod belongs to the target).
+	if currentReadyReplicas > 0 || !scaleOnZeroReadyReplicas {
+		ratioReadyPods := (100 * currentReadyReplicas / (int32(len(podList)) - incorrectTargetPodsCount))
+		if ratioReadyPods < wpa.Spec.MinAvailableReplicaPercentage {
+			return ReplicaCalculation{}, fmt.Errorf("%d %% of the pods are unready, will not autoscale %s/%s", ratioReadyPods, target.Namespace, target.Name)
+		}
+	}
+
+	// With no ready replica the watermark formulas cannot propose anything meaningful; compute the
+	// recommendation from the spec replica count as if those replicas were running and ready.
+	replicaBase := currentReadyReplicas
+	if replicaBase == 0 {
+		replicaBase = target.Spec.Replicas
 	}
 
 	averaged := 1.0
-	if wpa.Spec.Algorithm == "average" {
-		averaged = float64(currentReadyReplicas)
+	if wpa.Spec.Algorithm == "average" && replicaBase > 0 {
+		averaged = float64(replicaBase)
 	}
 
 	metricName := metric.External.MetricName
@@ -157,12 +170,13 @@ func (c *ReplicaCalculator) GetExternalMetricReplicas(ctx context.Context, logge
 			"metricName", metricName,
 		)
 		// We artificially set the metricPos between the watermarks to force the controller not to scale the target.
-		return ReplicaCalculation{currentReadyReplicas, 0, timestamp, currentReadyReplicas, metricPosition{false, false}, ""}, nil
+		// replicaCount is set to replicaBase so that the proposal is a no-op even when no replica is ready.
+		return ReplicaCalculation{replicaBase, 0, timestamp, currentReadyReplicas, metricPosition{false, false}, ""}, nil
 	}
 
 	// if the average algorithm is used, the metrics retrieved has to be divided by the number of available replicas.
 	adjustedUsage := float64(sum) / averaged
-	replicaCount, utilizationQuantity, metricPos := getReplicaCount(logger, target.Spec.Replicas, currentReadyReplicas, wpa, metricName, adjustedUsage, metric.External.LowWatermark, metric.External.HighWatermark)
+	replicaCount, utilizationQuantity, metricPos := getReplicaCount(logger, target.Spec.Replicas, replicaBase, wpa, metricName, adjustedUsage, metric.External.LowWatermark, metric.External.HighWatermark)
 	logger.Info("External Metric replica calculation", "metricName", metricName, "replicaCount", replicaCount, "utilizationQuantity", utilizationQuantity, "timestamp", timestamp, "currentReadyReplicas", currentReadyReplicas)
 	return ReplicaCalculation{replicaCount, utilizationQuantity, timestamp, currentReadyReplicas, metricPos, ""}, nil
 }
@@ -243,15 +257,16 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(ctx context.Context, logger l
 	if err != nil {
 		logger.Error(err, "Could not parse the labels of the target")
 	}
+	scaleOnZeroReadyReplicas := shouldScaleOnZeroReadyReplicas(wpa)
 	podList, err := c.podLister.Pods(target.Namespace).List(lbl)
 	if err != nil {
 		return ReplicaCalculation{}, fmt.Errorf("unable to get pods while calculating replica count: %w", err)
 	}
-	if len(podList) == 0 {
+	if len(podList) == 0 && !scaleOnZeroReadyReplicas {
 		return ReplicaCalculation{}, fmt.Errorf("no pods returned by selector while calculating replica count")
 	}
 
-	currentReadyReplicas, incorrectTargetPodsCount, err := c.getReadyPodsCount(logger, target.Name, podList, time.Duration(wpa.Spec.ReadinessDelaySeconds)*time.Second, shouldSkipOwnerCheck(wpa))
+	currentReadyReplicas, incorrectTargetPodsCount, err := c.getReadyPodsCount(logger, target.Name, podList, time.Duration(wpa.Spec.ReadinessDelaySeconds)*time.Second, shouldSkipOwnerCheck(wpa), scaleOnZeroReadyReplicas)
 	if err != nil {
 		return ReplicaCalculation{}, fmt.Errorf("unable to get the number of ready pods across all namespaces for %v: %w", lbl, err)
 	}
@@ -262,9 +277,11 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(ctx context.Context, logger l
 		currentReadyReplicas = target.Status.Replicas
 	}
 
-	ratioReadyPods := (100 * currentReadyReplicas / (int32(len(podList)) - incorrectTargetPodsCount))
-	if ratioReadyPods < wpa.Spec.MinAvailableReplicaPercentage {
-		return ReplicaCalculation{}, fmt.Errorf("%d %% of the pods are unready, will not autoscale %s/%s", ratioReadyPods, target.Namespace, target.Name)
+	if currentReadyReplicas > 0 || !scaleOnZeroReadyReplicas {
+		ratioReadyPods := (100 * currentReadyReplicas / (int32(len(podList)) - incorrectTargetPodsCount))
+		if ratioReadyPods < wpa.Spec.MinAvailableReplicaPercentage {
+			return ReplicaCalculation{}, fmt.Errorf("%d %% of the pods are unready, will not autoscale %s/%s", ratioReadyPods, target.Namespace, target.Name)
+		}
 	}
 
 	// This is because most of the code expects a metric name, so we assume that the recommender is the metric name.
@@ -503,7 +520,7 @@ func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplica
 	return replicaCount, position
 }
 
-func (c *ReplicaCalculator) getReadyPodsCount(log logr.Logger, targetName string, podList []*corev1.Pod, readinessDelay time.Duration, skipOwnerCheck bool) (int32, int32, error) {
+func (c *ReplicaCalculator) getReadyPodsCount(log logr.Logger, targetName string, podList []*corev1.Pod, readinessDelay time.Duration, skipOwnerCheck, skipZeroReadyCheck bool) (int32, int32, error) {
 	toleratedAsReadyPodCount := 0
 	var incorrectTargetPodsCount int
 	for _, pod := range podList {
@@ -549,7 +566,7 @@ func (c *ReplicaCalculator) getReadyPodsCount(log logr.Logger, targetName string
 		}
 	}
 	log.Info("getReadyPodsCount", "full podList length", len(podList), "toleratedAsReadyPodCount", toleratedAsReadyPodCount, "incorrectly targeted pods", incorrectTargetPodsCount)
-	if toleratedAsReadyPodCount == 0 {
+	if toleratedAsReadyPodCount == 0 && !skipZeroReadyCheck {
 		return 0, int32(incorrectTargetPodsCount), fmt.Errorf("among the %d pods, none is ready. Skipping recommendation", len(podList))
 	}
 
@@ -567,6 +584,12 @@ func shouldSkipOwnerCheck(wpa *v1alpha1.WatermarkPodAutoscaler) bool {
 		return false
 	}
 	return wpa.Annotations[skipOwnerCheckAnnotationKey] == "true"
+}
+
+// shouldScaleOnZeroReadyReplicas returns true if the WPA opted in (via annotation) to compute
+// replica recommendations even when none of the target's pods is ready.
+func shouldScaleOnZeroReadyReplicas(wpa *v1alpha1.WatermarkPodAutoscaler) bool {
+	return wpa.Annotations[scaleOnZeroReadyReplicasAnnotationKey] == "true"
 }
 
 func checkOwnerRef(ownerRef []metav1.OwnerReference, targetName string) bool {
