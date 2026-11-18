@@ -680,3 +680,57 @@ func TestTargetStretchAnnotationOnlyEditAfterInvalidSpec(t *testing.T) {
 	require.NotNil(t, cond)
 	assert.Equal(t, v1alpha1.TargetStretchReasonOptedOut, cond.Reason)
 }
+
+// The quiet recommender path must not write the live convergence gauges, also for an unmarked WPA copy:
+// normal recommendation, zero recommendation (tolerateZero=false) and a cold registry.
+func TestRecommenderShadowLeavesConvergenceGaugesUntouched(t *testing.T) {
+	scale := makeScale(testDeploymentName, 10, map[string]string{"name": podNamePrefix})
+	scale.Namespace = testNamespace
+	tc := &replicaCalcTestCase{scale: scale, namespace: testNamespace}
+	podClient := tc.prepareTestClientSet()
+	informerFactory := informers.NewSharedInformerFactory(podClient, 0)
+	informer := informerFactory.Core().V1().Pods()
+	podLister := informer.Lister()
+	stop := make(chan struct{})
+	t.Cleanup(func() { close(stop) })
+	informerFactory.Start(stop)
+	require.True(t, cache.WaitForNamedCacheSync("HPA", stop, informer.Informer().HasSynced))
+	reco := NewMockRecommenderClient()
+	calc := NewReplicaCalculator(nil, reco, podLister, "test-cluster")
+
+	wpa := wiringWPA(nil, recommenderWiringSpec())
+	wpa.Spec.ConvergeTowardsWatermark = v1alpha1.ConvergeUpwards
+	high := getPrometheusLabels(wpa)
+	high[conditionPromLabel] = convergeConditionValues[v1alpha1.ConvergeUpwards]
+	low := getPrometheusLabels(wpa)
+	low[conditionPromLabel] = convergeConditionValues[v1alpha1.ConvergeDownwards]
+	t.Cleanup(func() {
+		conditions.Delete(high)
+		conditions.Delete(low)
+	})
+
+	responses := map[string]ReplicaRecommendationResponse{
+		"normal": {Replicas: 12, ReplicasLowerBound: 10, ReplicasUpperBound: 20, HasBounds: true, Timestamp: time.Now()},
+		"zero":   {Replicas: 0, ReplicasLowerBound: 0, ReplicasUpperBound: 0, Timestamp: time.Now()},
+	}
+	for _, name := range []string{"normal", "zero"} {
+		t.Run(name, func(t *testing.T) {
+			conditions.With(high).Set(1)
+			conditions.With(low).Set(0)
+			reco.ReturnedResponse = responses[name]
+			_, err := calc.GetRecommenderShadowReplicas(t.Context(), logf.Log, scale, wpa.DeepCopy(), effectiveRecommender(wpa.Spec.Recommender, 1200))
+			require.NoError(t, err)
+			assert.InDelta(t, 1, testutil.ToFloat64(conditions.With(high)), 0, "live converge_to_high_watermark gauge unchanged")
+			assert.InDelta(t, 0, testutil.ToFloat64(conditions.With(low)), 0, "live converge_to_low_watermark gauge unchanged")
+		})
+	}
+	t.Run("cold registry", func(t *testing.T) {
+		conditions.Delete(high)
+		conditions.Delete(low)
+		reco.ReturnedResponse = responses["normal"]
+		_, err := calc.GetRecommenderShadowReplicas(t.Context(), logf.Log, scale, wpa.DeepCopy(), effectiveRecommender(wpa.Spec.Recommender, 1200))
+		require.NoError(t, err)
+		assert.False(t, conditions.Delete(high), "the shadow must not create the convergence series")
+		assert.False(t, conditions.Delete(low))
+	})
+}

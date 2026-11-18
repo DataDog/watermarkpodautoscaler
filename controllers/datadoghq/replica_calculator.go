@@ -324,7 +324,7 @@ func (c *ReplicaCalculator) getRecommenderReplicas(ctx context.Context, logger l
 			"metricName", metricName,
 		)
 		// We artificially set the metricPos between the watermarks to force the controller not to scale the target.
-		setConvergeNotEvaluated(wpa, "the recommender returned 0 replicas (see spec.tolerateZero)")
+		setConvergeNotEvaluatedWith(wpa, "the recommender returned 0 replicas (see spec.tolerateZero)", recordMetrics)
 		return ReplicaCalculation{currentReadyReplicas, 0, reco.Timestamp, currentReadyReplicas, metricPosition{false, false}, "", 0, false}, nil
 	}
 
@@ -449,6 +449,11 @@ var convergeWatermarks = map[v1alpha1.ConvergeTowardsWatermarkType]struct {
 // setConvergeCondition sets the ConvergeToWatermark condition and its metric for mode, the effective mode of the
 // WPA. The message names the direction and the source of the mode. Without a mode, it reports ConvergenceDisabled.
 func setConvergeCondition(wpa *v1alpha1.WatermarkPodAutoscaler, mode v1alpha1.ConvergeTowardsWatermarkType, state convergeState) {
+	setConvergeConditionWith(wpa, mode, state, true)
+}
+
+// setConvergeConditionWith is setConvergeCondition; recordMetrics=false skips the convergence gauge (quiet/shadow paths).
+func setConvergeConditionWith(wpa *v1alpha1.WatermarkPodAutoscaler, mode v1alpha1.ConvergeTowardsWatermarkType, state convergeState, recordMetrics bool) {
 	_, source := effectiveConvergeTowardsWatermark(wpa)
 	status, reason, message := corev1.ConditionFalse, convergenceDisabledReason, ""
 	watermark, enabled := convergeWatermarks[mode]
@@ -476,20 +481,29 @@ func setConvergeCondition(wpa *v1alpha1.WatermarkPodAutoscaler, mode v1alpha1.Co
 		message = fmt.Sprintf("Converging towards the %s (%s): following the recommendation", watermark.name, source)
 	}
 	setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusConvergeToWatermark, status, reason, "%s", message)
-	setConvergeConditionMetric(wpa, mode, status == corev1.ConditionTrue)
+	if recordMetrics {
+		setConvergeConditionMetric(wpa, mode, status == corev1.ConditionTrue)
+	}
 }
 
 // setConvergeNotEvaluated reports that the convergence was not evaluated at this reconcile, so that neither the
 // condition nor its metric keeps a previous "converging" state.
 func setConvergeNotEvaluated(wpa *v1alpha1.WatermarkPodAutoscaler, cause string) {
+	setConvergeNotEvaluatedWith(wpa, cause, true)
+}
+
+// setConvergeNotEvaluatedWith is setConvergeNotEvaluated; recordMetrics=false skips the convergence gauge.
+func setConvergeNotEvaluatedWith(wpa *v1alpha1.WatermarkPodAutoscaler, cause string, recordMetrics bool) {
 	setCondition(wpa, v1alpha1.WatermarkPodAutoscalerStatusConvergeToWatermark, corev1.ConditionFalse, convergeNotEvaluatedReason, "Convergence not evaluated: %s", cause)
-	setConvergeConditionMetric(wpa, "", false)
+	if recordMetrics {
+		setConvergeConditionMetric(wpa, "", false)
+	}
 }
 
 // tryToConvergeToWatermark will try to make the replicaCount slowly converge to a watermark.
 // It will suggest converging until the estimated usage goes beyond the respective watermark.
 // This feature is officially only supported with 1 metric.
-func tryToConvergeToWatermarkForUsage(logger logr.Logger, convergingType v1alpha1.ConvergeTowardsWatermarkType, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, lowMark, highMark *resource.Quantity) (optimisedReplicaCount int32) {
+func tryToConvergeToWatermarkForUsage(logger logr.Logger, convergingType v1alpha1.ConvergeTowardsWatermarkType, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, lowMark, highMark *resource.Quantity, recordMetrics bool) (optimisedReplicaCount int32) {
 	// Compute lowerBound, higherBound and optimisedReplicaCount
 	// We compute the maximum and minimum amount of replicas we think we can have without going over the watermarks.
 	minReplicas := int32(1)
@@ -509,10 +523,10 @@ func tryToConvergeToWatermarkForUsage(logger logr.Logger, convergingType v1alpha
 	} else {
 		upperBoundReplicaCount = math32.Cap(math32.Floor(float64(currentReadyReplicas)/float64(lowMark.MilliValue())*adjustedUsage), minReplicas, maxReplicas)
 	}
-	return tryToConvergeToWatermark(logger, convergingType, currentReplicas, currentReadyReplicas, wpa, lowerBoundReplicaCount, upperBoundReplicaCount)
+	return tryToConvergeToWatermark(logger, convergingType, currentReplicas, currentReadyReplicas, wpa, lowerBoundReplicaCount, upperBoundReplicaCount, recordMetrics)
 }
 
-func tryToConvergeToWatermark(logger logr.Logger, convergingType v1alpha1.ConvergeTowardsWatermarkType, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, lowerBoundReplicaCount, upperBoundReplicaCount int32) (optimisedReplicaCount int32) {
+func tryToConvergeToWatermark(logger logr.Logger, convergingType v1alpha1.ConvergeTowardsWatermarkType, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, lowerBoundReplicaCount, upperBoundReplicaCount int32, recordMetrics bool) (optimisedReplicaCount int32) {
 	scaleBy := *wpa.Spec.ReplicaScalingAbsoluteModulo
 
 	switch convergingType {
@@ -521,11 +535,11 @@ func tryToConvergeToWatermark(logger logr.Logger, convergingType v1alpha1.Conver
 		// At 1 replica the step changes nothing: converged, not stepping.
 		if optimisedReplicaCount < lowerBoundReplicaCount || optimisedReplicaCount >= currentReplicas {
 			// This would result in a downscale, give up
-			setConvergeCondition(wpa, convergingType, convergeConverged)
+			setConvergeConditionWith(wpa, convergingType, convergeConverged, recordMetrics)
 			logger.Info("Scaling down would likely make the usage go above the High Watermark", "optimisedReplicaCount", optimisedReplicaCount, "currentReadyReplicas", currentReadyReplicas, "lowerBoundReplicaCount", lowerBoundReplicaCount, "upperBoundReplicaCount", upperBoundReplicaCount)
 			return currentReplicas
 		}
-		setConvergeCondition(wpa, convergingType, convergeStepping)
+		setConvergeConditionWith(wpa, convergingType, convergeStepping, recordMetrics)
 		// This should stay under HW
 		logger.Info("Trying to scale down to converge to High Watermark", "optimisedReplicaCount", optimisedReplicaCount, "currentReadyReplicas", currentReadyReplicas, "lowerBoundReplicaCount", lowerBoundReplicaCount, "upperBoundReplicaCount", upperBoundReplicaCount)
 
@@ -534,16 +548,16 @@ func tryToConvergeToWatermark(logger logr.Logger, convergingType v1alpha1.Conver
 
 		if optimisedReplicaCount > upperBoundReplicaCount {
 			// This would result in an upscale, give up
-			setConvergeCondition(wpa, convergingType, convergeConverged)
+			setConvergeConditionWith(wpa, convergingType, convergeConverged, recordMetrics)
 			logger.Info("Scaling up would likely make the usage go below the Low Watermark", "optimisedReplicaCount", optimisedReplicaCount, "currentReadyReplicas", currentReadyReplicas, "lowerBoundReplicaCount", lowerBoundReplicaCount, "upperBoundReplicaCount", upperBoundReplicaCount)
 			return currentReplicas
 		}
-		setConvergeCondition(wpa, convergingType, convergeStepping)
+		setConvergeConditionWith(wpa, convergingType, convergeStepping, recordMetrics)
 		// This should stay under HW
 		logger.Info("Trying to scale up to converge to Low Watermark", "optimisedReplicaCount", optimisedReplicaCount, "currentReadyReplicas", currentReadyReplicas, "lowerBoundReplicaCount", lowerBoundReplicaCount, "upperBoundReplicaCount", upperBoundReplicaCount)
 
 	default:
-		setConvergeCondition(wpa, convergingType, convergeStepping) // no mode: ConvergenceDisabled
+		setConvergeConditionWith(wpa, convergingType, convergeStepping, recordMetrics) // no mode: ConvergenceDisabled
 		optimisedReplicaCount = currentReplicas
 	}
 	return optimisedReplicaCount
@@ -559,7 +573,7 @@ func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas i
 
 	value.With(labelsWithMetricName).Set(adjustedUsage)
 
-	replicaCount, position, msg, adjustedLM, adjustedHM := computeReplicaCountForUsage(logger, currentReplicas, currentReadyReplicas, wpa, adjustedUsage, lowMark, highMark)
+	replicaCount, position, msg, adjustedLM, adjustedHM := computeReplicaCountForUsage(logger, currentReplicas, currentReadyReplicas, wpa, adjustedUsage, lowMark, highMark, true)
 	if position.isAbove || position.isBelow {
 		restrictedScaling.With(labelsWithReason).Set(0)
 	}
@@ -580,7 +594,7 @@ func toleranceDelta(mark, toleranceMilli int64) float64 {
 
 // computeReplicaCountForUsage compares the usage to the watermarks (with tolerance) and returns the replica count.
 // It does not set any prometheus gauge, so it can also compute the target stretch shadow recommendation.
-func computeReplicaCountForUsage(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, lowMark, highMark *resource.Quantity) (replicaCount int32, position metricPosition, msg string, adjustedLM, adjustedHM float64) {
+func computeReplicaCountForUsage(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, adjustedUsage float64, lowMark, highMark *resource.Quantity, recordMetrics bool) (replicaCount int32, position metricPosition, msg string, adjustedLM, adjustedHM float64) {
 	tolerance := wpa.Spec.Tolerance.MilliValue()
 	adjustedHM = float64(highMark.MilliValue()) + toleranceDelta(highMark.MilliValue(), tolerance)
 	adjustedLM = float64(lowMark.MilliValue()) - toleranceDelta(lowMark.MilliValue(), tolerance)
@@ -591,18 +605,18 @@ func computeReplicaCountForUsage(logger logr.Logger, currentReplicas, currentRea
 	case adjustedUsage > adjustedHM:
 		msg = "Value is above highMark"
 		replicaCount = getReplicaCountUpscale(logger, currentReplicas, currentReadyReplicas, wpa, adjustedUsage, highMark)
-		setConvergeCondition(wpa, converge, convergeOutsideWatermarks)
+		setConvergeConditionWith(wpa, converge, convergeOutsideWatermarks, recordMetrics)
 		position.isAbove = true
 	// Downscale if usage < lw
 	case adjustedUsage < adjustedLM:
 		msg = "Value is below lowMark"
 		replicaCount = getReplicaCountDownscale(logger, currentReplicas, currentReadyReplicas, wpa, adjustedUsage, lowMark)
-		setConvergeCondition(wpa, converge, convergeOutsideWatermarks)
+		setConvergeConditionWith(wpa, converge, convergeOutsideWatermarks, recordMetrics)
 		position.isBelow = true
 	// If within bounds, do nothing unless converging is enabled
 	default:
 		msg = "Within bounds of the watermarks"
-		replicaCount = tryToConvergeToWatermarkForUsage(logger, converge, currentReplicas, currentReadyReplicas, wpa, adjustedUsage, lowMark, highMark)
+		replicaCount = tryToConvergeToWatermarkForUsage(logger, converge, currentReplicas, currentReadyReplicas, wpa, adjustedUsage, lowMark, highMark, recordMetrics)
 	}
 	return replicaCount, position, msg, adjustedLM, adjustedHM
 }
@@ -635,7 +649,7 @@ func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplica
 		}
 		lowerBound := math32.Cap(lowerBoundReplicas, minReplicas, wpa.Spec.MaxReplicas)
 		upperBound := math32.Cap(upperBoundReplicas, minReplicas, wpa.Spec.MaxReplicas)
-		replicaCount = tryToConvergeToWatermark(logger, converge, currentReplicas, currentReadyReplicas, wpa, lowerBound, upperBound)
+		replicaCount = tryToConvergeToWatermark(logger, converge, currentReplicas, currentReadyReplicas, wpa, lowerBound, upperBound, recordMetrics)
 	// Upscale
 	case recommendedReplicaCount > currentReplicas:
 		msg = "Value is above highMark"
@@ -648,7 +662,7 @@ func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplica
 			target = min(target, lowerBoundReplicas)
 		}
 		replicaCount = adjustReplicaCountForUpscale(logger, currentReplicas, currentReadyReplicas, wpa, target)
-		setConvergeCondition(wpa, converge, scaleState)
+		setConvergeConditionWith(wpa, converge, scaleState, recordMetrics)
 	// Downscale
 	case recommendedReplicaCount < currentReplicas:
 		msg = "Value is below lowMark"
@@ -661,7 +675,7 @@ func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplica
 			target = max(target, floorReplicaCountToAbsoluteModulo(upperBoundReplicas, wpa))
 		}
 		replicaCount = adjustReplicaCountForDownscale(logger, currentReplicas, currentReadyReplicas, wpa, target)
-		setConvergeCondition(wpa, converge, scaleState)
+		setConvergeConditionWith(wpa, converge, scaleState, recordMetrics)
 	// If within bounds, do nothing unless converging is enabled
 	default:
 		msg = "Within bounds of the watermarks"
@@ -671,10 +685,10 @@ func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplica
 		// Outside the bounds, or without bounds: don't converge
 		case v1alpha1.ConvergeUpwards, v1alpha1.ConvergeDownwards:
 			msg = "Outside the recommender bounds, not converging"
-			setConvergeCondition(wpa, converge, convergeOutsideRecommenderBounds)
+			setConvergeConditionWith(wpa, converge, convergeOutsideRecommenderBounds, recordMetrics)
 			replicaCount = currentReplicas
 		default:
-			replicaCount = tryToConvergeToWatermark(logger, converge, currentReplicas, currentReadyReplicas, wpa, lowerBoundReplicas, upperBoundReplicas)
+			replicaCount = tryToConvergeToWatermark(logger, converge, currentReplicas, currentReadyReplicas, wpa, lowerBoundReplicas, upperBoundReplicas, recordMetrics)
 		}
 	}
 

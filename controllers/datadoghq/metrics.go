@@ -449,10 +449,6 @@ func cleanupConditionMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
 // setConvergeConditionMetric sets the conditions series of both convergence directions: 1 for the mode when
 // converging, 0 otherwise, so that a mode change never leaves a stale series at 1.
 func setConvergeConditionMetric(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, mode datadoghqv1alpha1.ConvergeTowardsWatermarkType, converging bool) {
-	if isTargetStretchShadow(wpa) {
-		// The dry-run shadow must not overwrite the live convergence gauge of the real computation.
-		return
-	}
 	labels := getPrometheusLabels(wpa)
 	for m, labelVal := range convergeConditionValues {
 		labels[conditionPromLabel] = labelVal
