@@ -8,6 +8,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -231,4 +232,88 @@ func TestFileProviderCallbackPanicDoesNotBlockNotifications(t *testing.T) {
 	p.loadMu.Lock()
 	assert.Empty(t, p.pending, "nothing is left pending")
 	p.loadMu.Unlock()
+}
+
+// After a callback panic, the undelivered rest of the detached batch goes back to the front of pending, before the
+// transitions queued meanwhile (reentrant and concurrent), and an unchanged Reload delivers them once, in order.
+func TestFileProviderCallbackPanicRestoresBatchOrder(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	write := func(ratio string) {
+		require.NoError(t, os.WriteFile(path, []byte("version: v1\ntargetStretch:\n  mode: enabled-opt-in\n  ratio: "+ratio+"\n"), 0o600))
+	}
+	ratioOf := func(c *ControllerConfig) string { return strconv.FormatFloat(*c.TargetStretch.Ratio, 'f', -1, 64) }
+	write("1")
+	p := NewFileProvider(path, logf.Log)
+	pendingRatios := func() []string {
+		p.loadMu.Lock()
+		defer p.loadMu.Unlock()
+		out := []string{}
+		for _, tr := range p.pending {
+			out = append(out, ratioOf(tr.current))
+		}
+		return out
+	}
+	waitOrFail := func(ch <-chan struct{}, what string) {
+		select {
+		case <-ch:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timeout waiting for %s", what)
+		}
+	}
+
+	aStarted, releaseA := make(chan struct{}), make(chan struct{})
+	bQueuedE, fQueued := make(chan struct{}), make(chan struct{})
+	var mu sync.Mutex
+	var delivered []string
+	p.OnChange(func(_, current *ControllerConfig) {
+		r := ratioOf(current)
+		mu.Lock()
+		delivered = append(delivered, r)
+		mu.Unlock()
+		switch r {
+		case "1.1": // A: hold the delivery while B, C and D are queued
+			close(aStarted)
+			waitOrFail(releaseA, "release of A")
+		case "1.2": // B: queue E reentrantly, wait for a concurrent F, then panic
+			write("1.5")
+			p.Reload()
+			close(bQueuedE)
+			waitOrFail(fQueued, "the concurrent Reload of F")
+			panic("B failed")
+		}
+	})
+
+	panicked := make(chan any, 1)
+	write("1.1")
+	go func() {
+		defer func() { panicked <- recover() }()
+		p.Reload() // delivers A, then the batch B, C, D
+	}()
+	waitOrFail(aStarted, "A")
+	for _, r := range []string{"1.2", "1.3", "1.4"} { // B, C, D
+		write(r)
+		p.Reload()
+	}
+	assert.Equal(t, []string{"1.2", "1.3", "1.4"}, pendingRatios())
+	close(releaseA)
+	waitOrFail(bQueuedE, "B to queue E")
+	write("1.6") // F, from a concurrent Reload while B is delivering
+	p.Reload()
+	close(fQueued)
+
+	select {
+	case r := <-panicked:
+		assert.Equal(t, "B failed", r, "the panic surfaces to the caller of Reload")
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for the panic of B")
+	}
+	assert.Equal(t, []string{"1.3", "1.4", "1.5", "1.6"}, pendingRatios(), "C, D (rest of the batch) before E and F")
+	require.True(t, p.notifyMu.TryLock(), "notifyMu is released")
+	p.notifyMu.Unlock()
+
+	p.Reload() // unchanged file: delivers what is pending
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, []string{"1.1", "1.2", "1.3", "1.4", "1.5", "1.6"}, delivered, "B attempted once; C, D, E, F once each, in order")
+	assert.Empty(t, pendingRatios())
 }
