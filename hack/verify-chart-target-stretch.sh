@@ -57,10 +57,13 @@ expect() {
   [ -n "$volume" ] || fail "no volume mounts the ConfigMap $cm"
   mount="$(q "select(.kind == \"Deployment\") | .spec.template.spec.containers[0].volumeMounts[] | select(.name == \"$volume\") | .mountPath")"
   [ -n "$mount" ] || fail "the volume $volume is not mounted in the container"
-  # A subPath mount is never updated by kubelet, which breaks the live reload.
+  # A subPath or subPathExpr mount is never updated by kubelet, which breaks the live reload.
   local subpath
   subpath="$(q "select(.kind == \"Deployment\") | .spec.template.spec.containers[0].volumeMounts[] | select(.name == \"$volume\") | .subPath // \"\"")"
   [ -z "$subpath" ] || fail "the volume $volume is mounted with subPath $subpath, which is not live-updated"
+  local subpathexpr
+  subpathexpr="$(q "select(.kind == \"Deployment\") | .spec.template.spec.containers[0].volumeMounts[] | select(.name == \"$volume\") | .subPathExpr // \"\"")"
+  [ -z "$subpathexpr" ] || fail "the volume $volume is mounted with subPathExpr $subpathexpr, which is not live-updated"
   key="$(q 'select(.kind == "ConfigMap" and .metadata.name == "*-config") | .data | keys | .[0]')"
   # The file name in the volume: the items mapping of the key when set, else the key itself.
   local file
