@@ -312,7 +312,6 @@ type WatermarkPodAutoscalerStatus struct {
 	Defaults *WatermarkPodAutoscalerStatusDefaults `json:"defaults,omitempty"`
 }
 
-
 // TargetStretchStatus describes the cluster-wide target stretch applied to a WPA.
 // +k8s:openapi-gen=true
 type TargetStretchStatus struct {
@@ -339,7 +338,6 @@ type TargetStretchWatermarks struct {
 	// HighWatermark is the stretched high watermark.
 	HighWatermark resource.Quantity `json:"highWatermark"`
 }
-
 
 // WatermarkPodAutoscalerStatusDefaults holds the defaults of the controller configuration.
 // +k8s:openapi-gen=true
