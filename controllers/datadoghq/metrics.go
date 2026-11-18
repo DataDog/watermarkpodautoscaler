@@ -38,6 +38,8 @@ const (
 	methodPromLabel            = "method"
 	codePromLabel              = "code"
 	conditionPromLabel         = "condition"
+	modePromLabel              = "mode"
+	sourcePromLabel            = "source"
 	// Label values
 	downscaleCappingPromLabelVal = "downscale_capping"
 	upscaleCappingPromLabelVal   = "upscale_capping"
@@ -52,6 +54,26 @@ var reasonValues = []string{downscaleCappingPromLabelVal, upscaleCappingPromLabe
 var convergeConditionValues = map[datadoghqv1alpha1.ConvergeTowardsWatermarkType]string{
 	datadoghqv1alpha1.ConvergeUpwards:   "converge_to_high_watermark",
 	datadoghqv1alpha1.ConvergeDownwards: "converge_to_low_watermark",
+}
+
+// Values of the 'mode' label of the converge mode metric, besides the known modes.
+const (
+	convergeModeNone    = "none"    // no mode
+	convergeModeUnknown = "unknown" // a spec value that is not a known mode, read as no convergence
+)
+
+// convergeModeValues are the values of the 'mode' label of the converge mode metric.
+var convergeModeValues = []string{
+	string(datadoghqv1alpha1.ConvergeUpwards), string(datadoghqv1alpha1.ConvergeDownwards),
+	string(datadoghqv1alpha1.ConvergeDisabled), convergeModeNone, convergeModeUnknown,
+}
+
+// convergeModeSources maps a source of the convergence mode to its 'source' label of the converge mode metric.
+var convergeModeSources = map[string]string{
+	convergeSourceSpec:        "spec",
+	convergeSourceDefault:     "controller_default",
+	convergeSourceNotSet:      "not_set",
+	convergeSourceRecommender: "recommender",
 }
 
 // tracked conditions
@@ -251,6 +273,14 @@ var (
 		},
 		append(defaultPromLabels, conditionPromLabel),
 	)
+	convergeMode = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "converge_towards_watermark",
+			Help:      "Effective convergence mode of the WPA and its source: one series per WPA, at 1",
+		},
+		append(defaultPromLabels, modePromLabel, sourcePromLabel),
+	)
 )
 
 func init() {
@@ -276,6 +306,7 @@ func init() {
 	sigmetrics.Registry.MustRegister(requestErrorsTotal)
 	sigmetrics.Registry.MustRegister(responseInflight)
 	sigmetrics.Registry.MustRegister(conditions)
+	sigmetrics.Registry.MustRegister(convergeMode)
 }
 
 func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onlyMetricsSpecific bool) {
@@ -358,8 +389,8 @@ func getPrometheusLabels(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) promethe
 	}
 }
 
-// cleanupConditionMetrics deletes the conditions series of the WPA: the tracked conditions and both convergence
-// directions.
+// cleanupConditionMetrics deletes the conditions series of the WPA (the tracked conditions and both convergence
+// directions) and its converge mode series.
 func cleanupConditionMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
 	labels := getPrometheusLabels(wpa)
 	for _, labelVal := range trackedConditions {
@@ -369,6 +400,43 @@ func cleanupConditionMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
 	for _, labelVal := range convergeConditionValues {
 		labels[conditionPromLabel] = labelVal
 		conditions.Delete(labels)
+	}
+	delete(labels, conditionPromLabel)
+	setConvergeModeSeries(labels, "", "")
+}
+
+// convergeModeLabel returns the 'mode' label of the converge mode metric for an effective mode.
+func convergeModeLabel(mode datadoghqv1alpha1.ConvergeTowardsWatermarkType) string {
+	switch mode {
+	case "":
+		return convergeModeNone
+	case datadoghqv1alpha1.ConvergeUpwards, datadoghqv1alpha1.ConvergeDownwards, datadoghqv1alpha1.ConvergeDisabled:
+		return string(mode)
+	default:
+		return convergeModeUnknown
+	}
+}
+
+// setConvergeModeMetric sets the converge mode series of the WPA: a single series at 1 for its effective mode
+// and source, so that the WPAs can be counted by mode whether they converge or not.
+func setConvergeModeMetric(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
+	mode, source := effectiveConvergeTowardsWatermark(wpa)
+	setConvergeModeSeries(getPrometheusLabels(wpa), convergeModeLabel(mode), convergeModeSources[source])
+}
+
+// setConvergeModeSeries keeps only the series of mode and source at 1, and deletes the others so that a mode
+// change leaves no stale series. Empty mode and source delete all of them.
+func setConvergeModeSeries(labels prometheus.Labels, mode, source string) {
+	for _, m := range convergeModeValues {
+		labels[modePromLabel] = m
+		for _, s := range convergeModeSources {
+			labels[sourcePromLabel] = s
+			if m == mode && s == source {
+				convergeMode.With(labels).Set(1)
+			} else {
+				convergeMode.Delete(labels)
+			}
+		}
 	}
 }
 
