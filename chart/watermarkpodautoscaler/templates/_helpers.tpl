@@ -66,7 +66,8 @@ Create the name of the service account to use
 Whether the controller configuration file is mounted
 */}}
 {{- define "watermarkpodautoscaler.controllerConfig.enabled" -}}
-{{- if or .Values.controllerConfig.enabled .Values.controllerConfig.existingConfigMap .Values.controllerConfig.defaults.convergeTowardsWatermark -}}
+{{- /* targetStretch can be absent, e.g. on an upgrade with --reuse-values from an older chart */}}
+{{- if or .Values.controllerConfig.enabled .Values.controllerConfig.existingConfigMap .Values.controllerConfig.defaults.convergeTowardsWatermark (and .Values.targetStretch .Values.targetStretch.mode) -}}
 true
 {{- end -}}
 {{- end -}}

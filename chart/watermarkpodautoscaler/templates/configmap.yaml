@@ -14,4 +14,9 @@ data:
       {{- else }}
       {}
       {{- end }}
+    {{- if and .Values.targetStretch .Values.targetStretch.mode }}
+    targetStretch:
+      mode: {{ .Values.targetStretch.mode | quote }}
+      ratio: {{ .Values.targetStretch.ratio | default 1 }}
+    {{- end }}
 {{- end }}

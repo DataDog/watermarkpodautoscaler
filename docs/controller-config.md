@@ -41,6 +41,19 @@ spec:
   convergeTowardsWatermark: disabled
 ```
 
+## `targetStretch`
+
+Configures the cluster-wide WPA target stretch. When set, it replaces the `WPA_STRETCH_MODE` and
+`WPA_STRETCH_RATIO` env vars. It is reloaded like the rest of the file, and a change enqueues every WPA.
+See [target-stretch.md](target-stretch.md).
+
+```yaml
+version: v1
+targetStretch:
+  mode: enabled-opt-in   # disabled | dry-run-opt-in | dry-run-opt-out | enabled-opt-in | enabled-opt-out
+  ratio: 1.2             # [1, 2], required unless disabled
+```
+
 ## Observability
 
 Every WPA reports the controller default in its status, whether or not it applies to it. The field is absent when

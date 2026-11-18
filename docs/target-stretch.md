@@ -6,18 +6,39 @@ their WPAs take part, and can cap the ratio.
 
 ## Configuration (SRE)
 
-The controller reads two environment variables at startup. A change restarts the controller.
+The recommended way is the `targetStretch` section of the controller configuration file
+(`--controller-config-file`, see [controller-config.md](controller-config.md)). The file is reloaded live: a change
+applies without restarting the controller.
 
-| Variable | Values | Default |
+```yaml
+version: v1
+targetStretch:
+  mode: dry-run-opt-in   # disabled | dry-run-opt-in | dry-run-opt-out | enabled-opt-in | enabled-opt-out
+  ratio: 1.2             # number in [1, 2], rounded to 3 decimals; required unless the mode is disabled
+```
+
+| Field | Values | Default |
 |---|---|---|
-| `WPA_STRETCH_MODE` | `disabled`, `dry-run-opt-in`, `dry-run-opt-out`, `enabled-opt-in`, `enabled-opt-out` | `disabled` |
-| `WPA_STRETCH_RATIO` | decimal in [1, 2], rounded to 3 decimals (e.g. `1.2`) | required when the mode is not `disabled` |
+| `targetStretch.mode` | `disabled`, `dry-run-opt-in`, `dry-run-opt-out`, `enabled-opt-in`, `enabled-opt-out` | `disabled` (empty) |
+| `targetStretch.ratio` | number in [1, 2], rounded to 3 decimals (e.g. `1.2`) | required when the mode is not `disabled` |
 
-With the Helm chart, set `targetStretch.mode` and `targetStretch.ratio` (default `1`). When `targetStretch.mode` is empty
-(the chart default), the chart renders neither env var and the controller default, `disabled`, applies.
+The ratio bounds are checked before rounding, so `0.9999` and `2.0004` are rejected. Unknown keys are rejected.
+An invalid file is logged as an error and keeps the previous configuration; `wpa_controller_config_valid` is 0.
 
-An invalid value (unknown mode, ratio outside [1, 2], missing ratio with an active mode) is logged as an error.
-The controller keeps running, the feature stays disabled and `wpa_controller_target_stretch_config_valid` is 0.
+**Live reload.** When the `targetStretch` section changes, the controller refreshes its target stretch gauges
+right away and enqueues every WPA. Their selection, status, condition and per-WPA gauges follow within one
+reconcile, without waiting for the periodic 15 s requeue.
+
+**Env fallback and precedence.** Without a configuration file, or when the file has no `targetStretch` section,
+the controller uses the `WPA_STRETCH_MODE` and `WPA_STRETCH_RATIO` env vars, read at startup (same values and
+rules). When the file has a `targetStretch` section, it wins and the env vars are ignored, including
+`mode: disabled`. Removing the section from the file falls back to the env vars. An invalid env value is logged
+as an error, the feature stays disabled, and `wpa_controller_target_stretch_config_valid` is 0.
+
+**Helm chart.** Set `targetStretch.mode` and `targetStretch.ratio` (default `1`). When `targetStretch.mode` is
+set, the chart renders the section into the generated controller configuration ConfigMap and mounts the file.
+When it is empty (the chart default), no section is rendered. With `controllerConfig.existingConfigMap`, set
+`targetStretch` in that ConfigMap instead.
 
 - **opt-in** modes select only WPAs annotated `wpa.datadoghq.com/target-stretch.enabled: "true"`.
 - **opt-out** modes select every WPA except those annotated `"false"`.
