@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"reflect"
 	"time"
 
 	"github.com/DataDog/dd-trace-go/v2/ddtrace/tracer"
@@ -166,7 +167,6 @@ func main() {
 	} else {
 		setupLog.Error(stretchConfig.Err, "Invalid target stretch configuration, the feature is disabled", "modeEnv", config.TargetStretchModeEnvVar, "ratioEnv", config.TargetStretchRatioEnvVar)
 	}
-	reconcilerOptions.TargetStretch = &config.StaticTargetStretchConfigProvider{Config: stretchConfig}
 	if tlsCAFile != "" || tlsCertFile != "" {
 		if tlsCertFile != "" && tlsKeyFile == "" {
 			setupLog.Error(errors.New("no TLS key file"), "TLS key file and certificate file must be specified together")
@@ -180,22 +180,40 @@ func main() {
 			InsecureSkipVerify: tlsInsecureSkipVerify,
 		}
 	}
+	stretchProvider := &config.ControllerTargetStretchProvider{Env: stretchConfig}
+	reconcilerOptions.TargetStretch = stretchProvider
+	var fileProvider *config.FileProvider
 	if controllerConfigFile != "" {
 		configProvider := config.NewFileProvider(controllerConfigFile, setupLog)
+		fileProvider = configProvider
 		if err = mgr.Add(configProvider); err != nil {
 			setupLog.Error(err, "unable to watch the controller configuration file", "path", controllerConfigFile)
 			os.Exit(1)
 		}
 		reconcilerOptions.ConfigProvider = configProvider
+		stretchProvider.Config = configProvider
+		if stretchProvider.Config.Get().TargetStretch != nil {
+			setupLog.Info("Target stretch configured by the controller configuration file, the WPA_STRETCH_* env vars are ignored", "path", controllerConfigFile)
+		}
 	}
-	if err = (&datadoghqcontrollers.WatermarkPodAutoscalerReconciler{
+	ctx := ctrl.SetupSignalHandler()
+	reconciler := &datadoghqcontrollers.WatermarkPodAutoscalerReconciler{
 		Client:  mgr.GetClient(),
 		Log:     managerLogger,
 		Scheme:  mgr.GetScheme(),
 		Options: reconcilerOptions,
-	}).SetupWithManager(mgr, workers); err != nil {
+	}
+	if err = reconciler.SetupWithManager(mgr, workers); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WatermarkPodAutoscaler")
 		os.Exit(1)
+	}
+	if fileProvider != nil {
+		// A targetStretch change in the file applies without a restart: gauges refresh and every WPA is enqueued.
+		fileProvider.OnChange(func(previous, current *config.ControllerConfig) {
+			if !reflect.DeepEqual(previous.TargetStretch, current.TargetStretch) {
+				reconciler.OnTargetStretchConfigChange(ctx)
+			}
+		})
 	}
 	// +kubebuilder:scaffold:builder
 
@@ -205,7 +223,7 @@ func main() {
 	}
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}

@@ -23,6 +23,7 @@ import (
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	datadoghqv1alpha1 "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/config"
@@ -582,4 +583,33 @@ func cleanupTargetStretchMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) 
 	targetStretchReplicasRecommended.Delete(labels)
 	// Delete exactly the spec watermark series published for this WPA.
 	specSeries.forget(wpa)
+}
+
+// stretchEventsBuffer bounds the queued enqueue requests sent on a target stretch configuration change.
+const stretchEventsBuffer = 1024
+
+// OnTargetStretchConfigChange applies a reloaded target stretch configuration: it refreshes the controller-level
+// gauges right away and enqueues every WPA, so the selection, status, condition and per-WPA gauges follow without
+// waiting for the periodic requeue. It does not block the caller (the configuration provider goroutine).
+func (r *WatermarkPodAutoscalerReconciler) OnTargetStretchConfigChange(ctx context.Context) {
+	cfg := r.targetStretchConfig()
+	RecordTargetStretchConfigMetrics(cfg)
+	r.Log.Info("Target stretch configuration changed", "mode", cfg.Mode, "ratio", config.FormatRatioMilli(cfg.RatioMilli), "valid", cfg.Valid)
+	if r.stretchEvents == nil || r.Client == nil {
+		return
+	}
+	go func() {
+		list := &datadoghqv1alpha1.WatermarkPodAutoscalerList{}
+		if err := r.Client.List(ctx, list); err != nil {
+			r.Log.Error(err, "unable to list the WPAs after a target stretch configuration change, relying on the periodic requeue")
+			return
+		}
+		for i := range list.Items {
+			select {
+			case r.stretchEvents <- event.GenericEvent{Object: &list.Items[i]}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 }

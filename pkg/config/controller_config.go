@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -45,12 +46,33 @@ type ControllerConfig struct {
 	Version string `json:"version"`
 	// Defaults apply to the WPAs that do not set the value.
 	Defaults Defaults `json:"defaults,omitempty"`
+	// TargetStretch configures the cluster-wide target stretch. When set, it replaces the WPA_STRETCH_MODE and
+	// WPA_STRETCH_RATIO env vars, and it is reloaded with the file.
+	// +optional
+	TargetStretch *TargetStretchSettings `json:"targetStretch,omitempty"`
 }
 
 // Defaults contains the default values of the WPA settings.
 type Defaults struct {
 	// ConvergeTowardsWatermark defaults spec.convergeTowardsWatermark.
 	ConvergeTowardsWatermark datadoghqv1alpha1.ConvergeTowardsWatermarkType `json:"convergeTowardsWatermark,omitempty"`
+}
+
+// TargetStretchSettings is the targetStretch section of the controller configuration file.
+type TargetStretchSettings struct {
+	// Mode: disabled, dry-run-opt-in, dry-run-opt-out, enabled-opt-in or enabled-opt-out. Empty is disabled.
+	Mode string `json:"mode,omitempty"`
+	// Ratio is the watermark multiplier in [1, 2], required when the mode is not disabled.
+	Ratio *float64 `json:"ratio,omitempty"`
+}
+
+// Resolve validates the section and returns the target stretch configuration it describes.
+func (s *TargetStretchSettings) Resolve() (TargetStretchConfig, error) {
+	ratio := ""
+	if s.Ratio != nil {
+		ratio = strconv.FormatFloat(*s.Ratio, 'f', -1, 64)
+	}
+	return ResolveTargetStretch(s.Mode, ratio)
 }
 
 // ParseControllerConfig parses and validates the file. A blank document is an empty configuration.
@@ -89,6 +111,11 @@ func (c *ControllerConfig) Validate() error {
 		return fmt.Errorf("invalid defaults.convergeTowardsWatermark %q, expected one of %q, %q, %q or empty",
 			c.Defaults.ConvergeTowardsWatermark, datadoghqv1alpha1.ConvergeUpwards, datadoghqv1alpha1.ConvergeDownwards, datadoghqv1alpha1.ConvergeDisabled)
 	}
+	if c.TargetStretch != nil {
+		if _, err := c.TargetStretch.Resolve(); err != nil {
+			return fmt.Errorf("invalid targetStretch: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -118,6 +145,8 @@ type FileProvider struct {
 	current atomic.Pointer[ControllerConfig]
 	// fileLoaded is set once a file has been read. Only used by load.
 	fileLoaded bool
+	// onChange are called, in the provider goroutine, after a reload that changed the configuration.
+	onChange []func(previous, current *ControllerConfig)
 }
 
 // NewFileProvider creates a FileProvider and loads the file. A missing or invalid file is an empty configuration.
@@ -126,6 +155,11 @@ func NewFileProvider(path string, log logr.Logger) *FileProvider {
 	p.current.Store(&ControllerConfig{})
 	p.load(true)
 	return p
+}
+
+// OnChange registers f, called after a reload that changed the configuration. Register it before Start.
+func (p *FileProvider) OnChange(f func(previous, current *ControllerConfig)) {
+	p.onChange = append(p.onChange, f)
 }
 
 // Get implements Provider.
@@ -164,13 +198,24 @@ func (p *FileProvider) load(startup bool) {
 	}
 	configValid.Set(1)
 
-	changed := !reflect.DeepEqual(cfg, p.current.Load())
+	previous := p.current.Load()
+	changed := !reflect.DeepEqual(cfg, previous)
 	if changed {
 		p.current.Store(cfg)
 	}
 	if changed || startup {
-		p.log.Info("controller configuration loaded", "path", p.path, "defaults", cfg.Defaults)
+		p.log.Info("controller configuration loaded", "path", p.path, "defaults", cfg.Defaults, "targetStretch", cfg.TargetStretch)
 	}
+	if changed && !startup {
+		for _, f := range p.onChange {
+			f(previous, cfg)
+		}
+	}
+}
+
+// Reload reads the file now, as a file system event or the periodic resync does.
+func (p *FileProvider) Reload() {
+	p.load(false)
 }
 
 // resyncPeriod is the periodic reload interval, in case a file system event is missed.

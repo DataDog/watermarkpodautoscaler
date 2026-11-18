@@ -35,7 +35,7 @@ func TestParseControllerConfig(t *testing.T) {
 		},
 		{
 			name:    "unknown top-level key",
-			data:    "version: v1\ntargetStretch:\n  mode: Off\ndefaults:\n  convergeTowardsWatermark: disabled\n",
+			data:    "version: v1\nunknownSection:\n  mode: x\ndefaults:\n  convergeTowardsWatermark: disabled\n",
 			wantErr: "unknown field",
 		},
 		{name: "version only", data: "version: v1\n", want: &ControllerConfig{Version: "v1"}},

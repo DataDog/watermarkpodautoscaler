@@ -119,8 +119,19 @@ func LoadTargetStretchConfigFromEnv(lookup func(string) (string, bool)) TargetSt
 }
 
 func parseTargetStretch(lookup func(string) (string, bool)) (TargetStretchConfig, error) {
-	cfg := DisabledTargetStretchConfig()
 	rawMode, _ := lookup(TargetStretchModeEnvVar)
+	rawRatio, _ := lookup(TargetStretchRatioEnvVar)
+	cfg, err := ResolveTargetStretch(rawMode, rawRatio)
+	if err != nil {
+		return cfg, fmt.Errorf("%w (from %s / %s)", err, TargetStretchModeEnvVar, TargetStretchRatioEnvVar)
+	}
+	return cfg, nil
+}
+
+// ResolveTargetStretch validates a mode and a ratio, shared by the env vars and the controller configuration file.
+// An empty mode is disabled; the ratio is required when the mode is active and must be in [1, 2].
+func ResolveTargetStretch(rawMode, rawRatio string) (TargetStretchConfig, error) {
+	cfg := DisabledTargetStretchConfig()
 	rawMode = strings.ToLower(strings.TrimSpace(rawMode))
 	if rawMode != "" {
 		found := false
@@ -132,21 +143,20 @@ func parseTargetStretch(lookup func(string) (string, bool)) (TargetStretchConfig
 			}
 		}
 		if !found {
-			return cfg, fmt.Errorf("invalid %s %q, expected one of %v", TargetStretchModeEnvVar, rawMode, AllTargetStretchModes)
+			return cfg, fmt.Errorf("invalid target stretch mode %q, expected one of %v", rawMode, AllTargetStretchModes)
 		}
 	}
 
-	rawRatio, _ := lookup(TargetStretchRatioEnvVar)
 	rawRatio = strings.TrimSpace(rawRatio)
 	if rawRatio == "" {
 		if cfg.Mode.IsActive() {
-			return cfg, fmt.Errorf("%s is required when %s is %q", TargetStretchRatioEnvVar, TargetStretchModeEnvVar, cfg.Mode)
+			return cfg, fmt.Errorf("a target stretch ratio is required when the mode is %q", cfg.Mode)
 		}
 		return cfg, nil
 	}
 	milli, err := ParseTargetStretchRatioMilli(rawRatio)
 	if err != nil {
-		return cfg, fmt.Errorf("invalid %s: %w", TargetStretchRatioEnvVar, err)
+		return cfg, fmt.Errorf("invalid target stretch ratio: %w", err)
 	}
 	cfg.RatioMilli = milli
 	return cfg, nil
@@ -172,3 +182,32 @@ func ParseTargetStretchRatioMilli(raw string) (int64, error) {
 func FormatRatioMilli(milli int64) string {
 	return strconv.FormatFloat(float64(milli)/1000, 'f', -1, 64)
 }
+
+// ControllerTargetStretchProvider resolves the target stretch from the controller configuration file when its
+// targetStretch section is set, and from the WPA_STRETCH_MODE / WPA_STRETCH_RATIO env vars otherwise. The file is
+// validated on load (an invalid file keeps the previous configuration), so the section always resolves.
+type ControllerTargetStretchProvider struct {
+	// Config is the controller configuration, nil without a file.
+	Config Provider
+	// Env is the configuration read from the env vars at startup.
+	Env TargetStretchConfig
+}
+
+// TargetStretchConfig implements TargetStretchConfigProvider.
+func (p *ControllerTargetStretchProvider) TargetStretchConfig() TargetStretchConfig {
+	if p.Config != nil {
+		if s := p.Config.Get().TargetStretch; s != nil {
+			cfg, err := s.Resolve()
+			if err != nil {
+				invalid := DisabledTargetStretchConfig()
+				invalid.Valid = false
+				invalid.Err = err
+				return invalid
+			}
+			return cfg
+		}
+	}
+	return p.Env
+}
+
+var _ TargetStretchConfigProvider = (*ControllerTargetStretchProvider)(nil)

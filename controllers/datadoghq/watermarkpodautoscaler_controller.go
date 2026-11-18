@@ -46,8 +46,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/DataDog/dd-trace-go/v2/ddtrace/tracer"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/config"
@@ -118,6 +120,8 @@ type WatermarkPodAutoscalerReconciler struct {
 	syncPeriod    time.Duration
 	eventRecorder events.EventRecorder
 	replicaCalc   ReplicaCalculatorItf
+	// stretchEvents enqueues every WPA when the target stretch configuration changes (see OnTargetStretchConfigChange).
+	stretchEvents chan event.GenericEvent
 	Options       Options
 }
 
@@ -1131,8 +1135,10 @@ func (r *WatermarkPodAutoscalerReconciler) setStatusDefaults(wpa *datadoghqv1alp
 
 // SetupWithManager creates a new Watermarkpodautoscaler controller
 func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, workers int) error {
+	r.stretchEvents = make(chan event.GenericEvent, stretchEventsBuffer)
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&datadoghqv1alpha1.WatermarkPodAutoscaler{}, builder.WithPredicates(predicate.Funcs{UpdateFunc: updatePredicate})).
+		WatchesRawSource(source.Channel(r.stretchEvents, &handler.EnqueueRequestForObject{})).
 		WithOptions(controller.Options{MaxConcurrentReconciles: workers})
 	err := b.Complete(r)
 	if err != nil {

@@ -7,6 +7,9 @@ package datadoghq
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -38,6 +41,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	sigmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/config"
@@ -110,7 +114,7 @@ func newStretchWiring(t *testing.T, tc *replicaCalcTestCase, wpa *v1alpha1.Water
 
 	s := scheme.Scheme
 	s.AddKnownTypes(appsv1.SchemeGroupVersion, &appsv1.Deployment{})
-	s.AddKnownTypes(v1alpha1.SchemeGroupVersion, &v1alpha1.WatermarkPodAutoscaler{})
+	s.AddKnownTypes(v1alpha1.SchemeGroupVersion, &v1alpha1.WatermarkPodAutoscaler{}, &v1alpha1.WatermarkPodAutoscalerList{})
 	c := fake.NewClientBuilder().WithStatusSubresource(&v1alpha1.WatermarkPodAutoscaler{}).Build()
 	require.NoError(t, c.Create(t.Context(), wpa))
 
@@ -733,4 +737,87 @@ func TestRecommenderShadowLeavesConvergenceGaugesUntouched(t *testing.T) {
 		assert.False(t, conditions.Delete(high), "the shadow must not create the convergence series")
 		assert.False(t, conditions.Delete(low))
 	})
+}
+
+// configValidGauge reads wpa_controller_config_valid from the controller-runtime registry.
+func configValidGauge(t *testing.T) float64 {
+	t.Helper()
+	families, err := sigmetrics.Registry.Gather()
+	require.NoError(t, err)
+	for _, mf := range families {
+		if mf.GetName() == "wpa_controller_config_valid" {
+			return mf.GetMetric()[0].GetGauge().GetValue()
+		}
+	}
+	t.Fatal("wpa_controller_config_valid not registered")
+	return 0
+}
+
+// The target stretch section of the controller configuration file is reloaded without a restart: the gauges, the
+// enqueue of every WPA, the decision, the status and the counts follow; an invalid reload keeps the last valid one.
+func TestTargetStretchControllerConfigReload(t *testing.T) {
+	tenPods := makeScale(testDeploymentName, 10, map[string]string{"name": podNamePrefix})
+	tenPods.Namespace = testNamespace
+	metric := externalWiringMetric()
+	tc := &replicaCalcTestCase{scale: tenPods, metric: &metricInfo{spec: metric, levels: []int64{78000}}, timestamp: time.Now()}
+	wpa := wiringWPA(&metric, nil)
+	t.Cleanup(func() { cleanupAssociatedMetrics(wpa, false) })
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	write := func(data string) { require.NoError(t, os.WriteFile(path, []byte(data), 0o600)) }
+	write("version: v1\ntargetStretch:\n  mode: dry-run-opt-in\n  ratio: 1.2\n")
+	fileProvider := config.NewFileProvider(path, logf.Log)
+	stretch := &config.ControllerTargetStretchProvider{Config: fileProvider, Env: stretchCfg(config.TargetStretchModeEnabledOptOut, 1100)}
+
+	w := newStretchWiring(t, tc, wpa, config.DisabledTargetStretchConfig())
+	w.r.Options.TargetStretch = stretch
+	w.r.stretchEvents = make(chan event.GenericEvent, 10)
+	fileProvider.OnChange(func(previous, current *config.ControllerConfig) {
+		if !reflect.DeepEqual(previous.TargetStretch, current.TargetStretch) {
+			w.r.OnTargetStretchConfigChange(t.Context())
+		}
+	})
+	RecordTargetStretchConfigMetrics(stretch.TargetStretchConfig())
+	modeGauge := func(m config.TargetStretchMode) float64 {
+		return testutil.ToFloat64(targetStretchMode.With(prometheus.Labels{modePromLabel: string(m)}))
+	}
+
+	got := w.reconcile(t, wpa)
+	require.NotNil(t, got.Status.TargetStretch)
+	assert.Equal(t, "dry-run-opt-in", got.Status.TargetStretch.Mode, "the file wins over the env config")
+	assert.Equal(t, int32(12), got.Status.DesiredReplicas)
+	assert.InDelta(t, 1, modeGauge(config.TargetStretchModeDryRunOptIn), 0)
+
+	write("version: v1\ntargetStretch:\n  mode: enabled-opt-in\n  ratio: 1.5\n")
+	fileProvider.Reload()
+	assert.InDelta(t, 1, modeGauge(config.TargetStretchModeEnabledOptIn), 0, "the mode gauge follows the reload")
+	assert.InDelta(t, 0, modeGauge(config.TargetStretchModeDryRunOptIn), 0)
+	assert.InDelta(t, 1.5, testutil.ToFloat64(targetStretchRatio), 0, "the ratio gauge follows the reload")
+	select {
+	case ev := <-w.r.stretchEvents:
+		assert.Equal(t, wpa.Name, ev.Object.GetName(), "every WPA is enqueued on a targetStretch change")
+	case <-time.After(5 * time.Second):
+		t.Fatal("the WPA was not enqueued after the targetStretch change")
+	}
+
+	got = w.reconcile(t, wpa)
+	require.NotNil(t, got.Status.TargetStretch)
+	assert.Equal(t, "enabled-opt-in", got.Status.TargetStretch.Mode, "the decision follows the reload without a restart")
+	assert.Equal(t, "1.5", got.Status.TargetStretch.AppliedRatio)
+	assert.Equal(t, int32(10), got.Status.DesiredReplicas, "scaling uses the reloaded stretched watermarks")
+	assert.InDelta(t, 1, testutil.ToFloat64(targetStretchWPAs.With(prometheus.Labels{statePromLabel: "stretched"})), 0)
+
+	write("version: v1\ntargetStretch:\n  mode: enabled-opt-in\n  ratio: 3\n")
+	fileProvider.Reload()
+	assert.InDelta(t, 0, configValidGauge(t), 0, "an invalid reload sets config_valid to 0")
+	got = w.reconcile(t, wpa)
+	assert.Equal(t, "1.5", got.Status.TargetStretch.AppliedRatio, "an invalid reload keeps the last valid config")
+
+	write("version: v1\n")
+	fileProvider.Reload()
+	assert.InDelta(t, 1, configValidGauge(t), 0)
+	assert.InDelta(t, 1, modeGauge(config.TargetStretchModeEnabledOptOut), 0, "without the section, the env config applies")
+	got = w.reconcile(t, wpa)
+	assert.Equal(t, "enabled-opt-out", got.Status.TargetStretch.Mode)
+	assert.Equal(t, "1.1", got.Status.TargetStretch.AppliedRatio)
 }
