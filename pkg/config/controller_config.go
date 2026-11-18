@@ -165,6 +165,10 @@ func NewFileProvider(path string, log logr.Logger) *FileProvider {
 }
 
 // OnChange registers f, called after a reload that changed the configuration. Register it before Start.
+// Each transition is delivered exactly once, in order, but possibly after the Reload that loaded it returns: when
+// another goroutine is delivering, including a reentrant Reload from a callback, that goroutine runs it. Callbacks
+// run in the delivering goroutine and must be quick and must not block. A panicking callback skips its transition;
+// the following ones are delivered by the next Reload.
 func (p *FileProvider) OnChange(f func(previous, current *ControllerConfig)) {
 	p.onChange = append(p.onChange, f)
 }
@@ -195,27 +199,49 @@ func (p *FileProvider) notify() {
 		if !p.notifyMu.TryLock() {
 			return
 		}
-		for {
-			p.loadMu.Lock()
-			batch := p.pending
-			p.pending = nil
-			p.loadMu.Unlock()
-			if len(batch) == 0 {
-				break
-			}
-			for _, t := range batch {
-				for _, f := range p.onChange {
-					f(t.previous, t.current)
-				}
-			}
-		}
-		p.notifyMu.Unlock()
+		p.deliverPending()
 		// A transition queued after the last batch, whose notify call found notifyMu held, is delivered here.
 		p.loadMu.Lock()
 		more := len(p.pending) > 0
 		p.loadMu.Unlock()
 		if !more {
 			return
+		}
+	}
+}
+
+// deliverPending runs the callbacks of the pending transitions. Called with notifyMu held, which it releases. If a
+// callback panics, the transitions not delivered yet go back to the front of pending (the panicking one is not
+// delivered again), notifyMu is released, and the panic is re-raised to the caller.
+func (p *FileProvider) deliverPending() {
+	var batch []configTransition
+	next := 0
+	defer func() {
+		if r := recover(); r != nil {
+			if next < len(batch) {
+				p.loadMu.Lock()
+				p.pending = append(append([]configTransition{}, batch[next:]...), p.pending...)
+				p.loadMu.Unlock()
+			}
+			p.notifyMu.Unlock()
+			panic(r)
+		}
+		p.notifyMu.Unlock()
+	}()
+	for {
+		p.loadMu.Lock()
+		batch, next = p.pending, 0
+		p.pending = nil
+		p.loadMu.Unlock()
+		if len(batch) == 0 {
+			return
+		}
+		for next < len(batch) {
+			t := batch[next]
+			next++
+			for _, f := range p.onChange {
+				f(t.previous, t.current)
+			}
 		}
 	}
 }
@@ -264,7 +290,9 @@ func (p *FileProvider) loadLocked(startup bool) {
 	}
 }
 
-// Reload reads the file now, as a file system event or the periodic resync does.
+// Reload reads the file now, as a file system event or the periodic resync does. The new configuration is committed
+// synchronously: Get returns it when Reload returns. Its OnChange callbacks may run after Reload returns when another
+// goroutine is delivering (see OnChange).
 func (p *FileProvider) Reload() {
 	p.load(false)
 }

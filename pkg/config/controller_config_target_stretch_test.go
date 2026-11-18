@@ -189,3 +189,46 @@ func TestFileProviderReentrantReloadFromCallback(t *testing.T) {
 	assert.Equal(t, []string{"dry-run-opt-in", "enabled-opt-in"}, modes, "both transitions delivered once, in order")
 	assert.Equal(t, "enabled-opt-in", p.Get().TargetStretch.Mode)
 }
+
+// A panicking callback must not block later notifications: notifyMu is released, the transitions not delivered
+// yet are kept in order (the panicking one is not redelivered), and the next Reload delivers them.
+func TestFileProviderCallbackPanicDoesNotBlockNotifications(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	write := func(mode string) {
+		require.NoError(t, os.WriteFile(path, []byte("version: v1\ntargetStretch:\n  mode: "+mode+"\n  ratio: 1.2\n"), 0o600))
+	}
+	write("disabled")
+	p := NewFileProvider(path, logf.Log)
+	var modes []string
+	p.OnChange(func(_, current *ControllerConfig) {
+		mode := current.TargetStretch.Mode
+		modes = append(modes, mode)
+		if mode == "dry-run-opt-in" {
+			// Queue the next transition from the callback, then panic before it is delivered.
+			write("dry-run-opt-out")
+			p.Reload()
+			panic("callback failure")
+		}
+	})
+
+	write("dry-run-opt-in")
+	func() {
+		defer func() {
+			assert.Equal(t, "callback failure", recover(), "the panic surfaces to the caller of Reload")
+		}()
+		p.Reload()
+	}()
+	require.True(t, p.notifyMu.TryLock(), "notifyMu is released after a callback panic")
+	p.notifyMu.Unlock()
+	assert.Equal(t, []string{"dry-run-opt-in"}, modes)
+
+	p.Reload() // no file change: delivers the transition kept from the panicking batch
+	assert.Equal(t, []string{"dry-run-opt-in", "dry-run-opt-out"}, modes)
+
+	write("enabled-opt-in")
+	p.Reload()
+	assert.Equal(t, []string{"dry-run-opt-in", "dry-run-opt-out", "enabled-opt-in"}, modes, "later transitions run in order")
+	p.loadMu.Lock()
+	assert.Empty(t, p.pending, "nothing is left pending")
+	p.loadMu.Unlock()
+}
