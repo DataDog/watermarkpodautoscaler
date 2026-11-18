@@ -100,7 +100,7 @@ used for scaling (stretched in enabled modes). New metrics:
 
 | Metric | Labels | Description |
 |---|---|---|
-| `wpa_controller_target_stretch_config_valid` | | 1 when the env configuration is valid |
+| `wpa_controller_target_stretch_config_valid` | | 1 when the target stretch configuration in effect is valid: the file `targetStretch` section when present (an invalid file is rejected as a whole, keeps the previous configuration and sets `wpa_controller_config_valid` to 0), else the `WPA_STRETCH_*` env vars (0 for an invalid env value, which disables the feature) |
 | `wpa_controller_target_stretch_mode` | `mode` | 1 for the active mode, 0 for the others |
 | `wpa_controller_target_stretch_ratio` | | configured ratio (1 when invalid) |
 | `wpa_controller_target_stretch_wpas` | `state` = selected, stretched, capped, opted_out | WPA counts |
