@@ -144,11 +144,15 @@ type FileProvider struct {
 	path    string
 	log     logr.Logger
 	current atomic.Pointer[ControllerConfig]
-	// loadMu serializes load: read, compare, store and notify, so each transition notifies exactly once, in order.
+	// loadMu serializes the read, compare and store of load, and guards pending. Callbacks never run under it.
 	loadMu sync.Mutex
+	// pending are the transitions not delivered yet, in load order.
+	pending []configTransition
+	// notifyMu is held by the single goroutine delivering pending transitions (see notify).
+	notifyMu sync.Mutex
 	// fileLoaded is set once a file has been read. Only used by load.
 	fileLoaded bool
-	// onChange are called, in the provider goroutine, after a reload that changed the configuration.
+	// onChange are called after a reload that changed the configuration, once per transition, in order.
 	onChange []func(previous, current *ControllerConfig)
 }
 
@@ -170,11 +174,55 @@ func (p *FileProvider) Get() *ControllerConfig {
 	return p.current.Load()
 }
 
-// load reads the file and swaps the current configuration, keeping the last valid one on error.
-// A missing or blank file is an empty configuration only until a file has been read.
+// configTransition is a configuration change to notify.
+type configTransition struct {
+	previous, current *ControllerConfig
+}
+
+// load reads the file and swaps the current configuration, keeping the last valid one on error, then notifies the
+// change. Callbacks run after loadMu is released, so a callback may call Reload.
 func (p *FileProvider) load(startup bool) {
 	p.loadMu.Lock()
-	defer p.loadMu.Unlock()
+	p.loadLocked(startup)
+	p.loadMu.Unlock()
+	p.notify()
+}
+
+// notify delivers the pending transitions in order. A single goroutine delivers at a time: a concurrent or
+// reentrant call (a callback calling Reload) returns at once and the delivering goroutine picks its transition up.
+func (p *FileProvider) notify() {
+	for {
+		if !p.notifyMu.TryLock() {
+			return
+		}
+		for {
+			p.loadMu.Lock()
+			batch := p.pending
+			p.pending = nil
+			p.loadMu.Unlock()
+			if len(batch) == 0 {
+				break
+			}
+			for _, t := range batch {
+				for _, f := range p.onChange {
+					f(t.previous, t.current)
+				}
+			}
+		}
+		p.notifyMu.Unlock()
+		// A transition queued after the last batch, whose notify call found notifyMu held, is delivered here.
+		p.loadMu.Lock()
+		more := len(p.pending) > 0
+		p.loadMu.Unlock()
+		if !more {
+			return
+		}
+	}
+}
+
+// loadLocked reads the file and swaps the current configuration, queuing the transition. Called with loadMu held.
+// A missing or blank file is an empty configuration only until a file has been read.
+func (p *FileProvider) loadLocked(startup bool) {
 	data, err := os.ReadFile(p.path)
 	switch {
 	case err != nil && errors.Is(err, os.ErrNotExist) && !p.fileLoaded:
@@ -212,9 +260,7 @@ func (p *FileProvider) load(startup bool) {
 		p.log.Info("controller configuration loaded", "path", p.path, "defaults", cfg.Defaults, "targetStretch", cfg.TargetStretch)
 	}
 	if changed && !startup {
-		for _, f := range p.onChange {
-			f(previous, cfg)
-		}
+		p.pending = append(p.pending, configTransition{previous: previous, current: cfg})
 	}
 }
 

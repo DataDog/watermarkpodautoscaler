@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
@@ -155,4 +156,36 @@ func TestFileProviderConcurrentReloadNotifiesOnce(t *testing.T) {
 		wg.Wait()
 	}
 	assert.Equal(t, want, modes, "each transition notifies exactly once, in order")
+}
+
+// A callback that calls Reload must not deadlock; its transition is delivered after the current one, in order.
+func TestFileProviderReentrantReloadFromCallback(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	write := func(mode string) {
+		require.NoError(t, os.WriteFile(path, []byte("version: v1\ntargetStretch:\n  mode: "+mode+"\n  ratio: 1.2\n"), 0o600))
+	}
+	write("disabled")
+	p := NewFileProvider(path, logf.Log)
+	var modes []string
+	p.OnChange(func(_, current *ControllerConfig) {
+		modes = append(modes, current.TargetStretch.Mode)
+		if current.TargetStretch.Mode == "dry-run-opt-in" {
+			write("enabled-opt-in")
+			p.Reload() // reentrant
+		}
+	})
+
+	write("dry-run-opt-in")
+	done := make(chan struct{})
+	go func() {
+		p.Reload()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a callback calling Reload deadlocked")
+	}
+	assert.Equal(t, []string{"dry-run-opt-in", "enabled-opt-in"}, modes, "both transitions delivered once, in order")
+	assert.Equal(t, "enabled-opt-in", p.Get().TargetStretch.Mode)
 }
