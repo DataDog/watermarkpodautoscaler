@@ -17,18 +17,19 @@ import (
 
 func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenAPIDefinition {
 	return map[string]common.OpenAPIDefinition{
-		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.CrossVersionObjectReference":  schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_CrossVersionObjectReference(ref),
-		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.ExternalMetricSource":         schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_ExternalMetricSource(ref),
-		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.ExternalMetricStatus":         schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_ExternalMetricStatus(ref),
-		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.MetricSpec":                   schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_MetricSpec(ref),
-		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.MetricStatus":                 schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_MetricStatus(ref),
-		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.RecommenderSpec":              schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_RecommenderSpec(ref),
-		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.ResourceMetricSource":         schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_ResourceMetricSource(ref),
-		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.ResourceMetricStatus":         schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_ResourceMetricStatus(ref),
-		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.TLSConfig":                    schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_TLSConfig(ref),
-		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.WatermarkPodAutoscaler":       schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscaler(ref),
-		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.WatermarkPodAutoscalerSpec":   schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscalerSpec(ref),
-		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.WatermarkPodAutoscalerStatus": schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscalerStatus(ref),
+		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.CrossVersionObjectReference":          schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_CrossVersionObjectReference(ref),
+		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.ExternalMetricSource":                 schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_ExternalMetricSource(ref),
+		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.ExternalMetricStatus":                 schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_ExternalMetricStatus(ref),
+		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.MetricSpec":                           schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_MetricSpec(ref),
+		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.MetricStatus":                         schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_MetricStatus(ref),
+		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.RecommenderSpec":                      schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_RecommenderSpec(ref),
+		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.ResourceMetricSource":                 schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_ResourceMetricSource(ref),
+		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.ResourceMetricStatus":                 schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_ResourceMetricStatus(ref),
+		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.TLSConfig":                            schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_TLSConfig(ref),
+		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.WatermarkPodAutoscaler":               schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscaler(ref),
+		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.WatermarkPodAutoscalerSpec":           schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscalerSpec(ref),
+		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.WatermarkPodAutoscalerStatus":         schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscalerStatus(ref),
+		"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.WatermarkPodAutoscalerStatusDefaults": schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscalerStatusDefaults(ref),
 	}
 }
 
@@ -526,7 +527,7 @@ func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscale
 					},
 					"convergeTowardsWatermark": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Try to make the usage converge towards High Watermark to save resources. This will slowly downscale by `ReplicaScalingAbsoluteModulo` if the predicted usage stays bellow the high watermarks.",
+							Description: "Try to make the usage converge towards High Watermark to save resources. This will slowly downscale by `ReplicaScalingAbsoluteModulo` if the predicted usage stays bellow the high watermarks. One of `highwatermark`, `lowwatermark` or `disabled`. When not set, the controller default applies, except with a recommender.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -712,11 +713,37 @@ func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscale
 							Format:      "",
 						},
 					},
+					"defaults": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Defaults reports the defaults of the controller configuration, on every WPA. Whether they apply depends on the spec.",
+							Ref:         ref("github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.WatermarkPodAutoscalerStatusDefaults"),
+						},
+					},
 				},
 				Required: []string{"currentReplicas", "desiredReplicas"},
 			},
 		},
 		Dependencies: []string{
-			"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.MetricStatus", "k8s.io/api/autoscaling/v2.HorizontalPodAutoscalerCondition", "k8s.io/apimachinery/pkg/apis/meta/v1.Time"},
+			"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.MetricStatus", "github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1.WatermarkPodAutoscalerStatusDefaults", "k8s.io/api/autoscaling/v2.HorizontalPodAutoscalerCondition", "k8s.io/apimachinery/pkg/apis/meta/v1.Time"},
+	}
+}
+
+func schema_watermarkpodautoscaler_apis_datadoghq_v1alpha1_WatermarkPodAutoscalerStatusDefaults(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "WatermarkPodAutoscalerStatusDefaults holds the defaults of the controller configuration.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"convergeTowardsWatermark": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ConvergeTowardsWatermark is the controller default. It does not apply with a spec value or a recommender.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+			},
+		},
 	}
 }

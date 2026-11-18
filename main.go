@@ -69,6 +69,7 @@ func main() {
 	var tlsKeyFile string
 	var tlsInsecureSkipVerify bool
 	var tlsServerName string
+	var controllerConfigFile string
 	flag.BoolVar(&printVersionArg, "version", false, "print version and exit")
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", true,
@@ -88,6 +89,8 @@ func main() {
 	flag.StringVar(&tlsKeyFile, "tls-key-file", "", "Default file containing client key matching client certificate")
 	flag.BoolVar(&tlsInsecureSkipVerify, "tls-insecure-skip-verify", false, "Default to skip TLS server certificate verification")
 	flag.StringVar(&tlsServerName, "tls-server-name", "", "Default server name to use for TLS SNI")
+
+	flag.StringVar(&controllerConfigFile, "controller-config-file", "", "Path to the controller configuration file (defaults applied to the WPAs), reloaded when it changes")
 
 	logLevel := zap.LevelFlag("loglevel", zapcore.InfoLevel, "Set log level")
 
@@ -169,6 +172,14 @@ func main() {
 			ServerName:         tlsServerName,
 			InsecureSkipVerify: tlsInsecureSkipVerify,
 		}
+	}
+	if controllerConfigFile != "" {
+		configProvider := config.NewFileProvider(controllerConfigFile, setupLog)
+		if err = mgr.Add(configProvider); err != nil {
+			setupLog.Error(err, "unable to watch the controller configuration file", "path", controllerConfigFile)
+			os.Exit(1)
+		}
+		reconcilerOptions.ConfigProvider = configProvider
 	}
 	if err = (&datadoghqcontrollers.WatermarkPodAutoscalerReconciler{
 		Client:  mgr.GetClient(),

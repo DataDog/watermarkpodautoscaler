@@ -6,7 +6,8 @@ require (
 	github.com/DataDog/agent-payload/v5 v5.0.205
 	github.com/DataDog/dd-trace-go/contrib/net/http/v2 v2.11.2
 	github.com/DataDog/dd-trace-go/v2 v2.11.2
-	github.com/DataDog/watermarkpodautoscaler/apis v0.0.0-20260915193337-0cde585f54eb
+	github.com/DataDog/watermarkpodautoscaler/apis v0.0.0-20261112030259-ad151df6b664
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-logr/logr v1.4.4
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.39.0
@@ -30,6 +31,7 @@ require (
 	k8s.io/kube-openapi v0.0.0-20260317180543-43fb72c5454a
 	k8s.io/metrics v0.31.1
 	sigs.k8s.io/controller-runtime v0.24.0
+	sigs.k8s.io/yaml v1.6.0
 )
 
 require (
@@ -61,7 +63,6 @@ require (
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
 	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/go-errors/errors v1.4.2 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect
@@ -82,6 +83,7 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.18.7 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
+	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
 	github.com/linkdata/deadlock v0.5.5 // indirect
 	github.com/lufia/plan9stats v0.0.0-20260330125221-c963978e514e // indirect
@@ -157,5 +159,4 @@ require (
 	sigs.k8s.io/kustomize/kyaml v0.17.1 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.2 // indirect
-	sigs.k8s.io/yaml v1.6.0 // indirect
 )

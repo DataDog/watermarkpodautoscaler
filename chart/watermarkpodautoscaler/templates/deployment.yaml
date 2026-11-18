@@ -47,6 +47,9 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --loglevel={{ .Values.logLevel }}
+            {{- if include "watermarkpodautoscaler.controllerConfig.enabled" . }}
+            - --controller-config-file=/etc/wpa-controller/{{ .Values.controllerConfig.configMapKey }}
+            {{- end }}
           env:
             - name: WATCH_NAMESPACE
             {{- if .Values.watchAllNamespaces }}
@@ -71,8 +74,21 @@ spec:
               path: /metrics
               port: 8383
             initialDelaySeconds: 5
+          {{- if include "watermarkpodautoscaler.controllerConfig.enabled" . }}
+          volumeMounts:
+            # No subPath: kubelet does not update subPath mounts.
+            - name: controller-config
+              mountPath: /etc/wpa-controller
+              readOnly: true
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+      {{- if include "watermarkpodautoscaler.controllerConfig.enabled" . }}
+      volumes:
+        - name: controller-config
+          configMap:
+            name: {{ include "watermarkpodautoscaler.controllerConfig.configMapName" . }}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
