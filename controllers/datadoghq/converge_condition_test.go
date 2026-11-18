@@ -169,6 +169,46 @@ func TestConvergeConditionMetricFollowsTheMode(t *testing.T) {
 	}
 }
 
+func TestConvergeModeMetric(t *testing.T) {
+	high, low := string(v1alpha1.ConvergeUpwards), string(v1alpha1.ConvergeDownwards)
+	tests := []struct {
+		name              string
+		spec, controller  v1alpha1.ConvergeTowardsWatermarkType
+		recommender       bool
+		wantMode, wantSrc string // empty: no series at 1
+	}{
+		{name: "spec", spec: v1alpha1.ConvergeDownwards, controller: v1alpha1.ConvergeUpwards, wantMode: low, wantSrc: "spec"},
+		{name: "controller default", controller: v1alpha1.ConvergeUpwards, wantMode: high, wantSrc: "controller_default"},
+		{name: "disabled in the spec", spec: v1alpha1.ConvergeDisabled, controller: v1alpha1.ConvergeUpwards},
+		{name: "not set"},
+		{name: "default not applied with a recommender", controller: v1alpha1.ConvergeUpwards, recommender: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wpa := newConvergeWPA("converge-mode-metric", tt.spec, tt.controller, tt.recommender)
+			t.Cleanup(func() { cleanupAssociatedMetrics(wpa, false) })
+			setConvergeModeMetric(wpa)
+			labels := getPromBaseLabels(wpa)
+			for _, mode := range []string{high, low} {
+				for _, src := range []string{"spec", "controller_default"} {
+					labels[modePromLabel], labels[sourcePromLabel] = mode, src
+					want := boolToFloat64(mode == tt.wantMode && src == tt.wantSrc)
+					assert.InDelta(t, want, getGaugeVal(t, convergeMode.With(labels)), 0, "%s/%s", mode, src)
+				}
+			}
+		})
+	}
+}
+
+func TestConvergeModeMetricCleanup(t *testing.T) {
+	wpa := newConvergeWPA("converge-mode-cleanup", "", v1alpha1.ConvergeUpwards, false)
+	setConvergeModeMetric(wpa)
+	cleanupAssociatedMetrics(wpa, false)
+	labels := getPromBaseLabels(wpa)
+	labels[modePromLabel], labels[sourcePromLabel] = string(v1alpha1.ConvergeUpwards), "controller_default"
+	assert.False(t, convergeMode.Delete(labels), "a deleted WPA removes its converge mode series")
+}
+
 func TestSetConvergeNotEvaluated(t *testing.T) {
 	wpa := newConvergeWPA("converge-not-evaluated", v1alpha1.ConvergeUpwards, "", false)
 	t.Cleanup(func() { cleanupAssociatedMetrics(wpa, false) })

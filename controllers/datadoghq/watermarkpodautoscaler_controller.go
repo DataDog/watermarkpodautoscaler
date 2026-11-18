@@ -183,6 +183,7 @@ func (r *WatermarkPodAutoscalerReconciler) Reconcile(ctx context.Context, reques
 
 	// Resolve the controller defaults, in the status only.
 	r.setStatusDefaults(instance)
+	setConvergeModeMetric(instance)
 
 	span.SetTag("wpa", instance.Name)
 	span.SetTag("namespace", instance.Namespace)

@@ -38,6 +38,8 @@ const (
 	methodPromLabel            = "method"
 	codePromLabel              = "code"
 	conditionPromLabel         = "condition"
+	modePromLabel              = "mode"
+	sourcePromLabel            = "source"
 	// Label values
 	downscaleCappingPromLabelVal = "downscale_capping"
 	upscaleCappingPromLabelVal   = "upscale_capping"
@@ -52,6 +54,12 @@ var reasonValues = []string{downscaleCappingPromLabelVal, upscaleCappingPromLabe
 var convergeConditionValues = map[datadoghqv1alpha1.ConvergeTowardsWatermarkType]string{
 	datadoghqv1alpha1.ConvergeUpwards:   "converge_to_high_watermark",
 	datadoghqv1alpha1.ConvergeDownwards: "converge_to_low_watermark",
+}
+
+// convergeModeSources maps a source of the convergence mode to its 'source' label of the converge mode metric.
+var convergeModeSources = map[string]string{
+	convergeSourceSpec:    "spec",
+	convergeSourceDefault: "controller_default",
 }
 
 // tracked conditions
@@ -251,6 +259,14 @@ var (
 		},
 		append(defaultPromLabels, conditionPromLabel),
 	)
+	convergeMode = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: subsystem,
+			Name:      "converge_towards_watermark",
+			Help:      "1 for the effective convergence mode of the WPA and its source (spec or controller_default), 0 otherwise",
+		},
+		append(defaultPromLabels, modePromLabel, sourcePromLabel),
+	)
 )
 
 func init() {
@@ -276,6 +292,7 @@ func init() {
 	sigmetrics.Registry.MustRegister(requestErrorsTotal)
 	sigmetrics.Registry.MustRegister(responseInflight)
 	sigmetrics.Registry.MustRegister(conditions)
+	sigmetrics.Registry.MustRegister(convergeMode)
 }
 
 func cleanupAssociatedMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, onlyMetricsSpecific bool) {
@@ -358,8 +375,8 @@ func getPrometheusLabels(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) promethe
 	}
 }
 
-// cleanupConditionMetrics deletes the conditions series of the WPA: the tracked conditions and both convergence
-// directions.
+// cleanupConditionMetrics deletes the conditions series of the WPA (the tracked conditions and both convergence
+// directions) and its converge mode series.
 func cleanupConditionMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
 	labels := getPrometheusLabels(wpa)
 	for _, labelVal := range trackedConditions {
@@ -369,6 +386,28 @@ func cleanupConditionMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
 	for _, labelVal := range convergeConditionValues {
 		labels[conditionPromLabel] = labelVal
 		conditions.Delete(labels)
+	}
+	delete(labels, conditionPromLabel)
+	for mode := range convergeConditionValues {
+		labels[modePromLabel] = string(mode)
+		for _, sourceVal := range convergeModeSources {
+			labels[sourcePromLabel] = sourceVal
+			convergeMode.Delete(labels)
+		}
+	}
+}
+
+// setConvergeModeMetric sets the converge mode series of the WPA: 1 for its effective mode and source, 0 for the
+// others, so that the WPAs with the convergence enabled can be counted whether they converge or not.
+func setConvergeModeMetric(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
+	effective, source := effectiveConvergeTowardsWatermark(wpa)
+	labels := getPrometheusLabels(wpa)
+	for mode := range convergeConditionValues {
+		labels[modePromLabel] = string(mode)
+		for s, sourceVal := range convergeModeSources {
+			labels[sourcePromLabel] = sourceVal
+			convergeMode.With(labels).Set(boolToFloat64(mode == effective && s == source))
+		}
 	}
 }
 
