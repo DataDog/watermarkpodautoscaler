@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	goruntime "runtime"
 	"sync"
 	"testing"
 	"time"
@@ -772,6 +773,10 @@ func TestTargetStretchControllerConfigReload(t *testing.T) {
 	w := newStretchWiring(t, tc, wpa, config.DisabledTargetStretchConfig())
 	w.r.Options.TargetStretch = stretch
 	w.r.stretchEvents = make(chan event.GenericEvent, 10)
+	w.r.stretchNotify = make(chan struct{}, 1)
+	dispatchCtx, stopDispatch := context.WithCancel(t.Context())
+	t.Cleanup(stopDispatch)
+	go func() { _ = w.r.runStretchDispatcher(dispatchCtx) }()
 	fileProvider.OnChange(func(previous, current *config.ControllerConfig) {
 		if !reflect.DeepEqual(previous.TargetStretch, current.TargetStretch) {
 			w.r.OnTargetStretchConfigChange(t.Context())
@@ -821,3 +826,56 @@ func TestTargetStretchControllerConfigReload(t *testing.T) {
 	assert.Equal(t, "enabled-opt-out", got.Status.TargetStretch.Mode)
 	assert.Equal(t, "1.1", got.Status.TargetStretch.AppliedRatio)
 }
+
+// Without a consumer (a standby replica), configuration changes must not pile up goroutines or block; the
+// latest configuration is applied once a consumer appears.
+func TestTargetStretchChangeDispatchBoundedWithoutConsumer(t *testing.T) {
+	tenPods := makeScale(testDeploymentName, 10, map[string]string{"name": podNamePrefix})
+	tenPods.Namespace = testNamespace
+	metric := externalWiringMetric()
+	tc := &replicaCalcTestCase{scale: tenPods, metric: &metricInfo{spec: metric, levels: []int64{78000}}, timestamp: time.Now()}
+	wpa := wiringWPA(&metric, nil)
+	t.Cleanup(func() { cleanupAssociatedMetrics(wpa, false) })
+	w := newStretchWiring(t, tc, wpa, config.DisabledTargetStretchConfig())
+	w.r.stretchEvents = make(chan event.GenericEvent) // unbuffered: nothing is consumed until the test reads
+	w.r.stretchNotify = make(chan struct{}, 1)
+
+	ratio := 1.2
+	current := &config.ControllerConfig{Version: "v1"}
+	w.r.Options.TargetStretch = &config.ControllerTargetStretchProvider{Config: providerFunc(func() *config.ControllerConfig { return current })}
+
+	before := goruntime.NumGoroutine()
+	modes := []string{"dry-run-opt-in", "enabled-opt-in", "dry-run-opt-out", "enabled-opt-out"}
+	for i := range 200 {
+		current = &config.ControllerConfig{Version: "v1", TargetStretch: &config.TargetStretchSettings{Mode: modes[i%len(modes)], Ratio: &ratio}}
+		w.r.OnTargetStretchConfigChange(t.Context()) // must return immediately
+	}
+	assert.LessOrEqual(t, goruntime.NumGoroutine(), before+2, "no goroutine per change without a consumer")
+	assert.Len(t, w.r.stretchNotify, 1, "changes are coalesced into one pending signal")
+	assert.InDelta(t, 1, testutil.ToFloat64(targetStretchMode.With(prometheus.Labels{modePromLabel: "enabled-opt-out"})), 0, "the gauges show the latest config")
+
+	// The consumer appears (this replica becomes the leader): one dispatch enqueues the WPA, and the reconcile
+	// reads the latest configuration.
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	go func() { _ = w.r.runStretchDispatcher(ctx) }()
+	select {
+	case ev := <-w.r.stretchEvents:
+		assert.Equal(t, wpa.Name, ev.Object.GetName())
+	case <-time.After(5 * time.Second):
+		t.Fatal("the pending change was not dispatched once a consumer appeared")
+	}
+	got := w.reconcile(t, wpa)
+	require.NotNil(t, got.Status.TargetStretch)
+	assert.Equal(t, "enabled-opt-out", got.Status.TargetStretch.Mode, "the latest config is applied")
+	select {
+	case <-w.r.stretchEvents:
+		t.Fatal("coalesced changes must dispatch once")
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+// providerFunc adapts a function to config.Provider.
+type providerFunc func() *config.ControllerConfig
+
+func (f providerFunc) Get() *config.ControllerConfig { return f() }

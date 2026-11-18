@@ -589,27 +589,43 @@ func cleanupTargetStretchMetrics(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) 
 const stretchEventsBuffer = 1024
 
 // OnTargetStretchConfigChange applies a reloaded target stretch configuration: it refreshes the controller-level
-// gauges right away and enqueues every WPA, so the selection, status, condition and per-WPA gauges follow without
-// waiting for the periodic requeue. It does not block the caller (the configuration provider goroutine).
-func (r *WatermarkPodAutoscalerReconciler) OnTargetStretchConfigChange(ctx context.Context) {
+// gauges right away and signals the dispatcher to enqueue every WPA, so the selection, status, condition and
+// per-WPA gauges follow without waiting for the periodic requeue. It never blocks and never starts a goroutine:
+// the signal is coalesced in a one-slot channel, so a replica that is not the leader (no dispatcher running)
+// keeps at most one pending signal, and the dispatcher lists the WPAs when it starts.
+func (r *WatermarkPodAutoscalerReconciler) OnTargetStretchConfigChange(_ context.Context) {
 	cfg := r.targetStretchConfig()
 	RecordTargetStretchConfigMetrics(cfg)
 	r.Log.Info("Target stretch configuration changed", "mode", cfg.Mode, "ratio", config.FormatRatioMilli(cfg.RatioMilli), "valid", cfg.Valid)
-	if r.stretchEvents == nil || r.Client == nil {
+	if r.stretchNotify == nil {
 		return
 	}
-	go func() {
+	select {
+	case r.stretchNotify <- struct{}{}:
+	default: // a change is already pending: the dispatcher reads the current configuration anyway
+	}
+}
+
+// runStretchDispatcher is the single long-lived dispatcher of the target stretch change signals. Added to the
+// manager as a leader-election runnable, it only runs on the leader, where the controller consumes stretchEvents.
+func (r *WatermarkPodAutoscalerReconciler) runStretchDispatcher(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-r.stretchNotify:
+		}
 		list := &datadoghqv1alpha1.WatermarkPodAutoscalerList{}
 		if err := r.Client.List(ctx, list); err != nil {
 			r.Log.Error(err, "unable to list the WPAs after a target stretch configuration change, relying on the periodic requeue")
-			return
+			continue
 		}
 		for i := range list.Items {
 			select {
 			case r.stretchEvents <- event.GenericEvent{Object: &list.Items[i]}:
 			case <-ctx.Done():
-				return
+				return nil
 			}
 		}
-	}()
+	}
 }

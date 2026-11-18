@@ -8,6 +8,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -123,4 +124,35 @@ func TestFileProviderTargetStretchReload(t *testing.T) {
 	assert.Equal(t, TargetStretchModeDisabled, stretch.TargetStretchConfig().Mode, "removing the section falls back to the env config")
 	assert.Len(t, changes, 2)
 	assert.InDelta(t, 1, testutil.ToFloat64(configValid), 0)
+}
+
+// Concurrent reloads of the same transition notify exactly once.
+func TestFileProviderConcurrentReloadNotifiesOnce(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("version: v1\n"), 0o600))
+	p := NewFileProvider(path, logf.Log)
+	var mu sync.Mutex
+	var modes []string
+	p.OnChange(func(_, current *ControllerConfig) {
+		mu.Lock()
+		defer mu.Unlock()
+		modes = append(modes, current.TargetStretch.Mode)
+	})
+
+	var want []string
+	for i := range 10 {
+		mode := []string{"dry-run-opt-in", "enabled-opt-in"}[i%2]
+		want = append(want, mode)
+		require.NoError(t, os.WriteFile(path, []byte("version: v1\ntargetStretch:\n  mode: "+mode+"\n  ratio: 1.2\n"), 0o600))
+		var wg sync.WaitGroup
+		for range 128 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				p.Reload()
+			}()
+		}
+		wg.Wait()
+	}
+	assert.Equal(t, want, modes, "each transition notifies exactly once, in order")
 }

@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -143,6 +144,8 @@ type FileProvider struct {
 	path    string
 	log     logr.Logger
 	current atomic.Pointer[ControllerConfig]
+	// loadMu serializes load: read, compare, store and notify, so each transition notifies exactly once, in order.
+	loadMu sync.Mutex
 	// fileLoaded is set once a file has been read. Only used by load.
 	fileLoaded bool
 	// onChange are called, in the provider goroutine, after a reload that changed the configuration.
@@ -170,6 +173,8 @@ func (p *FileProvider) Get() *ControllerConfig {
 // load reads the file and swaps the current configuration, keeping the last valid one on error.
 // A missing or blank file is an empty configuration only until a file has been read.
 func (p *FileProvider) load(startup bool) {
+	p.loadMu.Lock()
+	defer p.loadMu.Unlock()
 	data, err := os.ReadFile(p.path)
 	switch {
 	case err != nil && errors.Is(err, os.ErrNotExist) && !p.fileLoaded:

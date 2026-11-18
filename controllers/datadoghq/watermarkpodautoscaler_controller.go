@@ -47,6 +47,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
@@ -122,6 +123,8 @@ type WatermarkPodAutoscalerReconciler struct {
 	replicaCalc   ReplicaCalculatorItf
 	// stretchEvents enqueues every WPA when the target stretch configuration changes (see OnTargetStretchConfigChange).
 	stretchEvents chan event.GenericEvent
+	// stretchNotify coalesces the target stretch change signals for runStretchDispatcher (one pending at most).
+	stretchNotify chan struct{}
 	Options       Options
 }
 
@@ -1136,6 +1139,11 @@ func (r *WatermarkPodAutoscalerReconciler) setStatusDefaults(wpa *datadoghqv1alp
 // SetupWithManager creates a new Watermarkpodautoscaler controller
 func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, workers int) error {
 	r.stretchEvents = make(chan event.GenericEvent, stretchEventsBuffer)
+	r.stretchNotify = make(chan struct{}, 1)
+	// Leader-election runnable: the dispatcher only runs where the controller consumes stretchEvents.
+	if err := mgr.Add(manager.RunnableFunc(r.runStretchDispatcher)); err != nil {
+		return err
+	}
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&datadoghqv1alpha1.WatermarkPodAutoscaler{}, builder.WithPredicates(predicate.Funcs{UpdateFunc: updatePredicate})).
 		WatchesRawSource(source.Channel(r.stretchEvents, &handler.EnqueueRequestForObject{})).
