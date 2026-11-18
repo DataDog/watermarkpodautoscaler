@@ -26,6 +26,19 @@ rbac:
 watchAllNamespaces: true
 # Labels to be included as metric tags
 labelsAsTags: []
+# Controller configuration file, reloaded live. See docs/controller-config.md.
+controllerConfig:
+  # Mount the file. Implied by `existingConfigMap` or a default below.
+  enabled: false
+  # Use your own ConfigMap instead of the generated one (`defaults` is then ignored).
+  existingConfigMap: ""
+  # ConfigMap key holding the file.
+  configMapKey: config.yaml
+  # Content of the generated ConfigMap.
+  defaults:
+    # Default spec.convergeTowardsWatermark: "highwatermark", "lowwatermark", "disabled" or "" (none).
+    # Not applied to the WPAs that use a recommender.
+    convergeTowardsWatermark: ""
 podSecurityContext: {}
 # fsGroup: 2000
 

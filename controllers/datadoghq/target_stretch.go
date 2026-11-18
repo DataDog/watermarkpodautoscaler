@@ -335,6 +335,7 @@ func (r *WatermarkPodAutoscalerReconciler) emitTargetStretchEvents(wpa *datadogh
 // watermarks. It reuses the metric values already fetched, and skips forbidden windows, delays and limit factors.
 func (r *WatermarkPodAutoscalerReconciler) computeShadowReplicas(ctx context.Context, logger logr.Logger, wpa *datadoghqv1alpha1.WatermarkPodAutoscaler, scale *autoscalingv1.Scale, d targetStretchDecision, calcs []ReplicaCalculation) *int32 {
 	shadow := wpa.DeepCopy()
+	markTargetStretchShadow(shadow)
 	var replicas int32
 	if wpa.Spec.Recommender != nil {
 		reco := effectiveRecommender(wpa.Spec.Recommender, d.appliedRatioMilli)
@@ -382,6 +383,21 @@ func (r *WatermarkPodAutoscalerReconciler) computeShadowReplicas(ctx context.Con
 	replicas = math32.Cap(replicas, minReplicas, wpa.Spec.MaxReplicas)
 	logger.Info("Target stretch shadow recommendation", "replicasRecommended", replicas, "ratio", config.FormatRatioMilli(d.appliedRatioMilli))
 	return &replicas
+}
+
+// targetStretchShadowAnnotation marks the in-memory WPA copy of the dry-run shadow computation. It is never
+// persisted: the shadow copy is not written back.
+const targetStretchShadowAnnotation = "wpa.datadoghq.com/internal-target-stretch-shadow"
+
+func markTargetStretchShadow(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) {
+	if wpa.Annotations == nil {
+		wpa.Annotations = map[string]string{}
+	}
+	wpa.Annotations[targetStretchShadowAnnotation] = "true"
+}
+
+func isTargetStretchShadow(wpa *datadoghqv1alpha1.WatermarkPodAutoscaler) bool {
+	return wpa.Annotations[targetStretchShadowAnnotation] == "true"
 }
 
 // targetStretchFlags is the per-WPA state used for the controller-level counts.

@@ -61,6 +61,9 @@ var (
 	// ConvergeUpwards will suggest upscaling the target for a value to converge towards it's Low Watermark.
 	// +optional
 	ConvergeDownwards ConvergeTowardsWatermarkType = "lowwatermark"
+	// ConvergeDisabled disables the convergence, overriding the controller default.
+	// +optional
+	ConvergeDisabled ConvergeTowardsWatermarkType = "disabled"
 )
 
 // WatermarkPodAutoscalerSpec defines the desired state of WatermarkPodAutoscaler
@@ -96,6 +99,7 @@ type WatermarkPodAutoscalerSpec struct {
 
 	// Try to make the usage converge towards High Watermark to save resources. This will slowly downscale by `ReplicaScalingAbsoluteModulo`
 	// if the predicted usage stays bellow the high watermarks.
+	// One of `highwatermark`, `lowwatermark` or `disabled`. When not set, the controller default applies, except with a recommender.
 	ConvergeTowardsWatermark ConvergeTowardsWatermarkType `json:"convergeTowardsWatermark,omitempty"`
 
 	// Parameter used to be a float, in order to support the transition seamlessly, we validate that it is ]0;1[ in the code.
@@ -302,7 +306,12 @@ type WatermarkPodAutoscalerStatus struct {
 	// It is set only when the WPA is selected by the cluster-wide stretch mode.
 	// +optional
 	TargetStretch *TargetStretchStatus `json:"targetStretch,omitempty"`
+
+	// Defaults reports the defaults of the controller configuration, on every WPA. Whether they apply depends on the spec.
+	// +optional
+	Defaults *WatermarkPodAutoscalerStatusDefaults `json:"defaults,omitempty"`
 }
+
 
 // TargetStretchStatus describes the cluster-wide target stretch applied to a WPA.
 // +k8s:openapi-gen=true
@@ -329,6 +338,15 @@ type TargetStretchWatermarks struct {
 	LowWatermark resource.Quantity `json:"lowWatermark"`
 	// HighWatermark is the stretched high watermark.
 	HighWatermark resource.Quantity `json:"highWatermark"`
+}
+
+
+// WatermarkPodAutoscalerStatusDefaults holds the defaults of the controller configuration.
+// +k8s:openapi-gen=true
+type WatermarkPodAutoscalerStatusDefaults struct {
+	// ConvergeTowardsWatermark is the controller default. It does not apply with a spec value or a recommender.
+	// +optional
+	ConvergeTowardsWatermark ConvergeTowardsWatermarkType `json:"convergeTowardsWatermark,omitempty"`
 }
 
 // MetricStatus describes the last-read state of a single metric.

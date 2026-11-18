@@ -1,0 +1,17 @@
+{{- if and (include "watermarkpodautoscaler.controllerConfig.enabled" .) (not .Values.controllerConfig.existingConfigMap) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "watermarkpodautoscaler.controllerConfig.configMapName" . }}
+  labels:
+    {{- include "watermarkpodautoscaler.labels" . | nindent 4 }}
+data:
+  {{ .Values.controllerConfig.configMapKey }}: |
+    version: v1
+    defaults:
+      {{- with .Values.controllerConfig.defaults.convergeTowardsWatermark }}
+      convergeTowardsWatermark: {{ . | quote }}
+      {{- else }}
+      {}
+      {{- end }}
+{{- end }}

@@ -344,7 +344,10 @@ func TestTargetStretchReconcileConvergence(t *testing.T) {
 				assert.Equal(t, int32(9), *ts.ReplicasRecommended, "the shadow converges on the stretched watermarks")
 				// The shadow converges (it would set True); the persisted condition must come from the real path.
 				assert.Equal(t, corev1.ConditionFalse, converge.Status, "shadow conditions must not leak into the persisted status")
-				assert.Equal(t, convergeToWatermarkUnstable, converge.Message)
+				assert.Equal(t, convergedToHighWatermarkReason, converge.Reason)
+				l := getPrometheusLabels(got)
+				l[conditionPromLabel] = convergeConditionValues[v1alpha1.ConvergeUpwards]
+				assert.InDelta(t, 0, testutil.ToFloat64(conditions.With(l)), 0, "the shadow must not overwrite the live convergence gauge")
 			}
 		})
 	}
