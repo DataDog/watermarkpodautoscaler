@@ -83,6 +83,23 @@ wpa_controller_conditions{condition="converge_to_low_watermark", wpa_name="...",
 For instance, `sum by (condition) (wpa_controller_conditions{condition=~"converge_to_.*"})` counts the WPAs
 converging in each direction.
 
+To follow the activation, independently of whether a WPA is converging at the moment:
+
+* `wpa_controller_config_default_converge_towards_watermark{mode}` is 1 for the default of the controller
+  configuration (`highwatermark`, `lowwatermark`, `disabled`, or `none` when unset), 0 for the other modes. It is
+  exposed by every controller replica.
+* `wpa_controller_converge_towards_watermark{mode, source, wpa_name, ...}` has one series per WPA, at 1, for its
+  effective mode and where it comes from:
+
+  | Label | Values |
+  |---|---|
+  | `mode` | `highwatermark`, `lowwatermark`, `disabled`, `none` (no mode), `unknown` (a spec value that is not a mode) |
+  | `source` | `spec`, `controller_default`, `not_set`, `recommender` (default not applied: the WPA uses a recommender) |
+
+For instance, `sum by (source) (wpa_controller_converge_towards_watermark{mode="highwatermark"})` counts the WPAs
+with the convergence towards the high watermark enabled, by source, and
+`sum by (mode) (wpa_controller_converge_towards_watermark)` counts all the WPAs by mode.
+
 ## Reloading
 
 The file is reloaded without restarting the controller. Each WPA picks up the change at its next periodic

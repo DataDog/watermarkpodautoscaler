@@ -190,3 +190,25 @@ func TestFileProviderWatchSymlinkSwap(t *testing.T) {
 		}
 	}
 }
+
+func TestFileProviderDefaultConvergeMetric(t *testing.T) {
+	mode := func(m string) float64 { return testutil.ToFloat64(defaultConvergeMetric.WithLabelValues(m)) }
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	p := NewFileProvider(path, logf.Log)
+	assert.InDelta(t, 1, mode("none"), 0, "no file: no default")
+	assert.InDelta(t, 0, mode("highwatermark"), 0)
+
+	require.NoError(t, os.WriteFile(path, []byte("version: v1\ndefaults:\n  convergeTowardsWatermark: highwatermark\n"), 0o600))
+	p.load(false)
+	assert.InDelta(t, 1, mode("highwatermark"), 0)
+	assert.InDelta(t, 0, mode("none"), 0, "the previous mode is reset")
+
+	require.NoError(t, os.WriteFile(path, []byte("version: v2\n"), 0o600))
+	p.load(false)
+	assert.InDelta(t, 1, mode("highwatermark"), 0, "an invalid file keeps the last default")
+
+	require.NoError(t, os.WriteFile(path, []byte("version: v1\ndefaults:\n  convergeTowardsWatermark: disabled\n"), 0o600))
+	p.load(false)
+	assert.InDelta(t, 1, mode("disabled"), 0)
+	assert.InDelta(t, 0, mode("highwatermark"), 0)
+}

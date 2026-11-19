@@ -34,9 +34,38 @@ var configValid = prometheus.NewGauge(prometheus.GaugeOpts{
 	Help:      "1 if the last read of the controller configuration file was valid (or no file is configured), 0 otherwise",
 })
 
+// defaultConvergeMetric reports the convergeTowardsWatermark default of the controller, to follow its activation
+// per cluster.
+var defaultConvergeMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	Subsystem: "wpa_controller",
+	Name:      "config_default_converge_towards_watermark",
+	Help:      "1 for the convergeTowardsWatermark default of the controller configuration (none when unset), 0 otherwise",
+}, []string{"mode"})
+
+// defaultConvergeModes are the values of the mode label: one series each, so that a change leaves no stale series.
+var defaultConvergeModes = []datadoghqv1alpha1.ConvergeTowardsWatermarkType{
+	"", datadoghqv1alpha1.ConvergeUpwards, datadoghqv1alpha1.ConvergeDownwards, datadoghqv1alpha1.ConvergeDisabled,
+}
+
 func init() {
-	sigmetrics.Registry.MustRegister(configValid)
+	sigmetrics.Registry.MustRegister(configValid, defaultConvergeMetric)
 	configValid.Set(1)
+	setDefaultsMetric(Defaults{})
+}
+
+// setDefaultsMetric sets the default metrics to the defaults in use.
+func setDefaultsMetric(d Defaults) {
+	for _, m := range defaultConvergeModes {
+		label := string(m)
+		if m == "" {
+			label = "none"
+		}
+		v := 0.0
+		if m == d.ConvergeTowardsWatermark {
+			v = 1
+		}
+		defaultConvergeMetric.WithLabelValues(label).Set(v)
+	}
 }
 
 // ControllerConfig is the controller configuration file. Unknown keys are rejected.
@@ -124,6 +153,7 @@ type FileProvider struct {
 func NewFileProvider(path string, log logr.Logger) *FileProvider {
 	p := &FileProvider{path: path, log: log}
 	p.current.Store(&ControllerConfig{})
+	setDefaultsMetric(Defaults{})
 	p.load(true)
 	return p
 }
@@ -167,6 +197,7 @@ func (p *FileProvider) load(startup bool) {
 	changed := !reflect.DeepEqual(cfg, p.current.Load())
 	if changed {
 		p.current.Store(cfg)
+		setDefaultsMetric(cfg.Defaults)
 	}
 	if changed || startup {
 		p.log.Info("controller configuration loaded", "path", p.path, "defaults", cfg.Defaults)
