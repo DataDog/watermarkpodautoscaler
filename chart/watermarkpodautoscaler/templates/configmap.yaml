@@ -14,4 +14,10 @@ data:
       {{- else }}
       {}
       {{- end }}
+    {{- if and .Values.targetStretch .Values.targetStretch.mode }}
+    targetStretch:
+      mode: {{ .Values.targetStretch.mode | quote }}
+      {{- /* default only an absent or null ratio: an explicit value, even 0, is rendered for the controller to validate */}}
+      ratio: {{ if kindIs "invalid" .Values.targetStretch.ratio }}1{{ else }}{{ .Values.targetStretch.ratio }}{{ end }}
+    {{- end }}
 {{- end }}

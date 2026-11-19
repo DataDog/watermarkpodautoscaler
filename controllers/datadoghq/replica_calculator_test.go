@@ -269,7 +269,7 @@ func (tc *replicaCalcTestCase) runTest(t *testing.T) {
 	if tc.recommenderResponse != nil {
 		recoClient.ReturnedResponse = *tc.recommenderResponse
 		recoClient.Error = tc.expectedError
-		replicaCalculation, err = replicaCalculator.GetRecommenderReplicas(ctx, logf.Log, tc.scale, tc.wpa)
+		replicaCalculation, err = replicaCalculator.GetRecommenderReplicas(ctx, logf.Log, tc.scale, tc.wpa, nil)
 	} else if tc.metric.spec.Resource != nil {
 		// Resource metric tests
 		// Update with the correct labels.
@@ -2254,7 +2254,7 @@ func TestAdjustReplicaCountRecommenderConverge(t *testing.T) {
 				},
 				Status: v1alpha1.WatermarkPodAutoscalerStatus{Defaults: tt.statusDefaults},
 			}
-			replicas, pos := adjustReplicaCount(logf.Log, tt.current, tt.current, wpa, tt.reco, tt.lowerBound, tt.upperBound, !tt.missingBounds)
+			replicas, pos := adjustReplicaCount(logf.Log, tt.current, tt.current, wpa, tt.reco, tt.lowerBound, tt.upperBound, !tt.missingBounds, true)
 			assert.Equal(t, tt.expectedReplicas, replicas)
 			assert.Equal(t, tt.expectedPos, pos)
 			cond, err := getCondition(&wpa.Status, v1alpha1.WatermarkPodAutoscalerStatusConvergeToWatermark)
@@ -2285,7 +2285,7 @@ func TestRecommenderConvergeIsStable(t *testing.T) {
 	current := int32(5)
 	got := []int32{current}
 	for range 5 {
-		current, _ = adjustReplicaCount(logf.Log, current, current, wpa, 5, 3, 8, true)
+		current, _ = adjustReplicaCount(logf.Log, current, current, wpa, 5, 3, 8, true, true)
 		got = append(got, current)
 	}
 	assert.Equal(t, []int32{5, 4, 3, 3, 3, 3}, got)
@@ -2306,7 +2306,7 @@ func TestRecommenderConvergeWithMovingLowerBound(t *testing.T) {
 	got := []int32{current}
 	for i := range 7 {
 		lowerBound := int32(6 + i%2)
-		current, _ = adjustReplicaCount(logf.Log, current, current, wpa, 10, lowerBound, 14, true)
+		current, _ = adjustReplicaCount(logf.Log, current, current, wpa, 10, lowerBound, 14, true, true)
 		got = append(got, current)
 	}
 	assert.Equal(t, []int32{10, 9, 8, 7, 7, 6, 7, 6}, got)
@@ -2322,7 +2322,7 @@ func TestRecommenderConvergeBoundsCappedToMinReplicas(t *testing.T) {
 			MaxReplicas:                  20,
 		},
 	}
-	replicas, _ := adjustReplicaCount(logf.Log, 5, 5, wpa, 6, 3, 14, true)
+	replicas, _ := adjustReplicaCount(logf.Log, 5, 5, wpa, 6, 3, 14, true, true)
 	assert.Equal(t, int32(5), replicas)
 	cond, err := getCondition(&wpa.Status, v1alpha1.WatermarkPodAutoscalerStatusConvergeToWatermark)
 	require.NoError(t, err)
@@ -2435,7 +2435,7 @@ func TestRecommenderNoFalseUpscaleDuringRollingUpdate(t *testing.T) {
 			Timestamp:          ts,
 			Details:            "Fake",
 		}
-		result, err := replicaCalculator.GetRecommenderReplicas(ctx, logf.Log, scale, wpa)
+		result, err := replicaCalculator.GetRecommenderReplicas(ctx, logf.Log, scale, wpa, nil)
 		require.NoError(t, err)
 
 		// The fix: WPA must send Spec.Replicas (18), not Status.Replicas (19).
@@ -2458,7 +2458,7 @@ func TestRecommenderNoFalseUpscaleDuringRollingUpdate(t *testing.T) {
 			Timestamp:          ts,
 			Details:            "Fake",
 		}
-		result, err := replicaCalculator.GetRecommenderReplicas(ctx, logf.Log, scale, wpa)
+		result, err := replicaCalculator.GetRecommenderReplicas(ctx, logf.Log, scale, wpa, nil)
 		require.NoError(t, err)
 		assert.Equal(t, int32(25), result.replicaCount,
 			"genuine upscale should still be applied")
@@ -2472,7 +2472,7 @@ func TestRecommenderNoFalseUpscaleDuringRollingUpdate(t *testing.T) {
 			Timestamp:          ts,
 			Details:            "Fake",
 		}
-		result, err := replicaCalculator.GetRecommenderReplicas(ctx, logf.Log, scale, wpa)
+		result, err := replicaCalculator.GetRecommenderReplicas(ctx, logf.Log, scale, wpa, nil)
 		require.NoError(t, err)
 		assert.Equal(t, int32(12), result.replicaCount,
 			"genuine downscale should still be applied")
