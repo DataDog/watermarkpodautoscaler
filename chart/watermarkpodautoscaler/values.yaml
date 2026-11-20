@@ -28,9 +28,9 @@ watchAllNamespaces: true
 labelsAsTags: []
 # Controller configuration file, reloaded live. See docs/controller-config.md.
 controllerConfig:
-  # Mount the file. Implied by `existingConfigMap` or a default below.
+  # Mount the file. Implied by `existingConfigMap`, a default or a feature gate below.
   enabled: false
-  # Use your own ConfigMap instead of the generated one (`defaults` is then ignored).
+  # Use your own ConfigMap instead of the generated one (`defaults` and `featureGates` are then ignored).
   existingConfigMap: ""
   # ConfigMap key holding the file.
   configMapKey: config.yaml
@@ -39,6 +39,10 @@ controllerConfig:
     # Default spec.convergeTowardsWatermark: "highwatermark", "lowwatermark", "disabled" or "" (none).
     # Not applied to the WPAs that use a recommender.
     convergeTowardsWatermark: ""
+  featureGates:
+    # WPAs with a recommender and spec.convergeTowardsWatermark converge towards the recommender bounds.
+    # Off: they follow the recommendation and converge only when it equals the current replica count.
+    recommenderBoundedConvergence: false
 podSecurityContext: {}
 # fsGroup: 2000
 

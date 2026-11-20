@@ -1,7 +1,7 @@
 # Controller configuration file
 
-The controller can read a configuration file to set **defaults** for the WPAs that do not set a value themselves.
-The file is optional: without it, the behavior is unchanged.
+The controller can read a configuration file to set **defaults** for the WPAs that do not set a value themselves,
+and to turn on **feature gates**. The file is optional: without it, the behavior is unchanged.
 
 ```
 --controller-config-file=/etc/wpa-controller/config.yaml
@@ -12,6 +12,9 @@ version: v1
 defaults:
   # Applied when spec.convergeTowardsWatermark is not set on the WPA.
   convergeTowardsWatermark: highwatermark   # highwatermark | lowwatermark | disabled | empty (no default)
+featureGates:
+  # Off by default. See below.
+  recommenderBoundedConvergence: true
 ```
 
 * `version` is required and must be `v1`. Unknown keys make the file invalid.
@@ -27,12 +30,8 @@ With `highwatermark`, a WPA whose metric is between its low and high watermarks 
 See `spec.convergeTowardsWatermark`. All the other limits (`minReplicas`, scale-down limit factor, forbidden
 windows, delays) still apply. Convergence is only officially supported for WPAs with a single metric.
 
-For WPAs that use `spec.recommender` and set `spec.convergeTowardsWatermark`, convergence steps toward the recommender's lower bound
-(`highwatermark`) or upper bound (`lowwatermark`). While the current replica count is within these bounds,
-the WPA does not follow a recommendation that goes against the convergence direction, so it does not flip
-between N and N-1. When the current count leaves the bounds, the WPA scales back to the bound, not to the
-recommendation, so a moving bound only moves the WPA by the same amount. The recommender must return bounds that do not depend on the current replica count.
-If the recommender does not return both bounds, the WPA does not converge.
+For WPAs that use `spec.recommender` and set `spec.convergeTowardsWatermark`, see
+[`featureGates.recommenderBoundedConvergence`](#featuregatesrecommenderboundedconvergence).
 
 To opt a WPA out of the default:
 
@@ -40,6 +39,22 @@ To opt a WPA out of the default:
 spec:
   convergeTowardsWatermark: disabled
 ```
+
+## `featureGates.recommenderBoundedConvergence`
+
+Applies to the WPAs that use `spec.recommender` and set `spec.convergeTowardsWatermark` (the default never applies
+to recommender WPAs). It is read at each reconcile, so it can be turned on or off without restarting the controller.
+
+* **Off (default)**: the behavior of the controller before v0.13. The WPA follows the recommendation, and converges
+  only when the recommendation equals the current replica count, with the bounds as returned by the recommender (a
+  missing bound reads as 0). With a stable recommendation, a converging WPA steps down (or up) one
+  `replicaScalingAbsoluteModulo`, then follows the recommendation back at the next reconcile.
+* **On**: convergence steps toward the recommender's lower bound (`highwatermark`) or upper bound (`lowwatermark`).
+  While the current replica count is within these bounds, the WPA does not follow a recommendation that goes against
+  the convergence direction, so it does not flip between N and N-1. When the current count leaves the bounds, the WPA
+  scales back to the bound, not to the recommendation, so a moving bound only moves the WPA by the same amount. The
+  recommender must return bounds that do not depend on the current replica count, otherwise a converging WPA walks
+  down to `minReplicas`. If the recommender does not return both bounds, the WPA does not converge.
 
 ## Observability
 
@@ -63,8 +78,8 @@ the WPA uses a recommender`).
 | `ConvergingToHighWatermark` / `ConvergingToLowWatermark` | True | Between the watermarks, the proposed next step keeps the usage within the watermark |
 | `ConvergedToHighWatermark` / `ConvergedToLowWatermark` | False | The next step would cross the watermark |
 | `OutsideWatermarks` | False | The usage is above the high or below the low watermark |
-| `OutsideRecommenderBounds` | False | Outside the recommender bounds, or the recommender returned no bounds |
-| `FollowingRecommendation` | False | Within the bounds, the WPA follows a recommendation in the convergence direction |
+| `OutsideRecommenderBounds` | False | With `recommenderBoundedConvergence`: outside the recommender bounds, or the recommender returned no bounds |
+| `FollowingRecommendation` | False | The WPA follows the recommendation (with `recommenderBoundedConvergence`: within the bounds, in the convergence direction) |
 | `ConvergenceDisabled` | False | No mode: `disabled`, not set, or the WPA uses a recommender without a spec value |
 | `NotEvaluated` | False | The replica count was not computed: error, invalid spec, lifecycle control blocking, or a tolerated 0 |
 
@@ -113,6 +128,8 @@ The chart mounts the file from a ConfigMap, whole (no `subPath`), at `/etc/wpa-c
   controllerConfig:
     defaults:
       convergeTowardsWatermark: highwatermark
+    featureGates:
+      recommenderBoundedConvergence: false   # default
   ```
 
 * Or provide your own ConfigMap (for instance managed through GitOps) whose key holds the file shown above:

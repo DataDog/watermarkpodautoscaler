@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
+	"github.com/DataDog/watermarkpodautoscaler/pkg/config"
 	"github.com/DataDog/watermarkpodautoscaler/pkg/math32"
 
 	"github.com/go-logr/logr"
@@ -68,16 +69,24 @@ type ReplicaCalculator struct {
 	recommenderClient RecommenderClient
 	podLister         corelisters.PodLister
 	k8sClusterName    string
+	// configProvider gives the feature gates, read at each calculation. Optional.
+	configProvider config.Provider
 }
 
 // NewReplicaCalculator returns a ReplicaCalculator object reference
-func NewReplicaCalculator(metricsClient metricsclient.MetricsClient, recommenderClient RecommenderClient, podLister corelisters.PodLister, k8sClusterName string) *ReplicaCalculator {
+func NewReplicaCalculator(metricsClient metricsclient.MetricsClient, recommenderClient RecommenderClient, podLister corelisters.PodLister, k8sClusterName string, configProvider config.Provider) *ReplicaCalculator {
 	return &ReplicaCalculator{
 		metricsClient:     metricsClient,
 		recommenderClient: recommenderClient,
 		podLister:         podLister,
 		k8sClusterName:    k8sClusterName,
+		configProvider:    configProvider,
 	}
+}
+
+// recommenderBoundedConvergence reports whether the featureGates.recommenderBoundedConvergence gate is on.
+func (c *ReplicaCalculator) recommenderBoundedConvergence() bool {
+	return c.configProvider != nil && c.configProvider.Get().FeatureGates.RecommenderBoundedConvergence
 }
 
 // GetExternalMetricReplicas calculates the desired replica count based on a
@@ -312,7 +321,7 @@ func (c *ReplicaCalculator) GetRecommenderReplicas(ctx context.Context, logger l
 	labelsWithMetricName[metricNamePromLabel] = metricName
 	value.With(labelsWithMetricName).Set(float64(utilizationQuantity))
 
-	replicaCount, metricPos := adjustReplicaCount(logger, target.Spec.Replicas, currentReadyReplicas, wpa, int32(reco.Replicas), int32(reco.ReplicasLowerBound), int32(reco.ReplicasUpperBound), reco.HasBounds)
+	replicaCount, metricPos := adjustReplicaCount(logger, target.Spec.Replicas, currentReadyReplicas, wpa, int32(reco.Replicas), int32(reco.ReplicasLowerBound), int32(reco.ReplicasUpperBound), reco.HasBounds, c.recommenderBoundedConvergence())
 	logger.Info("Replicas Recommender replica calculation", "metricName", metricName, "replicaCount", replicaCount, "utilizationQuantity", utilizationQuantity, "timestamp", reco.Timestamp, "currentReadyReplicas", currentReadyReplicas)
 	return ReplicaCalculation{replicaCount, utilizationQuantity, reco.Timestamp, currentReadyReplicas, metricPos, reco.Details}, nil
 }
@@ -569,7 +578,7 @@ func getReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas i
 	return replicaCount, utilizationQuantity.MilliValue(), position
 }
 
-func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, recommendedReplicaCount, lowerBoundReplicas, upperBoundReplicas int32, hasBounds bool) (replicaCount int32, position metricPosition) {
+func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, recommendedReplicaCount, lowerBoundReplicas, upperBoundReplicas int32, hasBounds, boundedConvergence bool) (replicaCount int32, position metricPosition) {
 	labelsWithReason := getPrometheusLabels(wpa)
 	labelsWithReason[reasonPromLabel] = withinBoundsPromLabelVal
 	msg := ""
@@ -578,6 +587,9 @@ func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplica
 	position.isAbove = currentReplicas < lowerBoundReplicas
 	// The controller default does not apply with a recommender: only the spec enables convergence.
 	converge, _ := effectiveConvergeTowardsWatermark(wpa)
+	if !boundedConvergence {
+		return adjustReplicaCountLegacy(logger, currentReplicas, currentReadyReplicas, wpa, converge, recommendedReplicaCount, lowerBoundReplicas, upperBoundReplicas, labelsWithReason, position)
+	}
 	// A missing bound reads as 0: only converge with both bounds.
 	withinBounds := hasBounds && !position.isAbove && !position.isBelow
 	scaleState := convergeFollowingRecommendation
@@ -634,6 +646,37 @@ func adjustReplicaCount(logger logr.Logger, currentReplicas, currentReadyReplica
 		default:
 			replicaCount = tryToConvergeToWatermark(logger, converge, currentReplicas, currentReadyReplicas, wpa, lowerBoundReplicas, upperBoundReplicas)
 		}
+	}
+
+	logger.Info(msg, "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "recommendedReplicaCount", recommendedReplicaCount, "upperBoundReplicas", upperBoundReplicas, "lowerBoundReplicas", lowerBoundReplicas)
+
+	return replicaCount, position
+}
+
+// adjustReplicaCountLegacy is the recommender path without the featureGates.recommenderBoundedConvergence gate, as
+// before v0.13: follow the recommendation, and converge only when it equals the current replica count, with the
+// bounds as returned (a missing bound reads as 0).
+func adjustReplicaCountLegacy(logger logr.Logger, currentReplicas, currentReadyReplicas int32, wpa *v1alpha1.WatermarkPodAutoscaler, converge v1alpha1.ConvergeTowardsWatermarkType, recommendedReplicaCount, lowerBoundReplicas, upperBoundReplicas int32, labelsWithReason prometheus.Labels, position metricPosition) (replicaCount int32, _ metricPosition) {
+	msg := ""
+	switch {
+	// Upscale
+	case recommendedReplicaCount > currentReplicas:
+		msg = "Value is above highMark"
+		restrictedScaling.With(labelsWithReason).Set(0)
+		replicaCount = adjustReplicaCountForUpscale(logger, currentReplicas, currentReadyReplicas, wpa, recommendedReplicaCount)
+		setConvergeCondition(wpa, converge, convergeFollowingRecommendation)
+	// Downscale
+	case recommendedReplicaCount < currentReplicas:
+		msg = "Value is below lowMark"
+		restrictedScaling.With(labelsWithReason).Set(0)
+		replicaCount = adjustReplicaCountForDownscale(logger, currentReplicas, currentReadyReplicas, wpa, recommendedReplicaCount)
+		setConvergeCondition(wpa, converge, convergeFollowingRecommendation)
+	// If within bounds, do nothing unless converging is enabled
+	default:
+		msg = "Within bounds of the watermarks"
+		position.isAbove = false
+		position.isBelow = false
+		replicaCount = tryToConvergeToWatermark(logger, converge, currentReplicas, currentReadyReplicas, wpa, lowerBoundReplicas, upperBoundReplicas)
 	}
 
 	logger.Info(msg, "replicaCount", replicaCount, "currentReadyReplicas", currentReadyReplicas, "recommendedReplicaCount", recommendedReplicaCount, "upperBoundReplicas", upperBoundReplicas, "lowerBoundReplicas", lowerBoundReplicas)

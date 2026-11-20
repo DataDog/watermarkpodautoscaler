@@ -66,7 +66,7 @@ Create the name of the service account to use
 Whether the controller configuration file is mounted
 */}}
 {{- define "watermarkpodautoscaler.controllerConfig.enabled" -}}
-{{- if or .Values.controllerConfig.enabled .Values.controllerConfig.existingConfigMap .Values.controllerConfig.defaults.convergeTowardsWatermark -}}
+{{- if or .Values.controllerConfig.enabled .Values.controllerConfig.existingConfigMap .Values.controllerConfig.defaults.convergeTowardsWatermark .Values.controllerConfig.featureGates.recommenderBoundedConvergence -}}
 true
 {{- end -}}
 {{- end -}}

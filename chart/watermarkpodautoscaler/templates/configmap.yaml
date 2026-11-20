@@ -14,4 +14,8 @@ data:
       {{- else }}
       {}
       {{- end }}
+    {{- if .Values.controllerConfig.featureGates.recommenderBoundedConvergence }}
+    featureGates:
+      recommenderBoundedConvergence: true
+    {{- end }}
 {{- end }}

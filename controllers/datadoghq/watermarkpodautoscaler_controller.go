@@ -1133,7 +1133,7 @@ func (r *WatermarkPodAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, wo
 	if k8sClusterName != "" {
 		mgr.GetLogger().Info("Cluster name", "name", k8sClusterName)
 	}
-	replicaCalc := NewReplicaCalculator(mc, rc, pl, k8sClusterName)
+	replicaCalc := NewReplicaCalculator(mc, rc, pl, k8sClusterName, r.Options.ConfigProvider)
 
 	r.replicaCalc = replicaCalc
 	r.scaleClient = scaleClient

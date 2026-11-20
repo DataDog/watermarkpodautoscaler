@@ -47,6 +47,17 @@ func TestParseControllerConfig(t *testing.T) {
 		{name: "defaults set to null", data: "version: v1\ndefaults:\n", want: &ControllerConfig{Version: "v1"}},
 		{name: "empty mapping is not blank", data: "{}", wantErr: "unsupported controller configuration version"},
 		{name: "empty defaults without version", data: "defaults: {}\n", wantErr: "unsupported controller configuration version"},
+		{
+			name: "recommenderBoundedConvergence gate",
+			data: "version: v1\nfeatureGates:\n  recommenderBoundedConvergence: true\n",
+			want: &ControllerConfig{Version: "v1", FeatureGates: FeatureGates{RecommenderBoundedConvergence: true}},
+		},
+		{
+			name: "gate and defaults",
+			data: "version: v1\ndefaults:\n  convergeTowardsWatermark: highwatermark\nfeatureGates:\n  recommenderBoundedConvergence: false\n",
+			want: &ControllerConfig{Version: "v1", Defaults: Defaults{ConvergeTowardsWatermark: v1alpha1.ConvergeUpwards}},
+		},
+		{name: "unknown gate", data: "version: v1\nfeatureGates:\n  recommenderBoundedConvergance: true\n", wantErr: "unknown field"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

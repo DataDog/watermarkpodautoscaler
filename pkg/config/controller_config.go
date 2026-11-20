@@ -45,6 +45,17 @@ type ControllerConfig struct {
 	Version string `json:"version"`
 	// Defaults apply to the WPAs that do not set the value.
 	Defaults Defaults `json:"defaults,omitempty"`
+	// FeatureGates enable new behaviors. They are all off by default.
+	FeatureGates FeatureGates `json:"featureGates,omitempty"`
+}
+
+// FeatureGates are the opt-in behaviors of the controller.
+type FeatureGates struct {
+	// RecommenderBoundedConvergence makes the WPAs that use a recommender and set spec.convergeTowardsWatermark
+	// converge towards the recommender bounds: within the bounds, the recommendation is not followed against the
+	// convergence direction; outside, the WPA scales back to the bound; without both bounds, it does not converge.
+	// Off: the recommendation is followed, and the WPA converges only when it equals the current replica count.
+	RecommenderBoundedConvergence bool `json:"recommenderBoundedConvergence,omitempty"`
 }
 
 // Defaults contains the default values of the WPA settings.
@@ -169,7 +180,7 @@ func (p *FileProvider) load(startup bool) {
 		p.current.Store(cfg)
 	}
 	if changed || startup {
-		p.log.Info("controller configuration loaded", "path", p.path, "defaults", cfg.Defaults)
+		p.log.Info("controller configuration loaded", "path", p.path, "defaults", cfg.Defaults, "featureGates", cfg.FeatureGates)
 	}
 }
 

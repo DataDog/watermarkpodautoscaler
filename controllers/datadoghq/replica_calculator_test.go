@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/DataDog/watermarkpodautoscaler/apis/datadoghq/v1alpha1"
+	"github.com/DataDog/watermarkpodautoscaler/pkg/config"
 	"github.com/DataDog/watermarkpodautoscaler/third_party/kubernetes/pkg/controller/podautoscaler/metrics"
 )
 
@@ -254,7 +255,7 @@ func (tc *replicaCalcTestCase) runTest(t *testing.T) {
 	mClient := metrics.NewRESTMetricsClient(rClient.MetricsV1beta1(), nil, emClient)
 	recoClient := NewMockRecommenderClient()
 
-	replicaCalculator := NewReplicaCalculator(mClient, recoClient, informer.Lister(), "test-cluster")
+	replicaCalculator := NewReplicaCalculator(mClient, recoClient, informer.Lister(), "test-cluster", nil)
 
 	stop := make(chan struct{})
 	defer close(stop)
@@ -2254,7 +2255,7 @@ func TestAdjustReplicaCountRecommenderConverge(t *testing.T) {
 				},
 				Status: v1alpha1.WatermarkPodAutoscalerStatus{Defaults: tt.statusDefaults},
 			}
-			replicas, pos := adjustReplicaCount(logf.Log, tt.current, tt.current, wpa, tt.reco, tt.lowerBound, tt.upperBound, !tt.missingBounds)
+			replicas, pos := adjustReplicaCount(logf.Log, tt.current, tt.current, wpa, tt.reco, tt.lowerBound, tt.upperBound, !tt.missingBounds, true)
 			assert.Equal(t, tt.expectedReplicas, replicas)
 			assert.Equal(t, tt.expectedPos, pos)
 			cond, err := getCondition(&wpa.Status, v1alpha1.WatermarkPodAutoscalerStatusConvergeToWatermark)
@@ -2285,7 +2286,7 @@ func TestRecommenderConvergeIsStable(t *testing.T) {
 	current := int32(5)
 	got := []int32{current}
 	for range 5 {
-		current, _ = adjustReplicaCount(logf.Log, current, current, wpa, 5, 3, 8, true)
+		current, _ = adjustReplicaCount(logf.Log, current, current, wpa, 5, 3, 8, true, true)
 		got = append(got, current)
 	}
 	assert.Equal(t, []int32{5, 4, 3, 3, 3, 3}, got)
@@ -2306,7 +2307,7 @@ func TestRecommenderConvergeWithMovingLowerBound(t *testing.T) {
 	got := []int32{current}
 	for i := range 7 {
 		lowerBound := int32(6 + i%2)
-		current, _ = adjustReplicaCount(logf.Log, current, current, wpa, 10, lowerBound, 14, true)
+		current, _ = adjustReplicaCount(logf.Log, current, current, wpa, 10, lowerBound, 14, true, true)
 		got = append(got, current)
 	}
 	assert.Equal(t, []int32{10, 9, 8, 7, 7, 6, 7, 6}, got)
@@ -2322,12 +2323,141 @@ func TestRecommenderConvergeBoundsCappedToMinReplicas(t *testing.T) {
 			MaxReplicas:                  20,
 		},
 	}
-	replicas, _ := adjustReplicaCount(logf.Log, 5, 5, wpa, 6, 3, 14, true)
+	replicas, _ := adjustReplicaCount(logf.Log, 5, 5, wpa, 6, 3, 14, true, true)
 	assert.Equal(t, int32(5), replicas)
 	cond, err := getCondition(&wpa.Status, v1alpha1.WatermarkPodAutoscalerStatusConvergeToWatermark)
 	require.NoError(t, err)
 	assert.Equal(t, corev1.ConditionFalse, cond.Status)
 	assert.Equal(t, convergedToHighWatermarkReason, cond.Reason)
+}
+
+// Without the recommenderBoundedConvergence gate (the default), the recommender path behaves as before v0.13.
+func TestAdjustReplicaCountRecommenderLegacy(t *testing.T) {
+	tests := []struct {
+		name             string
+		specConverge     v1alpha1.ConvergeTowardsWatermarkType
+		current          int32
+		reco             int32
+		lowerBound       int32
+		upperBound       int32
+		missingBounds    bool
+		expectedReplicas int32
+		expectedReason   string
+	}{
+		{
+			name:             "highwatermark at the recommendation: steps down",
+			specConverge:     v1alpha1.ConvergeUpwards,
+			current:          5,
+			reco:             5,
+			lowerBound:       3,
+			upperBound:       8,
+			expectedReplicas: 4,
+			expectedReason:   convergingToHighWatermarkReason,
+		},
+		{
+			name:             "highwatermark below the recommendation: follows it back up",
+			specConverge:     v1alpha1.ConvergeUpwards,
+			current:          4,
+			reco:             5,
+			lowerBound:       3,
+			upperBound:       8,
+			expectedReplicas: 5,
+			expectedReason:   convergeFollowingRecommendationReason,
+		},
+		{
+			name:             "highwatermark with a higher recommendation within the bounds: upscales to it",
+			specConverge:     v1alpha1.ConvergeUpwards,
+			current:          10,
+			reco:             12,
+			lowerBound:       8,
+			upperBound:       14,
+			expectedReplicas: 12,
+			expectedReason:   convergeFollowingRecommendationReason,
+		},
+		{
+			name:             "highwatermark below the lower bound: upscales to the recommendation, not to the bound",
+			specConverge:     v1alpha1.ConvergeUpwards,
+			current:          2,
+			reco:             5,
+			lowerBound:       3,
+			upperBound:       6,
+			expectedReplicas: 5,
+			expectedReason:   convergeFollowingRecommendationReason,
+		},
+		{
+			name:             "highwatermark without bounds: a missing bound reads as 0 and the WPA converges",
+			specConverge:     v1alpha1.ConvergeUpwards,
+			current:          5,
+			reco:             5,
+			missingBounds:    true,
+			expectedReplicas: 4,
+			expectedReason:   convergingToHighWatermarkReason,
+		},
+		{
+			name:             "lowwatermark at the recommendation: steps up",
+			specConverge:     v1alpha1.ConvergeDownwards,
+			current:          5,
+			reco:             5,
+			lowerBound:       3,
+			upperBound:       8,
+			expectedReplicas: 6,
+			expectedReason:   convergingToLowWatermarkReason,
+		},
+		{
+			name:             "no spec value: follows the recommendation only",
+			current:          5,
+			reco:             5,
+			lowerBound:       3,
+			upperBound:       8,
+			expectedReplicas: 5,
+			expectedReason:   convergenceDisabledReason,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wpa := &v1alpha1.WatermarkPodAutoscaler{
+				Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+					Recommender:                  &v1alpha1.RecommenderSpec{URL: "http://recommender.example.com", TargetType: "cpu"},
+					ConvergeTowardsWatermark:     tt.specConverge,
+					ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
+					MinReplicas:                  v1alpha1.NewInt32(1),
+					MaxReplicas:                  100,
+				},
+			}
+			replicas, _ := adjustReplicaCount(logf.Log, tt.current, tt.current, wpa, tt.reco, tt.lowerBound, tt.upperBound, !tt.missingBounds, false)
+			assert.Equal(t, tt.expectedReplicas, replicas)
+			cond, err := getCondition(&wpa.Status, v1alpha1.WatermarkPodAutoscalerStatusConvergeToWatermark)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedReason, cond.Reason)
+		})
+	}
+}
+
+// Without the gate, a stable recommendation makes a converging WPA flip between N and N-1, as before v0.13.
+func TestRecommenderConvergeLegacyFlips(t *testing.T) {
+	wpa := &v1alpha1.WatermarkPodAutoscaler{
+		Spec: v1alpha1.WatermarkPodAutoscalerSpec{
+			Recommender:                  &v1alpha1.RecommenderSpec{URL: "http://recommender.example.com", TargetType: "cpu"},
+			ConvergeTowardsWatermark:     v1alpha1.ConvergeUpwards,
+			ReplicaScalingAbsoluteModulo: v1alpha1.NewInt32(1),
+			MinReplicas:                  v1alpha1.NewInt32(1),
+			MaxReplicas:                  10,
+		},
+	}
+	current := int32(5)
+	got := []int32{current}
+	for range 4 {
+		current, _ = adjustReplicaCount(logf.Log, current, current, wpa, 5, 3, 8, true, false)
+		got = append(got, current)
+	}
+	assert.Equal(t, []int32{5, 4, 5, 4, 5}, got)
+}
+
+func TestReplicaCalculatorRecommenderBoundedConvergenceGate(t *testing.T) {
+	assert.False(t, NewReplicaCalculator(nil, nil, nil, "", nil).recommenderBoundedConvergence(), "no configuration")
+	assert.False(t, NewReplicaCalculator(nil, nil, nil, "", config.StaticProvider{}).recommenderBoundedConvergence(), "gate off by default")
+	on := config.StaticProvider{Config: &config.ControllerConfig{FeatureGates: config.FeatureGates{RecommenderBoundedConvergence: true}}}
+	assert.True(t, NewReplicaCalculator(nil, nil, nil, "", on).recommenderBoundedConvergence())
 }
 
 func TestReplicasWithRecommenderError(t *testing.T) {
@@ -2414,7 +2544,7 @@ func TestRecommenderNoFalseUpscaleDuringRollingUpdate(t *testing.T) {
 	emClient := &emfake.FakeExternalMetricsClient{}
 	rClient := &metricsfake.Clientset{}
 	mClient := metrics.NewRESTMetricsClient(rClient.MetricsV1beta1(), nil, emClient)
-	replicaCalculator := NewReplicaCalculator(mClient, recoMock, informer.Lister(), "test-cluster")
+	replicaCalculator := NewReplicaCalculator(mClient, recoMock, informer.Lister(), "test-cluster", nil)
 
 	stop := make(chan struct{})
 	defer close(stop)
@@ -3667,7 +3797,7 @@ func TestGetReadyPodsCount(t *testing.T) {
 			informerFactory := informers.NewSharedInformerFactory(fakeClient, 0)
 			informer := informerFactory.Core().V1().Pods()
 
-			replicaCalculator := NewReplicaCalculator(nil, nil, informer.Lister(), "test-cluster")
+			replicaCalculator := NewReplicaCalculator(nil, nil, informer.Lister(), "test-cluster", nil)
 
 			stop := make(chan struct{})
 			defer close(stop)
