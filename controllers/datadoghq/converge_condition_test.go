@@ -8,6 +8,8 @@ package datadoghq
 import (
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -167,6 +169,69 @@ func TestConvergeConditionMetricFollowsTheMode(t *testing.T) {
 		labels[conditionPromLabel] = labelVal
 		assert.False(t, conditions.Delete(labels), "%s should have been deleted", labelVal)
 	}
+}
+
+func TestConvergeModeMetric(t *testing.T) {
+	tests := []struct {
+		name              string
+		spec, controller  v1alpha1.ConvergeTowardsWatermarkType
+		recommender       bool
+		wantMode, wantSrc string
+	}{
+		{name: "spec", spec: v1alpha1.ConvergeDownwards, controller: v1alpha1.ConvergeUpwards, wantMode: "lowwatermark", wantSrc: "spec"},
+		{name: "controller default", controller: v1alpha1.ConvergeUpwards, wantMode: "highwatermark", wantSrc: "controller_default"},
+		{name: "disabled in the spec", spec: v1alpha1.ConvergeDisabled, controller: v1alpha1.ConvergeUpwards, wantMode: "disabled", wantSrc: "spec"},
+		{name: "disabled by default", controller: v1alpha1.ConvergeDisabled, wantMode: "disabled", wantSrc: "controller_default"},
+		{name: "unknown spec value", spec: "foo", wantMode: "unknown", wantSrc: "spec"},
+		{name: "not set", wantMode: "none", wantSrc: "not_set"},
+		{name: "default not applied with a recommender", controller: v1alpha1.ConvergeUpwards, recommender: true, wantMode: "none", wantSrc: "recommender"},
+		{name: "recommender with a spec value", spec: v1alpha1.ConvergeUpwards, recommender: true, wantMode: "highwatermark", wantSrc: "spec"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wpa := newConvergeWPA("converge-mode-metric", tt.spec, tt.controller, tt.recommender)
+			t.Cleanup(func() { cleanupAssociatedMetrics(wpa, false) })
+			setConvergeModeMetric(wpa)
+			assert.Equal(t, map[string]float64{tt.wantMode + "/" + tt.wantSrc: 1}, convergeModeSeries(t, wpa))
+		})
+	}
+}
+
+func TestConvergeModeMetricModeChange(t *testing.T) {
+	wpa := newConvergeWPA("converge-mode-change", "", v1alpha1.ConvergeUpwards, false)
+	t.Cleanup(func() { cleanupAssociatedMetrics(wpa, false) })
+	setConvergeModeMetric(wpa)
+	wpa.Spec.ConvergeTowardsWatermark = v1alpha1.ConvergeDisabled
+	setConvergeModeMetric(wpa)
+	assert.Equal(t, map[string]float64{"disabled/spec": 1}, convergeModeSeries(t, wpa), "no stale series")
+}
+
+func TestConvergeModeMetricCleanup(t *testing.T) {
+	wpa := newConvergeWPA("converge-mode-cleanup", "", v1alpha1.ConvergeUpwards, false)
+	setConvergeModeMetric(wpa)
+	cleanupAssociatedMetrics(wpa, false)
+	assert.Empty(t, convergeModeSeries(t, wpa), "a deleted WPA removes its converge mode series")
+}
+
+// convergeModeSeries returns the converge mode series of the WPA, by "mode/source".
+func convergeModeSeries(t *testing.T, wpa *v1alpha1.WatermarkPodAutoscaler) map[string]float64 {
+	t.Helper()
+	ch := make(chan prometheus.Metric, 100)
+	convergeMode.Collect(ch)
+	close(ch)
+	series := map[string]float64{}
+	for m := range ch {
+		var pb dto.Metric
+		require.NoError(t, m.Write(&pb))
+		labels := map[string]string{}
+		for _, l := range pb.GetLabel() {
+			labels[l.GetName()] = l.GetValue()
+		}
+		if labels[wpaNamePromLabel] == wpa.Name && labels[wpaNamespacePromLabel] == wpa.Namespace {
+			series[labels[modePromLabel]+"/"+labels[sourcePromLabel]] = pb.GetGauge().GetValue()
+		}
+	}
+	return series
 }
 
 func TestSetConvergeNotEvaluated(t *testing.T) {
