@@ -258,6 +258,12 @@ licenses: bin/$(PLATFORM)/go-licenses
 	GOTOOLCHAIN=$(GO_TOOLCHAIN) bin/$(PLATFORM)/go-licenses report . --template ./hack/licenses.tpl > LICENSE-3rdparty.csv 2> errors
 
 .PHONY: verify-license
+verify-chart-crd: ## Check that the Helm chart renders the WPA CRD exactly once (requires helm)
+	hack/verify-chart-crd.sh
+
+verify-chart-target-stretch: bin/$(PLATFORM)/yq ## Check the targetStretch section of the chart controller configuration file, its wiring and an absent targetStretch map (requires helm)
+	hack/verify-chart-target-stretch.sh
+
 verify-license:
 	hack/verify-license.sh
 
